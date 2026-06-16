@@ -138,6 +138,34 @@
   --sidebar-ring: #1fd1e3;
 }
 
+/* Landing/showcase animations (used by the /learn "Next Level" page). */
+@keyframes nl-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes nl-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+@keyframes nl-scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(900%);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
