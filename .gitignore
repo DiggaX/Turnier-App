@@ -15,9 +15,11 @@ node_modules/
 # Brainstorming Visual Companion
 .superpowers/
 
-# Secrets / Env
+# Secrets / Env (covers .env, .env.local, .env.md, etc.; keep example templates)
 .env
-.env*.local
+.env.*
+!.env.example
+!**/.env.example
 *.pem
 
 # Next.js / Build
