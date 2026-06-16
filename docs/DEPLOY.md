@@ -34,6 +34,19 @@ Then in the Dashboard:
    on conflict (id) do update set role = 'organizer';
    ```
 
+## Check-in (Plan 3) — additional setup
+
+Apply `supabase/migrations/20260618090000_checkin.sql` (SQL Editor → Run). It adds the
+`check_ins` audit table + `participants.qr_token`, a **consent-enforcement trigger**
+(check-in is blocked at the DB unless a valid media consent exists — minor → guardian
+signature), and the `check_in(participant_id, method)` RPC. No new Auth/Storage toggles
+needed (anonymous auth + the `consent-signatures` bucket already exist).
+
+Three check-in methods: organizer camera scan (`qr_scan`), station-QR self-scan
+(`station`), online button (`online`). The organizer scan and station pages live under
+`/organizer/tournaments/[id]/checkin` and `/t/[id]/checkin-station`; participants see
+their personal QR + online button at `/t/[id]/me`.
+
 ## Local dev
 
 1. Create `web/.env.local` (copy `web/.env.example`) and fill in:
