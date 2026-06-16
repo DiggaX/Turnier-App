@@ -15,6 +15,8 @@ export type TournamentFormat =
   | "groups_playoffs";
 export type TournamentMode = "lan" | "online" | "hybrid";
 export type TournamentStatus = "draft" | "registration" | "running" | "finished";
+export type ParticipantType = "solo" | "team";
+export type ConsentGrantor = "self" | "guardian";
 
 export interface Database {
   public: {
@@ -51,6 +53,60 @@ export interface Database {
           { foreignKeyName: "tournaments_game_id_fkey"; columns: ["game_id"]; referencedRelation: "games"; referencedColumns: ["id"] }
         ];
       };
+      participants: {
+        Row: {
+          id: string; tournament_id: string; user_id: string | null; type: ParticipantType;
+          display_name: string; gamertag: string | null; birthdate: string;
+          seed: number | null; checked_in_at: string | null; created_at: string;
+        };
+        Insert: {
+          id?: string; tournament_id: string; user_id?: string | null; type?: ParticipantType;
+          display_name: string; gamertag?: string | null; birthdate: string;
+          seed?: number | null; checked_in_at?: string | null; created_at?: string;
+        };
+        Update: {
+          id?: string; tournament_id?: string; user_id?: string | null; type?: ParticipantType;
+          display_name?: string; gamertag?: string | null; birthdate?: string;
+          seed?: number | null; checked_in_at?: string | null; created_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: "participants_tournament_id_fkey"; columns: ["tournament_id"]; referencedRelation: "tournaments"; referencedColumns: ["id"] }
+        ];
+      };
+      team_members: {
+        Row: {
+          id: string; participant_id: string; name: string; gamertag: string | null;
+          is_captain: boolean; created_at: string;
+        };
+        Insert: {
+          id?: string; participant_id: string; name: string; gamertag?: string | null;
+          is_captain?: boolean; created_at?: string;
+        };
+        Update: {
+          id?: string; participant_id?: string; name?: string; gamertag?: string | null;
+          is_captain?: boolean; created_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: "team_members_participant_id_fkey"; columns: ["participant_id"]; referencedRelation: "participants"; referencedColumns: ["id"] }
+        ];
+      };
+      consents: {
+        Row: {
+          id: string; participant_id: string; grantor: ConsentGrantor;
+          grantor_name: string; method: string; signature_path: string | null; granted_at: string;
+        };
+        Insert: {
+          id?: string; participant_id: string; grantor: ConsentGrantor;
+          grantor_name: string; method: string; signature_path?: string | null; granted_at?: string;
+        };
+        Update: {
+          id?: string; participant_id?: string; grantor?: ConsentGrantor;
+          grantor_name?: string; method?: string; signature_path?: string | null; granted_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: "consents_participant_id_fkey"; columns: ["participant_id"]; referencedRelation: "participants"; referencedColumns: ["id"] }
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -59,6 +115,8 @@ export interface Database {
       tournament_format: TournamentFormat;
       tournament_mode: TournamentMode;
       tournament_status: TournamentStatus;
+      participant_type: ParticipantType;
+      consent_grantor: ConsentGrantor;
     };
     CompositeTypes: Record<string, never>;
   };
