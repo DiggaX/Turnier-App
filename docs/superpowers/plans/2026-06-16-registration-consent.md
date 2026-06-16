@@ -380,3 +380,8 @@ git commit -m "docs: registration/consent setup steps"
 - A guest can register on mobile and complete consent (adult + minor paths) — E2E green.
 - Organizer signs in and sees the participant list with consent status — E2E green (with creds).
 - `npm run build` succeeds.
+
+## Post-review fixes & deferrals (final security review)
+- **C1 (fixed, `20260617120000_tighten_write_policies.sql`):** anonymous auth grants role `authenticated` to any visitor; the Foundation's `to authenticated using(true)` write policies on `games`/`tournaments` are tightened to `is_staff()`-only so anonymous registrants cannot modify tournaments/games. Public SELECT stays open. **Must be applied to the live DB.**
+- **I2 (deferred to Plan 3 — check-in):** the consent gate is UI-level; the DB does not yet guarantee a minor has a guardian signature, nor bind `consents.method`/`grantor` to `birthdate`. No harmful action is reachable today (RLS holds), but DB/server enforcement (a `SECURITY DEFINER` RPC that inserts participant+consent atomically with minor→signature validation) MUST land before check-in or any media-publishing feature treats a `consents` row as authoritative.
+- **Follow-ups (M3–M6):** staff DELETE policy for spam registrations; abuse controls for unbounded anonymous users + orphaned signatures (prune job / CAPTCHA); friendly handling of `23505` duplicate-registration; map raw DB error messages to user-facing strings.
