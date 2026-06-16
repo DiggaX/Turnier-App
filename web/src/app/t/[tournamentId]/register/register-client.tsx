@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
+import { friendlyDbError, isUniqueViolation } from "@/lib/db-errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -86,7 +87,9 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
       if (session?.user) return session.user.id;
       const { data, error } = await supabase.auth.signInAnonymously();
       if (error || !data.user) {
-        throw new Error(error?.message ?? "Keine anonyme Sitzung verfügbar.");
+        throw new Error(
+          "Anmeldung konnte nicht gestartet werden. Bitte versuche es erneut.",
+        );
       }
       return data.user.id;
     })().catch((e) => {
@@ -145,7 +148,16 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
         .single();
 
       if (pErr || !participant) {
-        throw new Error(pErr?.message ?? "Anmeldung fehlgeschlagen.");
+        // unique(tournament_id, user_id) — same user already registered here.
+        if (isUniqueViolation(pErr)) {
+          throw new Error("Du bist für dieses Turnier bereits angemeldet.");
+        }
+        throw new Error(
+          friendlyDbError(
+            pErr,
+            "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
+          ),
+        );
       }
 
       if (isTeam) {
@@ -170,7 +182,14 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
         const { error: mErr } = await supabase
           .from("team_members")
           .insert(rows);
-        if (mErr) throw new Error(mErr.message);
+        if (mErr) {
+          throw new Error(
+            friendlyDbError(
+              mErr,
+              "Die Team-Mitglieder konnten nicht gespeichert werden. Bitte versuche es erneut.",
+            ),
+          );
+        }
       }
 
       setParticipantId(participant.id);

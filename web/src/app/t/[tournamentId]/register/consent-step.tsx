@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/database.types";
 import { requiredConsentMethod } from "@/lib/consent";
+import { friendlyDbError, isUniqueViolation } from "@/lib/db-errors";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,18 @@ import {
 
 const CONSENT_TEXT =
   "Ich willige in Bild/Ton/Video-Aufnahmen und deren Nutzung für Social Media/Dritte ein";
+
+/** Map a consents-insert failure to a safe German message (no raw DB leak). */
+function consentSaveError(error: unknown): string {
+  // unique(participant_id) — consent for this registration already exists.
+  if (isUniqueViolation(error)) {
+    return "Für diese Anmeldung wurde bereits eine Einwilligung erteilt.";
+  }
+  return friendlyDbError(
+    error,
+    "Die Einwilligung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+  );
+}
 
 interface ConsentStepProps {
   supabase: SupabaseClient<Database>;
@@ -90,7 +103,14 @@ export function ConsentStep({
             contentType: "image/png",
             upsert: true,
           });
-        if (upErr) throw new Error(upErr.message);
+        if (upErr) {
+          throw new Error(
+            friendlyDbError(
+              upErr,
+              "Die Unterschrift konnte nicht gespeichert werden. Bitte versuche es erneut.",
+            ),
+          );
+        }
 
         const { error: cErr } = await supabase.from("consents").insert({
           participant_id: participantId,
@@ -99,7 +119,7 @@ export function ConsentStep({
           method: "signature",
           signature_path: path,
         });
-        if (cErr) throw new Error(cErr.message);
+        if (cErr) throw new Error(consentSaveError(cErr));
       } else {
         const { error: cErr } = await supabase.from("consents").insert({
           participant_id: participantId,
@@ -107,7 +127,7 @@ export function ConsentStep({
           grantor_name: grantorName.trim(),
           method: "checkbox",
         });
-        if (cErr) throw new Error(cErr.message);
+        if (cErr) throw new Error(consentSaveError(cErr));
       }
 
       onDone();
