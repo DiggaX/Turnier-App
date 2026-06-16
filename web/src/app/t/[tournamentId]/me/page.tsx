@@ -27,5 +27,5 @@ export default async function MePage(props: {
     redirect(`/t/${tournamentId}/register`);
   }
 
-  return <MeClient participant={participant} tournamentId={tournamentId} />;
+  return <MeClient participant={participant} />;
 }

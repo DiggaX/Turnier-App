@@ -372,7 +372,7 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
             {submitting ? "Wird gesendet…" : "Weiter zur Einwilligung"}
           </Button>
 
-          <p className="text-center text-xs text-fg-dim">
+          <p className="text-center text-xs text-fg-muted">
             Als Gast — kein Account nötig
           </p>
         </form>

@@ -128,7 +128,7 @@ export default async function CheckinPage({
                     ariaLabel="Stations-QR zum Self-Check-in"
                   />
                 </div>
-                <p className="break-all text-center text-xs text-fg-dim">
+                <p className="break-all text-center text-xs text-fg-muted">
                   {stationUrl}
                 </p>
               </div>

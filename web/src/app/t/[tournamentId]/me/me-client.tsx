@@ -23,7 +23,6 @@ interface Participant {
 
 interface MeClientProps {
   participant: Participant;
-  tournamentId: string;
 }
 
 /** Map a check_in RPC failure to a friendly German message (no raw DB leak). */
