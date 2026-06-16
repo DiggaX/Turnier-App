@@ -11,13 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { ParticipantShell } from "@/components/brand/participant-shell";
 
 const CONSENT_TEXT =
   "Ich willige in Bild/Ton/Video-Aufnahmen und deren Nutzung für Social Media/Dritte ein";
@@ -138,29 +132,31 @@ export function ConsentStep({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Einwilligung</CardTitle>
-        <CardDescription>
-          {method === "signature"
-            ? "Da die teilnehmende Person minderjährig ist, ist die Unterschrift eines Erziehungsberechtigten erforderlich."
-            : "Bitte bestätige die Einwilligung in Medienaufnahmen."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4">
+    <ParticipantShell
+      eyebrow="/ Einwilligung · Alters-Gate"
+      heading="Einwilligung"
+      subheading={
+        method === "signature"
+          ? "Da die teilnehmende Person minderjährig ist, ist die Unterschrift eines Erziehungsberechtigten erforderlich."
+          : "Bitte bestätige die Einwilligung in Medienaufnahmen."
+      }
+    >
+      <div className="rounded-2xl border border-line bg-surface p-6 sm:p-7">
+        <div className="flex flex-col gap-5">
           {method === "checkbox" ? (
             <>
-              <Label className="items-start gap-3">
+              <Label className="items-start gap-3 rounded-xl border border-line bg-surface-2/60 p-4">
                 <Checkbox
                   checked={checked}
                   onCheckedChange={(value) => setChecked(value)}
                   aria-label="Einwilligung erteilen"
                 />
-                <span className="leading-snug">{CONSENT_TEXT}</span>
+                <span className="leading-snug text-fg-muted">
+                  {CONSENT_TEXT}
+                </span>
               </Label>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="grantorName">Name (zur Bestätigung)</Label>
                 <Input
                   id="grantorName"
@@ -171,9 +167,16 @@ export function ConsentStep({
             </>
           ) : (
             <>
-              <p className="text-sm leading-snug">{CONSENT_TEXT}</p>
+              <div className="rounded-xl border border-warn/35 bg-warn/[0.08] p-4">
+                <div className="mb-2 font-display text-[11px] font-semibold uppercase tracking-[0.12em] text-warn">
+                  ⚠ Minderjährig — Eltern-Einwilligung nötig
+                </div>
+                <p className="text-sm leading-snug text-fg-muted">
+                  {CONSENT_TEXT}
+                </p>
+              </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="grantorName">
                   Name des Erziehungsberechtigten
                 </Label>
@@ -184,7 +187,7 @@ export function ConsentStep({
                 />
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 <Label>Unterschrift des Erziehungsberechtigten</Label>
                 <SignaturePad
                   ref={sigRef}
@@ -204,11 +207,12 @@ export function ConsentStep({
             type="button"
             onClick={handleSubmit}
             disabled={submitting || !canSubmit}
+            className="mt-1 h-12 font-display text-sm font-bold uppercase tracking-wider"
           >
             {submitting ? "Wird gespeichert…" : "Einwilligung abschließen"}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </ParticipantShell>
   );
 }

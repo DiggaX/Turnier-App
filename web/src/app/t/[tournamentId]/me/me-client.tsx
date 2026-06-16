@@ -9,12 +9,9 @@ import { QrCode } from "@/components/qr-code";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  ParticipantShell,
+  SectionLabel,
+} from "@/components/brand/participant-shell";
 
 interface Participant {
   id: string;
@@ -74,50 +71,68 @@ export function MeClient({ participant }: MeClientProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{participant.display_name}</CardTitle>
-        <CardDescription>
+    <ParticipantShell
+      eyebrow="/ Mein Status"
+      heading="Mein Status"
+      glow="lime"
+    >
+      <div className="flex flex-col gap-4">
+        {/* consent status */}
+        <div className="flex items-center justify-between rounded-2xl border border-line bg-surface px-5 py-4">
+          <span className="font-display text-sm font-semibold text-ink">
+            {participant.display_name}
+          </span>
           {hasConsent ? (
-            <Badge className="bg-green-600 text-white">
-              Einwilligung erteilt
-            </Badge>
+            <Badge className="bg-lime/15 text-lime">Einwilligung erteilt</Badge>
           ) : (
             <Badge variant="destructive">Einwilligung fehlt</Badge>
           )}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col items-center gap-6">
-          <div className="flex flex-col items-center gap-2">
-            <QrCode value={participant.qr_token} ariaLabel="Dein Check-in-QR" />
-            <p className="text-sm text-muted-foreground">
+        </div>
+
+        {/* QR card */}
+        <div className="rounded-2xl border border-line bg-surface p-6">
+          <SectionLabel className="mb-4 text-center">
+            Dein Check-in-QR
+          </SectionLabel>
+          <div className="flex flex-col items-center gap-3">
+            <div className="rounded-2xl bg-white p-4">
+              <QrCode
+                value={participant.qr_token}
+                ariaLabel="Dein Check-in-QR"
+              />
+            </div>
+            <p className="text-sm text-fg-muted">
               Zeig das der Orga zum Check-in
             </p>
           </div>
-
-          {checkedIn ? (
-            <p className="text-base font-medium" role="status">
-              ✅ Eingecheckt
-            </p>
-          ) : (
-            <div className="flex w-full flex-col gap-2">
-              <Button
-                type="button"
-                onClick={() => void handleCheckIn()}
-                disabled={submitting}
-              >
-                {submitting ? "Wird eingecheckt…" : "Jetzt online einchecken"}
-              </Button>
-              {error && (
-                <p className="text-sm text-destructive" role="alert">
-                  {error}
-                </p>
-              )}
-            </div>
-          )}
         </div>
-      </CardContent>
-    </Card>
+
+        {/* check-in action */}
+        {checkedIn ? (
+          <div
+            className="flex items-center justify-center gap-2 rounded-2xl border border-lime/30 bg-lime/[0.08] px-5 py-4 font-display text-base font-semibold text-lime"
+            role="status"
+          >
+            ✅ Eingecheckt
+          </div>
+        ) : (
+          <div className="flex w-full flex-col gap-2">
+            <Button
+              type="button"
+              onClick={() => void handleCheckIn()}
+              disabled={submitting}
+              className="h-12 font-display text-sm font-bold uppercase tracking-wider"
+            >
+              {submitting ? "Wird eingecheckt…" : "Jetzt online einchecken"}
+            </Button>
+            {error && (
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </ParticipantShell>
   );
 }

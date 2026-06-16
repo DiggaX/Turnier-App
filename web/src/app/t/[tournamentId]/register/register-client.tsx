@@ -13,12 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  ParticipantShell,
+  SectionLabel,
+} from "@/components/brand/participant-shell";
 import { ConsentStep } from "./consent-step";
 
 type Step = "form" | "consent" | "done";
@@ -205,15 +202,26 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
 
   if (step === "done") {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Anmeldung &amp; Einwilligung abgeschlossen</CardTitle>
-          <CardDescription>
-            Vielen Dank, {displayName}! Du bist für {tournament.name}{" "}
-            angemeldet.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <ParticipantShell
+        eyebrow="/ Anmeldung"
+        heading="Anmeldung & Einwilligung abgeschlossen"
+        glow="lime"
+      >
+        <div className="rounded-2xl border border-lime/30 bg-lime/[0.06] p-6">
+          <div className="flex items-start gap-3">
+            <span
+              aria-hidden
+              className="flex size-7 shrink-0 items-center justify-center rounded-md bg-lime font-display text-base font-bold text-bg"
+            >
+              ✓
+            </span>
+            <p className="text-sm leading-relaxed text-fg-muted">
+              Vielen Dank, {displayName}! Du bist für{" "}
+              <span className="text-ink">{tournament.name}</span> angemeldet.
+            </p>
+          </div>
+        </div>
+      </ParticipantShell>
     );
   }
 
@@ -231,22 +239,24 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Anmeldung — {tournament.name}</CardTitle>
-        <CardDescription>
-          {isTeam
-            ? `Team-Anmeldung (Teamgröße ${teamSize}).`
-            : "Einzel-Anmeldung."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <ParticipantShell
+      eyebrow={`/ ${tournament.name} / Register`}
+      heading="Anmeldung"
+      subheading={
+        isTeam
+          ? `Team-Anmeldung (Teamgröße ${teamSize}).`
+          : "Einzel-Anmeldung."
+      }
+    >
+      <div className="rounded-2xl border border-line bg-surface p-6 sm:p-7">
         <form
           onSubmit={(e) => void handleSubmit(onSubmit)(e)}
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-5"
           noValidate
         >
-          <div className="flex flex-col gap-1.5">
+          <SectionLabel>Spieler</SectionLabel>
+
+          <div className="flex flex-col gap-2">
             <Label htmlFor="displayName">Anzeigename</Label>
             <Input id="displayName" {...register("displayName")} />
             {errors.displayName && (
@@ -256,12 +266,12 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
             )}
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="gamertag">Gamertag (optional)</Label>
             <Input id="gamertag" {...register("gamertag")} />
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="birthdate">Geburtsdatum</Label>
             <Input id="birthdate" type="date" {...register("birthdate")} />
             {errors.birthdate && (
@@ -272,10 +282,12 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
           </div>
 
           {isTeam && (
-            <fieldset className="flex flex-col gap-4 rounded-lg border border-input p-3">
-              <legend className="px-1 text-sm font-medium">Team</legend>
+            <fieldset className="flex flex-col gap-4 rounded-xl border border-line bg-surface-2/60 p-4">
+              <legend className="px-1 font-display text-[10px] font-medium uppercase tracking-[0.18em] text-cyan">
+                Team
+              </legend>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="captainName">Captain — Name</Label>
                 <Input id="captainName" {...register("captainName")} />
                 {errors.captainName && (
@@ -285,7 +297,7 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
                 )}
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 <Label htmlFor="captainGamertag">
                   Captain — Gamertag (optional)
                 </Label>
@@ -299,9 +311,9 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
                 {fields.map((field, index) => (
                   <div
                     key={field.id}
-                    className="flex flex-col gap-2 rounded-md border border-input/60 p-2"
+                    className="flex flex-col gap-2.5 rounded-lg border border-line bg-bg/40 p-3"
                   >
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-2">
                       <Label htmlFor={`members.${index}.name`}>
                         Mitglied {index + 1} — Name
                       </Label>
@@ -315,7 +327,7 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
                         </p>
                       )}
                     </div>
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-2">
                       <Label htmlFor={`members.${index}.gamertag`}>
                         Mitglied {index + 1} — Gamertag (optional)
                       </Label>
@@ -352,11 +364,19 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
             </p>
           )}
 
-          <Button type="submit" disabled={submitting}>
+          <Button
+            type="submit"
+            disabled={submitting}
+            className="mt-1 h-12 font-display text-sm font-bold uppercase tracking-wider"
+          >
             {submitting ? "Wird gesendet…" : "Weiter zur Einwilligung"}
           </Button>
+
+          <p className="text-center text-xs text-fg-dim">
+            Als Gast — kein Account nötig
+          </p>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </ParticipantShell>
   );
 }

@@ -21,11 +21,9 @@ export default async function RegisterPage(props: {
   const teamSize = tournament.game?.team_size ?? 1;
 
   return (
-    <main className="mx-auto w-full max-w-xl p-4 sm:p-8">
-      <RegisterClient
-        tournament={{ id: tournament.id, name: tournament.name }}
-        teamSize={teamSize}
-      />
-    </main>
+    <RegisterClient
+      tournament={{ id: tournament.id, name: tournament.name }}
+      teamSize={teamSize}
+    />
   );
 }

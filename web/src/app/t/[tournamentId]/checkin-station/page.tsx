@@ -27,9 +27,5 @@ export default async function CheckinStationPage(props: {
     redirect(`/t/${tournamentId}/register`);
   }
 
-  return (
-    <main className="mx-auto w-full max-w-xl p-4 sm:p-8">
-      <StationClient participant={participant} />
-    </main>
-  );
+  return <StationClient participant={participant} />;
 }

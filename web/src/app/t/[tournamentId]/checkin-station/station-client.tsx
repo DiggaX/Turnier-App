@@ -2,12 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { ParticipantShell } from "@/components/brand/participant-shell";
 
 interface Participant {
   id: string;
@@ -77,32 +72,40 @@ export function StationClient({ participant }: StationClientProps) {
   }, []);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{participant.display_name}</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <ParticipantShell
+      eyebrow="/ Check-in"
+      heading="Check-in"
+      glow="lime"
+      subheading={participant.display_name}
+    >
+      <div className="rounded-2xl border border-line bg-surface p-6 sm:p-7">
         {state === "loading" && (
-          <p className="text-base" role="status">
+          <p className="text-base text-fg-muted" role="status">
             Checke ein…
           </p>
         )}
         {state === "success" && (
-          <p className="text-base font-medium" role="status">
+          <div
+            className="flex items-center gap-3 rounded-xl border border-lime/30 bg-lime/[0.08] px-4 py-4 font-display text-base font-semibold text-lime"
+            role="status"
+          >
             ✅ {participant.display_name}, du bist eingecheckt!
-          </p>
+          </div>
         )}
         {state === "already" && (
-          <p className="text-base" role="status">
+          <div
+            className="flex items-center gap-3 rounded-xl border border-line bg-surface-2/60 px-4 py-4 text-base text-fg-muted"
+            role="status"
+          >
             Du bist bereits eingecheckt.
-          </p>
+          </div>
         )}
         {state === "error" && (
           <p className="text-sm text-destructive" role="alert">
             {errorMsg}
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </ParticipantShell>
   );
 }

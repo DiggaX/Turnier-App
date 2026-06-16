@@ -27,9 +27,5 @@ export default async function MePage(props: {
     redirect(`/t/${tournamentId}/register`);
   }
 
-  return (
-    <main className="mx-auto w-full max-w-xl p-4 sm:p-8">
-      <MeClient participant={participant} tournamentId={tournamentId} />
-    </main>
-  );
+  return <MeClient participant={participant} tournamentId={tournamentId} />;
 }
