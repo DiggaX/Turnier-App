@@ -16,10 +16,8 @@ export type TournamentCardProps = {
   statusLabel?: string;
   /** Format + time line, e.g. "Single Elimination · heute 18:00". */
   meta: string;
-  /** Prize pool, e.g. "$250K". Hidden when omitted. */
-  prize?: string;
-  /** Teams count, e.g. "16/16" or "—". */
-  teams?: string;
+  /** Participant count shown in the stat block. Hidden when omitted. */
+  participantCount?: number;
   /**
    * Primary action slot — pass a <Link>, <Button>, or anchor. Kept as a slot so
    * the card stays presentational and owns no routing/click logic.
@@ -49,8 +47,7 @@ export function TournamentCard({
   status,
   statusLabel,
   meta,
-  prize,
-  teams,
+  participantCount,
   action,
   tagColor = "lime",
   dim = false,
@@ -62,8 +59,8 @@ export function TournamentCard({
       className={cn(
         "flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5",
         "sm:grid sm:grid-cols-[64px_1fr_auto] sm:items-center sm:gap-5 sm:p-[18px_22px]",
-        "md:grid-cols-[64px_1fr_auto_auto_auto] md:gap-[22px]",
-        "transition-colors",
+        "md:grid-cols-[64px_1fr_auto_auto] md:gap-[22px]",
+        "transition-colors hover:border-cyan/40",
         dim && "opacity-[0.78]",
         className,
       )}
@@ -94,22 +91,14 @@ export function TournamentCard({
         <div className="mt-0.5 text-[13px] text-fg-muted">{meta}</div>
       </div>
 
-      {/* prize */}
-      {prize != null && (
+      {/* participant count */}
+      {participantCount != null && (
         <div className="text-center">
-          <div className="font-display text-lg font-bold text-lime">{prize}</div>
-          <div className="font-display text-[10px] uppercase tracking-wider text-fg-dim">
-            Prize
+          <div className="font-display text-lg font-bold text-lime">
+            {participantCount}
           </div>
-        </div>
-      )}
-
-      {/* teams */}
-      {teams != null && (
-        <div className="text-center">
-          <div className="font-display text-lg font-bold text-ink">{teams}</div>
           <div className="font-display text-[10px] uppercase tracking-wider text-fg-dim">
-            Teams
+            Teilnehmer
           </div>
         </div>
       )}
