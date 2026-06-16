@@ -17,6 +17,7 @@ export type TournamentMode = "lan" | "online" | "hybrid";
 export type TournamentStatus = "draft" | "registration" | "running" | "finished";
 export type ParticipantType = "solo" | "team";
 export type ConsentGrantor = "self" | "guardian";
+export type CheckinMethod = "qr_scan" | "station" | "online";
 
 export interface Database {
   public: {
@@ -58,16 +59,19 @@ export interface Database {
           id: string; tournament_id: string; user_id: string | null; type: ParticipantType;
           display_name: string; gamertag: string | null; birthdate: string;
           seed: number | null; checked_in_at: string | null; created_at: string;
+          qr_token: string;
         };
         Insert: {
           id?: string; tournament_id: string; user_id?: string | null; type?: ParticipantType;
           display_name: string; gamertag?: string | null; birthdate: string;
           seed?: number | null; checked_in_at?: string | null; created_at?: string;
+          qr_token?: string;
         };
         Update: {
           id?: string; tournament_id?: string; user_id?: string | null; type?: ParticipantType;
           display_name?: string; gamertag?: string | null; birthdate?: string;
           seed?: number | null; checked_in_at?: string | null; created_at?: string;
+          qr_token?: string;
         };
         Relationships: [
           { foreignKeyName: "participants_tournament_id_fkey"; columns: ["tournament_id"]; referencedRelation: "tournaments"; referencedColumns: ["id"] }
@@ -107,9 +111,31 @@ export interface Database {
           { foreignKeyName: "consents_participant_id_fkey"; columns: ["participant_id"]; referencedRelation: "participants"; referencedColumns: ["id"] }
         ];
       };
+      check_ins: {
+        Row: {
+          id: string; participant_id: string; method: CheckinMethod;
+          checked_in_by: string | null; created_at: string;
+        };
+        Insert: {
+          id?: string; participant_id: string; method: CheckinMethod;
+          checked_in_by?: string | null; created_at?: string;
+        };
+        Update: {
+          id?: string; participant_id?: string; method?: CheckinMethod;
+          checked_in_by?: string | null; created_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: "check_ins_participant_id_fkey"; columns: ["participant_id"]; referencedRelation: "participants"; referencedColumns: ["id"] }
+        ];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      check_in: {
+        Args: { p_participant_id: string; p_method: CheckinMethod };
+        Returns: undefined;
+      };
+    };
     Enums: {
       user_role: UserRole;
       tournament_format: TournamentFormat;
@@ -117,6 +143,7 @@ export interface Database {
       tournament_status: TournamentStatus;
       participant_type: ParticipantType;
       consent_grantor: ConsentGrantor;
+      checkin_method: CheckinMethod;
     };
     CompositeTypes: Record<string, never>;
   };
