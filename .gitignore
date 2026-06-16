@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
-package-lock.json
+# only the stray root lockfile (claude-flow install); the app lockfile in web/ IS tracked
+/package-lock.json
 
 # Ruflo / claude-flow: lokaler Clone + Runtime-Daten
 /ruflo/
