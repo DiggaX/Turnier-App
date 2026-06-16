@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Ruflo / claude-flow: lokaler Clone + Runtime-Daten
+/ruflo/
+.claude-flow/
+*.rvf
+*.rvf.lock
+
+# Skill-Installs (verwaltet via `npx skills`)
+/.agents/
+
+# Brainstorming Visual Companion
+.superpowers/
+
+# Secrets / Env
+.env
+.env*.local
+*.pem
+
+# Next.js / Build
+.next/
+out/
+dist/
+build/
+.vercel/
+
+# Supabase
+.branches/
+.temp/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.log
