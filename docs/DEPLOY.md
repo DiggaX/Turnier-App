@@ -15,6 +15,25 @@ the `games` catalog (Valorant, FIFA). The seed is idempotent (`on conflict do no
 > regenerated with `npx supabase gen types typescript --linked > web/src/lib/database.types.ts`.
 > Until then, `web/src/lib/database.types.ts` is hand-written to match the schema.
 
+## Registration & Consent (Plan 2) — additional setup
+
+Apply the migration `supabase/migrations/20260617090000_registration_consent.sql`
+(SQL Editor → paste → Run). It adds `participants`/`team_members`/`consents`, RLS,
+the `is_staff()` helper, storage policies, and seeds an open "Sommer Cup 2026" tournament.
+
+Then in the Dashboard:
+1. **Auth → Sign In / Providers → enable "Anonymous sign-ins"** (guest registration).
+2. **Storage → create bucket `consent-signatures`, set it PRIVATE** (guardian signatures).
+   Its RLS policies are created by the migration.
+3. **Auth → URL Configuration → Redirect URLs:** add `http://localhost:3000/**`
+   (and the Vercel preview/prod URLs) for magic-link sign-in.
+4. **Organizer account:** Auth → Users → Add user (email + password), then set its role:
+   ```sql
+   insert into profiles (id, role, display_name)
+   values ('<user-uuid>', 'organizer', 'Orga')
+   on conflict (id) do update set role = 'organizer';
+   ```
+
 ## Local dev
 
 1. Create `web/.env.local` (copy `web/.env.example`) and fill in:
