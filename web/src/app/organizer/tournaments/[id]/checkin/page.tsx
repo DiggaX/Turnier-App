@@ -1,17 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
+import { OrganizerNav } from "@/components/brand/organizer-nav";
+import { TournamentTabs } from "@/components/brand/tournament-tabs";
 import { QrCode } from "@/components/qr-code";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -92,77 +85,104 @@ export default async function CheckinPage({
   const presentCount = rows.filter((r) => r.checked_in_at).length;
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 sm:p-8">
-      <div className="flex flex-col gap-1">
-        <Link
-          href="/organizer"
-          className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-        >
-          ← Zurück zu den Turnieren
-        </Link>
-        <h1 className="font-heading text-xl font-medium">{tournament.name}</h1>
-        <p className="text-sm text-muted-foreground">
-          Check-in — {presentCount} von {rows.length} anwesend
-        </p>
-      </div>
+    <>
+      <OrganizerNav />
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <ScannerClient tournamentId={id} />
+      <main className="relative flex-1 overflow-hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 [background:radial-gradient(700px_500px_at_50%_-5%,rgba(31,209,227,0.08),transparent_60%)]"
+        />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Stations-QR</CardTitle>
-            <CardDescription>
-              Teilnehmer scannen diesen Code, um sich selbst einzuchecken.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center gap-2">
-            <QrCode
-              value={stationUrl}
-              ariaLabel="Stations-QR zum Self-Check-in"
-            />
-            <p className="break-all text-center text-xs text-muted-foreground">
-              {stationUrl}
+        <div className="relative mx-auto w-full max-w-4xl px-5 pb-20 pt-8 sm:px-8 sm:pt-10">
+          <div className="mb-5">
+            <div className="mb-2 font-display text-[10px] uppercase tracking-[0.18em] text-fg-dim">
+              Organizer · Check-in
+            </div>
+            <h1 className="font-display text-2xl font-bold uppercase leading-[1.05] tracking-tight text-ink sm:text-3xl">
+              {tournament.name}
+            </h1>
+            <p className="mt-2 text-sm text-fg-muted">
+              {presentCount} von {rows.length} anwesend
             </p>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="font-heading text-lg font-medium">Anwesenheit</h2>
-        {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Für dieses Turnier sind noch keine Teilnehmer angemeldet.
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((p) => (
-                <TableRow key={`${p.display_name}-${p.checked_in_at ?? ""}`}>
-                  <TableCell className="font-medium">
-                    {p.display_name}
-                  </TableCell>
-                  <TableCell>
-                    {p.checked_in_at ? (
-                      <Badge className="border-transparent bg-green-600/15 text-green-700 dark:bg-green-500/20 dark:text-green-400">
-                        Anwesend
-                      </Badge>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </section>
-    </main>
+          <TournamentTabs tournamentId={id} />
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <ScannerClient tournamentId={id} />
+
+            <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
+              <div>
+                <div className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+                  Stations-QR
+                </div>
+                <p className="mt-1 text-sm text-fg-muted">
+                  Teilnehmer scannen diesen Code, um sich selbst einzuchecken.
+                </p>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <div className="rounded-xl bg-white p-3">
+                  <QrCode
+                    value={stationUrl}
+                    ariaLabel="Stations-QR zum Self-Check-in"
+                  />
+                </div>
+                <p className="break-all text-center text-xs text-fg-dim">
+                  {stationUrl}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <section className="mt-8 flex flex-col gap-3">
+            <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+              Anwesenheit
+            </h2>
+            {rows.length === 0 ? (
+              <p className="text-sm text-fg-muted">
+                Für dieses Turnier sind noch keine Teilnehmer angemeldet.
+              </p>
+            ) : (
+              <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-line hover:bg-transparent">
+                      <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                        Name
+                      </TableHead>
+                      <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                        Status
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((p) => (
+                      <TableRow
+                        key={`${p.display_name}-${p.checked_in_at ?? ""}`}
+                        className="border-line/60 hover:bg-white/[0.02]"
+                      >
+                        <TableCell className="font-display font-semibold text-ink">
+                          {p.display_name}
+                        </TableCell>
+                        <TableCell>
+                          {p.checked_in_at ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-md bg-lime/15 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-lime">
+                              Anwesend
+                            </span>
+                          ) : (
+                            <span className="text-fg-dim">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+    </>
   );
 }

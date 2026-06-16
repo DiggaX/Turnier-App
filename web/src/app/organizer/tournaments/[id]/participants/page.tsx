@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { Badge } from "@/components/ui/badge";
+import { OrganizerNav } from "@/components/brand/organizer-nav";
+import { TournamentTabs } from "@/components/brand/tournament-tabs";
 import {
   Table,
   TableBody,
@@ -69,69 +69,104 @@ export default async function ParticipantsPage({
   const rows = participants ?? [];
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 sm:p-8">
-      <div className="flex flex-col gap-1">
-        <Link
-          href="/organizer"
-          className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-        >
-          ← Zurück zu den Turnieren
-        </Link>
-        <h1 className="font-heading text-xl font-medium">{tournament.name}</h1>
-        <p className="text-sm text-muted-foreground">
-          {rows.length} {rows.length === 1 ? "Teilnehmer" : "Teilnehmer"}
-        </p>
-      </div>
+    <>
+      <OrganizerNav />
 
-      {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Für dieses Turnier sind noch keine Teilnehmer angemeldet.
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Gamertag</TableHead>
-              <TableHead>Typ</TableHead>
-              <TableHead>Einwilligung</TableHead>
-              <TableHead>Check-in</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((participant) => {
-              const hasConsent = (participant.consents ?? []).length > 0;
-              return (
-                <TableRow key={participant.id}>
-                  <TableCell className="font-medium">
-                    {participant.display_name}
-                  </TableCell>
-                  <TableCell>{participant.gamertag ?? "—"}</TableCell>
-                  <TableCell>
-                    {TYPE_LABELS[participant.type] ?? participant.type}
-                  </TableCell>
-                  <TableCell>
-                    {hasConsent ? (
-                      <Badge className="border-transparent bg-green-600/15 text-green-700 dark:bg-green-500/20 dark:text-green-400">
-                        Erteilt
-                      </Badge>
-                    ) : (
-                      <Badge variant="destructive">Keine</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {participant.checked_in_at ? (
-                      <Badge variant="secondary">Eingecheckt</Badge>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      )}
-    </main>
+      <main className="relative flex-1 overflow-hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 [background:radial-gradient(700px_500px_at_50%_-5%,rgba(31,209,227,0.08),transparent_60%)]"
+        />
+
+        <div className="relative mx-auto w-full max-w-4xl px-5 pb-20 pt-8 sm:px-8 sm:pt-10">
+          <div className="mb-5">
+            <div className="mb-2 font-display text-[10px] uppercase tracking-[0.18em] text-fg-dim">
+              Organizer · Turnier
+            </div>
+            <h1 className="font-display text-2xl font-bold uppercase leading-[1.05] tracking-tight text-ink sm:text-3xl">
+              {tournament.name}
+            </h1>
+          </div>
+
+          <TournamentTabs tournamentId={id} />
+
+          <div className="mb-4 font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+            {rows.length} Teilnehmer
+          </div>
+
+          {rows.length === 0 ? (
+            <p className="text-sm text-fg-muted">
+              Für dieses Turnier sind noch keine Teilnehmer angemeldet.
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-line hover:bg-transparent">
+                    <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                      Name
+                    </TableHead>
+                    <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                      Gamertag
+                    </TableHead>
+                    <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                      Typ
+                    </TableHead>
+                    <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                      Einwilligung
+                    </TableHead>
+                    <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                      Check-in
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((participant) => {
+                    const hasConsent =
+                      (participant.consents ?? []).length > 0;
+                    return (
+                      <TableRow
+                        key={participant.id}
+                        className="border-line/60 hover:bg-white/[0.02]"
+                      >
+                        <TableCell className="font-display font-semibold text-ink">
+                          {participant.display_name}
+                        </TableCell>
+                        <TableCell className="text-fg-muted">
+                          {participant.gamertag ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-fg-muted">
+                          {TYPE_LABELS[participant.type] ?? participant.type}
+                        </TableCell>
+                        <TableCell>
+                          {hasConsent ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-md bg-lime/15 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-lime">
+                              Erteilt
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-md bg-live/15 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-live">
+                              Keine
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {participant.checked_in_at ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-md bg-lime/15 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-lime">
+                              Eingecheckt
+                            </span>
+                          ) : (
+                            <span className="text-fg-dim">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+      </main>
+    </>
   );
 }

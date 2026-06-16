@@ -2,27 +2,29 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { signOut } from "@/app/(auth)/login/actions";
-import { Button } from "@/components/ui/button";
+import { OrganizerNav } from "@/components/brand/organizer-nav";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  StatusBadge,
+  type TournamentStatus,
+} from "@/components/brand/status-badge";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Organisator — Turnier-App",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Entwurf",
-  registration: "Anmeldung",
-  running: "Läuft",
-  finished: "Beendet",
-};
+const KNOWN_STATUS: TournamentStatus[] = [
+  "draft",
+  "registration",
+  "running",
+  "finished",
+];
+
+function asStatus(status: string): TournamentStatus {
+  return (KNOWN_STATUS as string[]).includes(status)
+    ? (status as TournamentStatus)
+    : "draft";
+}
 
 export default async function OrganizerPage() {
   const supabase = await createClient();
@@ -51,46 +53,56 @@ export default async function OrganizerPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-4 sm:p-8">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="font-heading text-xl font-medium">Turniere</h1>
-        <form action={signOut}>
-          <Button type="submit" variant="outline" size="sm">
-            Abmelden
-          </Button>
-        </form>
-      </div>
+    <>
+      <OrganizerNav />
 
-      {!tournaments || tournaments.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Es sind noch keine Turniere vorhanden.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {tournaments.map((tournament) => (
-            <li key={tournament.id}>
-              <Link
-                href={`/organizer/tournaments/${tournament.id}/participants`}
-                className="block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Card className="transition-colors hover:bg-muted/50">
-                  <CardHeader>
-                    <CardTitle>{tournament.name}</CardTitle>
-                    <CardDescription>
-                      {STATUS_LABELS[tournament.status] ?? tournament.status}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <span className="text-sm text-muted-foreground">
-                      Teilnehmerliste ansehen →
-                    </span>
-                  </CardContent>
-                </Card>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </main>
+      <main className="relative flex-1 overflow-hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 [background:radial-gradient(700px_500px_at_50%_-5%,rgba(197,247,46,0.07),transparent_60%)]"
+        />
+
+        <div className="relative mx-auto w-full max-w-3xl px-5 pb-20 pt-10 sm:px-8 sm:pt-12">
+          <div className="mb-7">
+            <div className="mb-2 font-display text-[10px] uppercase tracking-[0.18em] text-fg-dim">
+              Eingeloggt als Organizer
+            </div>
+            <h1 className="font-display text-2xl font-bold uppercase leading-[1.05] tracking-tight text-ink sm:text-3xl">
+              Turniere
+            </h1>
+          </div>
+
+          {!tournaments || tournaments.length === 0 ? (
+            <p className="text-sm text-fg-muted">
+              Es sind noch keine Turniere vorhanden.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {tournaments.map((tournament) => {
+                const status = asStatus(tournament.status);
+                return (
+                  <li key={tournament.id}>
+                    <Link
+                      href={`/organizer/tournaments/${tournament.id}/participants`}
+                      className="group flex items-center gap-4 rounded-2xl border border-line bg-surface p-5 outline-none transition-colors hover:border-lime/40 focus-visible:ring-2 focus-visible:ring-ring sm:p-[18px_22px]"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-display text-lg font-semibold text-ink">
+                          {tournament.name}
+                        </div>
+                      </div>
+                      <StatusBadge status={status} />
+                      <span className="hidden font-display text-xs uppercase tracking-[0.1em] text-cyan transition-colors group-hover:text-lime sm:inline">
+                        Verwalten →
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </main>
+    </>
   );
 }

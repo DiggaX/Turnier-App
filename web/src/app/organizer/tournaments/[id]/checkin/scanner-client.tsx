@@ -6,13 +6,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 // The camera scanner touches `navigator.mediaDevices`, which doesn't exist
 // during SSR/build. Loading it with ssr:false keeps the page build-safe and
@@ -118,50 +111,49 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>QR-Scanner</CardTitle>
-        <CardDescription>
+    <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
+      <div>
+        <div className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+          QR-Scanner
+        </div>
+        <p className="mt-1 text-sm text-fg-muted">
           Richte die Kamera auf den persönlichen QR-Code des Teilnehmers.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <div
-          className="mx-auto w-full max-w-sm overflow-hidden rounded-md border"
-          data-testid="qr-scanner"
-        >
-          <Scanner
-            onScan={onScan}
-            scanDelay={500}
-            constraints={{ facingMode: "environment" }}
-            // Re-scan even the same QR so a debounced token can fire again;
-            // our own debounce above governs the RPC rate.
-            allowMultiple
-          />
-        </div>
+        </p>
+      </div>
 
-        <div aria-live="polite" className="min-h-6 text-center text-sm">
-          {status.kind === "idle" && (
-            <span className="text-muted-foreground">
-              Bereit zum Scannen…
-            </span>
-          )}
-          {status.kind === "success" && (
-            <span className="font-medium text-green-700 dark:text-green-400">
-              ✅ {status.name} eingecheckt
-            </span>
-          )}
-          {status.kind === "unknown" && (
-            <span className="text-destructive">QR nicht erkannt</span>
-          )}
-          {status.kind === "consent" && (
-            <span className="text-destructive">Einwilligung fehlt</span>
-          )}
-          {status.kind === "error" && (
-            <span className="text-destructive">Check-in fehlgeschlagen</span>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+      <div
+        className="mx-auto w-full max-w-sm overflow-hidden rounded-xl border border-line bg-surface-2"
+        data-testid="qr-scanner"
+      >
+        <Scanner
+          onScan={onScan}
+          scanDelay={500}
+          constraints={{ facingMode: "environment" }}
+          // Re-scan even the same QR so a debounced token can fire again;
+          // our own debounce above governs the RPC rate.
+          allowMultiple
+        />
+      </div>
+
+      <div aria-live="polite" className="min-h-6 text-center text-sm">
+        {status.kind === "idle" && (
+          <span className="text-fg-muted">Bereit zum Scannen…</span>
+        )}
+        {status.kind === "success" && (
+          <span className="font-display font-medium text-lime">
+            ✅ {status.name} eingecheckt
+          </span>
+        )}
+        {status.kind === "unknown" && (
+          <span className="text-live">QR nicht erkannt</span>
+        )}
+        {status.kind === "consent" && (
+          <span className="text-live">Einwilligung fehlt</span>
+        )}
+        {status.kind === "error" && (
+          <span className="text-live">Check-in fehlgeschlagen</span>
+        )}
+      </div>
+    </div>
   );
 }
