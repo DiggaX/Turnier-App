@@ -63,6 +63,30 @@ tournament's matches and flips its status to `running` (single-elim wires advanc
 auto-advances byes; round-robin produces matchday pairings). Supported formats: `single_elim`,
 `round_robin`.
 
+## Results & Referee (Plan 5) — additional setup
+
+Apply `supabase/migrations/20260620090000_results.sql` (SQL Editor → Run). It adds
+`matches.score_a`/`score_b` (final scores), the `match_reports` table (one row per
+participant per match, `unique (match_id, reported_by)`, with select RLS for staff or the
+two match participants), and two `security definer` RPCs. No new Auth/Storage toggles.
+
+**Dual report → referee confirm flow:**
+
+- **Players report** (participant → **Mein Status** `/t/<id>/me`): when a participant has a
+  current open match (both slots filled, status `pending`/`live`), a "Dein aktuelles Match"
+  card lets them submit "Dein Score"/"Gegner-Score" via `report_match(p_match_id, p_score_a,
+  p_score_b)`. Scores are stored in **match terms**: a side-A player's own score → `score_a`,
+  a side-B player's own score → `score_b`. Resubmitting overwrites their own report (upsert).
+- **Referee confirms / enters directly** (staff → **Matches** tab
+  `/organizer/tournaments/<id>/matches`): each match shows the two player reports with an
+  agreement badge ("✓ Einig: X:Y" when both agree, "⚠ Abweichung" on dispute). "Freigeben"
+  calls `confirm_match(...)` (staff-only) — the score form is prefilled with the agreed score
+  but also works as a **direct entry** with zero player reports. Draws are rejected.
+- **Advancement:** `confirm_match` sets `score_a`/`score_b`, the `winner_id` and `status =
+  'done'`, and (single-elim) advances the winner into `next_match` via the stored
+  `next_match_id`/`next_slot`. Round-robin shows a live standings table (`computeStandings`)
+  on the Matches tab.
+
 ## Local dev
 
 1. Create `web/.env.local` (copy `web/.env.example`) and fill in:
