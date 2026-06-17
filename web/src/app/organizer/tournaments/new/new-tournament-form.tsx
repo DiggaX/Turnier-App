@@ -86,11 +86,12 @@ export function NewTournamentForm({
         <select
           id="gameId"
           className={SELECT_CLASS}
-          {...register("gameId")}
-          onChange={(e) => {
-            const g = games.find((x) => x.id === e.target.value);
-            if (g) setValue("teamSize", g.team_size);
-          }}
+          {...register("gameId", {
+            onChange: (e: React.ChangeEvent<HTMLSelectElement>) => {
+              const g = games.find((x) => x.id === e.target.value);
+              if (g) setValue("teamSize", g.team_size);
+            },
+          })}
         >
           {games.map((g) => (
             <option key={g.id} value={g.id}>
