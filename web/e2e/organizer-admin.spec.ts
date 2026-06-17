@@ -83,7 +83,9 @@ test.describe("Organizer admin", () => {
     await page.goto("/organizer/games");
 
     // Only add if the game does not already exist in the list.
-    const existingRow = page.getByRole("cell", { name: FIXTURE_GAME_NAME });
+    // exact:true prevents a partial match against e.g. "E2E Game (old)" which
+    // would set gameAlreadyExists=true and later cause selectOption to fail.
+    const existingRow = page.getByRole("cell", { name: FIXTURE_GAME_NAME, exact: true });
     const gameAlreadyExists = await existingRow.count().then((c) => c > 0);
 
     if (!gameAlreadyExists) {
@@ -97,7 +99,7 @@ test.describe("Organizer admin", () => {
       // Wait for the new row to appear — indicates the server action succeeded
       // and router.refresh() has repopulated the list.
       await expect(
-        page.getByRole("cell", { name: FIXTURE_GAME_NAME }),
+        page.getByRole("cell", { name: FIXTURE_GAME_NAME, exact: true }),
       ).toBeVisible({ timeout: 10_000 });
 
       // Record the game id for cleanup via the staff client.
@@ -136,9 +138,13 @@ test.describe("Organizer admin", () => {
     });
 
     // Capture the tournament id from the URL for cleanup.
+    // Fail fast with a descriptive message if the URL format is unexpected —
+    // a null match would leave fixtureId empty, silently skip afterAll cleanup,
+    // and potentially leak the fixture tournament into subsequent specs.
     const url = page.url();
     const match = url.match(/\/organizer\/tournaments\/([^/]+)$/);
-    if (match) fixtureId = match[1];
+    expect(match, `redirect URL did not match expected pattern — got: ${url}`).not.toBeNull();
+    fixtureId = match![1];
     expect(fixtureId, "tournament id must be captured from redirect URL").toBeTruthy();
 
     // The overview page should show the tournament name and a "draft" status.

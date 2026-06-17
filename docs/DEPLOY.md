@@ -341,6 +341,13 @@ two changes:
    role). This closes a security hole where a registered anonymous player could modify or
    delete tournaments and games. Public `SELECT` is unchanged.
 
+   > **Note on role scope:** The DB-level `is_staff()` check permits all three staff roles to
+   > write to both tables. However, **game writes (add, edit, delete)** are further restricted
+   > at the application layer — all `/organizer/games` server actions call
+   > `requireOrganizerOrAdmin()`, so referees cannot add, edit, or delete games even though
+   > the RLS policy technically allows it. **Tournament status advances and edits** use
+   > `requireStaff()` and are therefore accessible to referees as well.
+
 No new Auth/Storage toggles are needed beyond what Plans 1–11 already enable.
 
 ### New organizer routes
