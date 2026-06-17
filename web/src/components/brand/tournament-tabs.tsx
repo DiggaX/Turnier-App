@@ -21,7 +21,7 @@ const TABS: TabDef[] = [
   { label: "Übersicht", segment: null },
   { label: "Teilnehmer", segment: "participants" },
   { label: "Check-in", segment: "checkin" },
-  { label: "Bracket", segment: null },
+  { label: "Bracket", segment: "bracket" },
   { label: "Matches", segment: null },
   { label: "Stationen", segment: null },
 ];
@@ -31,8 +31,8 @@ const TAB_BASE =
 
 /**
  * Per-tournament tab bar for the organizer area. Live tabs (Teilnehmer,
- * Check-in) link to their routes and the active one is highlighted lime; the
- * not-yet-built tabs (Übersicht, Bracket, Matches, Stationen) render as dimmed,
+ * Check-in, Bracket) link to their routes and the active one is highlighted
+ * lime; the not-yet-built tabs (Übersicht, Matches, Stationen) render as dimmed,
  * non-interactive labels so they never 404.
  */
 export function TournamentTabs({ tournamentId, className }: TournamentTabsProps) {

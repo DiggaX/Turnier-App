@@ -47,6 +47,22 @@ Three check-in methods: organizer camera scan (`qr_scan`), station-QR self-scan
 `/organizer/tournaments/[id]/checkin` and `/t/[id]/checkin-station`; participants see
 their personal QR + online button at `/t/[id]/me`.
 
+## Generator & Brackets (Plan 4) — additional setup
+
+Apply `supabase/migrations/20260619090000_matches.sql` (SQL Editor → Run). It adds the
+`match_status` enum and the `matches` table (round/slot, `participant_a_id`/`participant_b_id`,
+`winner_id`, single-elim advancement via `next_match_id`/`next_slot`, `status`), with public
+read + staff write RLS. No new Auth/Storage toggles.
+
+Bracket generation (organizer → tournament → **Bracket** tab) builds the schedule from the
+tournament's **checked-in** participants (`checked_in_at not null`) in **seed** order
+(`participants.seed`, 1-based). Seeding is edited on that tab ("Zufällig setzen" / manual
+reorder → "Seeding speichern"); any checked-in participant without a seed is assigned one by
+`created_at` so the generator receives a clean 1..N. Generating **deletes and regenerates** the
+tournament's matches and flips its status to `running` (single-elim wires advancement links and
+auto-advances byes; round-robin produces matchday pairings). Supported formats: `single_elim`,
+`round_robin`.
+
 ## Local dev
 
 1. Create `web/.env.local` (copy `web/.env.example`) and fill in:
