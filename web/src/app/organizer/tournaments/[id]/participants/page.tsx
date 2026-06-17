@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 
 import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
@@ -130,7 +131,12 @@ export default async function ParticipantsPage({
                         className="border-line/60 hover:bg-white/[0.02]"
                       >
                         <TableCell className="font-display font-semibold text-ink">
-                          {participant.display_name}
+                          <Link
+                            href={`/organizer/tournaments/${id}/participants/${participant.id}`}
+                            className="hover:text-lime transition-colors"
+                          >
+                            {participant.display_name}
+                          </Link>
                         </TableCell>
                         <TableCell className="text-fg-muted">
                           {participant.gamertag ?? "—"}
