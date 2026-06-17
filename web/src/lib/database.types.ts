@@ -134,23 +134,32 @@ export interface Database {
           id: string; tournament_id: string; round: number; slot: number;
           participant_a_id: string | null; participant_b_id: string | null;
           winner_id: string | null; next_match_id: string | null; next_slot: string | null;
-          status: MatchStatus; created_at: string;
+          status: MatchStatus; score_a: number | null; score_b: number | null; created_at: string;
         };
         Insert: {
           id?: string; tournament_id: string; round: number; slot: number;
           participant_a_id?: string | null; participant_b_id?: string | null;
           winner_id?: string | null; next_match_id?: string | null; next_slot?: string | null;
-          status?: MatchStatus; created_at?: string;
+          status?: MatchStatus; score_a?: number | null; score_b?: number | null; created_at?: string;
         };
         Update: {
           id?: string; tournament_id?: string; round?: number; slot?: number;
           participant_a_id?: string | null; participant_b_id?: string | null;
           winner_id?: string | null; next_match_id?: string | null; next_slot?: string | null;
-          status?: MatchStatus; created_at?: string;
+          status?: MatchStatus; score_a?: number | null; score_b?: number | null; created_at?: string;
         };
         Relationships: [
           { foreignKeyName: "matches_tournament_id_fkey"; columns: ["tournament_id"]; referencedRelation: "tournaments"; referencedColumns: ["id"] },
           { foreignKeyName: "matches_next_match_id_fkey"; columns: ["next_match_id"]; referencedRelation: "matches"; referencedColumns: ["id"] }
+        ];
+      };
+      match_reports: {
+        Row: { id: string; match_id: string; reported_by: string; score_a: number; score_b: number; created_at: string };
+        Insert: { id?: string; match_id: string; reported_by: string; score_a: number; score_b: number; created_at?: string };
+        Update: { id?: string; match_id?: string; reported_by?: string; score_a?: number; score_b?: number; created_at?: string };
+        Relationships: [
+          { foreignKeyName: "match_reports_match_id_fkey"; columns: ["match_id"]; referencedRelation: "matches"; referencedColumns: ["id"] },
+          { foreignKeyName: "match_reports_reported_by_fkey"; columns: ["reported_by"]; referencedRelation: "participants"; referencedColumns: ["id"] }
         ];
       };
     };
@@ -158,6 +167,14 @@ export interface Database {
     Functions: {
       check_in: {
         Args: { p_participant_id: string; p_method: CheckinMethod };
+        Returns: undefined;
+      };
+      report_match: {
+        Args: { p_match_id: string; p_score_a: number; p_score_b: number };
+        Returns: undefined;
+      };
+      confirm_match: {
+        Args: { p_match_id: string; p_score_a: number; p_score_b: number };
         Returns: undefined;
       };
     };
