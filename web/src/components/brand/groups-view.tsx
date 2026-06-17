@@ -18,8 +18,11 @@ export type GroupsViewProps = {
   className?: string;
 };
 
-// groupCountFor never exceeds 25 groups, so index 0-25 → A-Z is safe.
-const GROUP_LABEL = (n: number) => `Gruppe ${String.fromCharCode(65 + n)}`;
+// groupCountFor can return up to 27 groups (e.g. ceil(108/4)=27), so indices
+// 0–25 map to A–Z; indices ≥ 26 fall back to numeric labels to avoid
+// out-of-range ASCII characters such as '[' (ASCII 91).
+const GROUP_LABEL = (n: number) =>
+  n < 26 ? `Gruppe ${String.fromCharCode(65 + n)}` : `Gruppe ${n + 1}`;
 
 /**
  * Groups view: one section per group with its standings table and its

@@ -222,4 +222,92 @@ describe("generatePlayoffs action", () => {
       error: "Zu wenige Teilnehmer für die Playoffs.",
     });
   });
+
+  it("returns ok and inserts playoff rows for a fully-decided group stage", async () => {
+    // Two groups, each with 4 participants who have played round-robin.
+    // Groups: A (p1–p4), B (p5–p8). Each group has 6 done matches.
+    // ADVANCE_PER_GROUP=2 → 4 advancers → single-elim of 4 (2 rounds, 3 matches).
+    const groupMatchData = [
+      // Group 0
+      groupMatch({ group_no: 0, participant_a_id: "p1", participant_b_id: "p2", score_a: 2, score_b: 0 }),
+      groupMatch({ group_no: 0, participant_a_id: "p1", participant_b_id: "p3", score_a: 2, score_b: 0 }),
+      groupMatch({ group_no: 0, participant_a_id: "p1", participant_b_id: "p4", score_a: 2, score_b: 0 }),
+      groupMatch({ group_no: 0, participant_a_id: "p2", participant_b_id: "p3", score_a: 2, score_b: 0 }),
+      groupMatch({ group_no: 0, participant_a_id: "p2", participant_b_id: "p4", score_a: 2, score_b: 0 }),
+      groupMatch({ group_no: 0, participant_a_id: "p3", participant_b_id: "p4", score_a: 2, score_b: 0 }),
+      // Group 1
+      groupMatch({ group_no: 1, participant_a_id: "p5", participant_b_id: "p6", score_a: 2, score_b: 0 }),
+      groupMatch({ group_no: 1, participant_a_id: "p5", participant_b_id: "p7", score_a: 2, score_b: 0 }),
+      groupMatch({ group_no: 1, participant_a_id: "p5", participant_b_id: "p8", score_a: 2, score_b: 0 }),
+      groupMatch({ group_no: 1, participant_a_id: "p6", participant_b_id: "p7", score_a: 2, score_b: 0 }),
+      groupMatch({ group_no: 1, participant_a_id: "p6", participant_b_id: "p8", score_a: 2, score_b: 0 }),
+      groupMatch({ group_no: 1, participant_a_id: "p7", participant_b_id: "p8", score_a: 2, score_b: 0 }),
+    ];
+
+    // Fake inserted rows returned by insert().select():
+    // generateSingleElim(4 participants) produces 3 matches (2 in round 1, 1 in round 2).
+    const fakeInserted = [
+      { id: "m1", bracket: "winner", round: 1, slot: 0 },
+      { id: "m2", bracket: "winner", round: 1, slot: 1 },
+      { id: "m3", bracket: "winner", round: 2, slot: 0 },
+    ];
+
+    let matchesCallCount = 0;
+    const updateEq = vi.fn().mockResolvedValue({ data: null, error: null });
+    const updateFn = vi.fn().mockReturnValue({ eq: updateEq });
+
+    mockClient.from = vi.fn().mockImplementation((table: string) => {
+      if (table === "profiles") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({ data: { role: "organizer" }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "tournaments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data: { id: "t1", format: "groups_playoffs" },
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      }
+      if (table === "matches") {
+        matchesCallCount += 1;
+        if (matchesCallCount === 1) {
+          // First call: fetch existing group matches
+          return {
+            select: () => ({
+              eq: () =>
+                Promise.resolve({ data: groupMatchData, error: null }),
+            }),
+          };
+        }
+        // Subsequent calls: insert().select() or update().eq()
+        return {
+          insert: () => ({
+            select: () =>
+              Promise.resolve({ data: fakeInserted, error: null }),
+          }),
+          update: updateFn,
+        };
+      }
+      return {};
+    });
+
+    const { generatePlayoffs } = await import("./actions");
+    const result = await generatePlayoffs("t1");
+
+    expect(result).toEqual({ ok: true });
+    // update() should have been called at least once (link wiring)
+    expect(updateFn).toHaveBeenCalled();
+  });
 });

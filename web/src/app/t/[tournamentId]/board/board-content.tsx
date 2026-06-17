@@ -150,12 +150,20 @@ export function BoardContent({
   standings,
   standingsByGroup = {},
 }: BoardContentProps) {
-  const playable = matches.filter(isPlayable);
-  const decided = matches.filter(isDecided);
   const isSwiss = format === "swiss";
   const isRoundRobin = format === "round_robin";
   const isDoubleElim = format === "double_elim";
   const isGroupsPlayoffs = format === "groups_playoffs";
+
+  // For groups_playoffs, the group matches are already shown inside GroupsView.
+  // Only surface playoff matches (groupNo == null) in the banner sections to
+  // avoid every group match appearing twice (banner + GroupsView).
+  const playable = matches.filter(
+    (m) => isPlayable(m) && (!isGroupsPlayoffs || m.groupNo == null),
+  );
+  const decided = matches.filter(
+    (m) => isDecided(m) && (!isGroupsPlayoffs || m.groupNo == null),
+  );
 
   return (
     <div className="mx-auto max-w-[1280px] px-6 pb-20 pt-8 sm:px-10">
