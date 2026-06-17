@@ -1,11 +1,11 @@
 "use client";
 
 /** base64url VAPID public key -> Uint8Array for applicationServerKey. */
-function urlBase64ToUint8Array(base64: string): Uint8Array {
+function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(b64);
-  const arr = new Uint8Array(raw.length);
+  const arr = new Uint8Array(new ArrayBuffer(raw.length));
   for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
   return arr;
 }
@@ -43,7 +43,7 @@ export async function enablePush(): Promise<SerializedSubscription | null> {
     existing ??
     (await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapid).buffer as ArrayBuffer,
+      applicationServerKey: urlBase64ToUint8Array(vapid),
     }));
 
   const json = sub.toJSON();
