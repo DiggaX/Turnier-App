@@ -2,7 +2,7 @@ import { seedOrder } from "@/lib/bracket/seed-order";
 import type { GeneratedMatch, SeededParticipant } from "@/lib/bracket/types";
 
 /** Smallest power of 2 >= n. nextPow2(1) = 1. */
-function nextPow2(n: number): number {
+export function nextPow2(n: number): number {
   let p = 1;
   while (p < n) p *= 2;
   return p;
@@ -44,6 +44,7 @@ export function generateSingleElim(
   ): GeneratedMatch["nextRef"] => {
     if (round >= rounds) return null;
     return {
+      bracket: "winner",
       round: round + 1,
       slot: Math.floor(slot / 2),
       side: slot % 2 === 0 ? "a" : "b",
@@ -73,6 +74,7 @@ export function generateSingleElim(
     }
 
     matches.push({
+      bracket: "winner",
       round: 1,
       slot: i,
       participantAId: aId,
@@ -80,6 +82,7 @@ export function generateSingleElim(
       winnerId,
       status,
       nextRef: nextRefFor(1, i),
+      loserRef: null,
     });
   }
 
@@ -88,6 +91,7 @@ export function generateSingleElim(
     const count = size / 2 ** r;
     for (let slot = 0; slot < count; slot++) {
       matches.push({
+        bracket: "winner",
         round: r,
         slot,
         participantAId: null,
@@ -95,6 +99,7 @@ export function generateSingleElim(
         winnerId: null,
         status: "pending",
         nextRef: nextRefFor(r, slot),
+        loserRef: null,
       });
     }
   }

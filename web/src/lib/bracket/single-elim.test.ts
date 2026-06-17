@@ -35,11 +35,15 @@ function assertValidTree(matches: GeneratedMatch[], size: number) {
   }
   // nextRef targets must exist; final has no nextRef
   for (const m of matches) {
+    // single-elim: every match is a winner-bracket match and never drops a loser
+    expect(m.bracket).toBe("winner");
+    expect(m.loserRef).toBeNull();
     if (m.round === rounds) {
       expect(m.nextRef).toBeNull();
     } else {
       expect(m.nextRef).not.toBeNull();
       const ref = m.nextRef!;
+      expect(ref.bracket).toBe("winner");
       expect(byId(matches, ref.round, ref.slot)).toBeDefined();
       expect(ref.round).toBe(m.round + 1);
       expect(ref.slot).toBe(Math.floor(m.slot / 2));
@@ -79,8 +83,18 @@ describe("generateSingleElim", () => {
     expect(r1s1.status).toBe("pending");
 
     // slot0 -> final side a, slot1 -> final side b
-    expect(r1s0.nextRef).toEqual({ round: 2, slot: 0, side: "a" });
-    expect(r1s1.nextRef).toEqual({ round: 2, slot: 0, side: "b" });
+    expect(r1s0.nextRef).toEqual({
+      bracket: "winner",
+      round: 2,
+      slot: 0,
+      side: "a",
+    });
+    expect(r1s1.nextRef).toEqual({
+      bracket: "winner",
+      round: 2,
+      slot: 0,
+      side: "b",
+    });
 
     const final = byId(matches, 2, 0)!;
     expect(final.participantAId).toBeNull();

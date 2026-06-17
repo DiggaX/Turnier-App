@@ -20,6 +20,8 @@ function assertRoundRobinShape(matches: GeneratedMatch[], n: number) {
     expect(m.status).toBe("pending");
     expect(m.winnerId).toBeNull();
     expect(m.nextRef).toBeNull();
+    expect(m.loserRef).toBeNull();
+    expect(m.bracket).toBe("winner");
     expect(m.participantAId).not.toBeNull();
     expect(m.participantBId).not.toBeNull();
     // no self-pair

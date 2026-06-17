@@ -39,6 +39,7 @@ export function generateRoundRobin(
       // skip pairings that involve the padding sentinel
       if (a !== null && b !== null) {
         matches.push({
+          bracket: "winner",
           round,
           slot,
           participantAId: a,
@@ -46,6 +47,7 @@ export function generateRoundRobin(
           winnerId: null,
           status: "pending",
           nextRef: null,
+          loserRef: null,
         });
         slot++;
       }
