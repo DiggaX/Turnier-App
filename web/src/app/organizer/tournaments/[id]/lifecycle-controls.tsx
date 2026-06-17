@@ -15,11 +15,9 @@ const NEXT_LABEL: Record<string, string> = {
 export function LifecycleControls({
   tournamentId,
   status,
-  hasMatches,
 }: {
   tournamentId: string;
   status: TournamentStatus;
-  hasMatches: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -49,9 +47,6 @@ export function LifecycleControls({
       else router.push("/organizer");
     });
   }
-
-  // suppress unused warning — hasMatches is available for future use
-  void hasMatches;
 
   return (
     <div className="flex flex-wrap items-center gap-3">

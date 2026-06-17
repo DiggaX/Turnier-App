@@ -71,13 +71,17 @@ export default async function TournamentOverviewPage({
             <span className="text-sm text-fg-muted">{formatLabel(tournament.format)}</span>
             <span className="text-sm text-fg-muted">{modeLabel(tournament.mode)}</span>
             <span className="text-sm text-fg-muted">{teamLabel(tournament.team_size)}</span>
+            {tournament.starts_at && (
+              <span className="text-sm text-fg-muted">
+                {new Date(tournament.starts_at).toLocaleString("de-DE")}
+              </span>
+            )}
             <span className="text-sm text-fg-muted">{pCount ?? 0} Teilnehmer</span>
           </section>
 
           <LifecycleControls
             tournamentId={id}
             status={tournament.status}
-            hasMatches={hasMatches}
           />
 
           <section className="mt-8">
