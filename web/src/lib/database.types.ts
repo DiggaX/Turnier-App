@@ -18,6 +18,7 @@ export type TournamentStatus = "draft" | "registration" | "running" | "finished"
 export type ParticipantType = "solo" | "team";
 export type ConsentGrantor = "self" | "guardian";
 export type CheckinMethod = "qr_scan" | "station" | "online";
+export type MatchStatus = "pending" | "live" | "done" | "bye";
 
 export interface Database {
   public: {
@@ -128,6 +129,30 @@ export interface Database {
           { foreignKeyName: "check_ins_participant_id_fkey"; columns: ["participant_id"]; referencedRelation: "participants"; referencedColumns: ["id"] }
         ];
       };
+      matches: {
+        Row: {
+          id: string; tournament_id: string; round: number; slot: number;
+          participant_a_id: string | null; participant_b_id: string | null;
+          winner_id: string | null; next_match_id: string | null; next_slot: string | null;
+          status: MatchStatus; created_at: string;
+        };
+        Insert: {
+          id?: string; tournament_id: string; round: number; slot: number;
+          participant_a_id?: string | null; participant_b_id?: string | null;
+          winner_id?: string | null; next_match_id?: string | null; next_slot?: string | null;
+          status?: MatchStatus; created_at?: string;
+        };
+        Update: {
+          id?: string; tournament_id?: string; round?: number; slot?: number;
+          participant_a_id?: string | null; participant_b_id?: string | null;
+          winner_id?: string | null; next_match_id?: string | null; next_slot?: string | null;
+          status?: MatchStatus; created_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: "matches_tournament_id_fkey"; columns: ["tournament_id"]; referencedRelation: "tournaments"; referencedColumns: ["id"] },
+          { foreignKeyName: "matches_next_match_id_fkey"; columns: ["next_match_id"]; referencedRelation: "matches"; referencedColumns: ["id"] }
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -144,6 +169,7 @@ export interface Database {
       participant_type: ParticipantType;
       consent_grantor: ConsentGrantor;
       checkin_method: CheckinMethod;
+      match_status: MatchStatus;
     };
     CompositeTypes: Record<string, never>;
   };
