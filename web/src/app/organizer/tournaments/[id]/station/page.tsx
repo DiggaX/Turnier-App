@@ -69,7 +69,7 @@ export default async function StationPage({
 
   // Agreed player reports → prefill the entry. One round-trip for all playable.
   const ids = playable.map((m) => m.id);
-  let reportsByMatch = new Map<string, Report[]>();
+  const reportsByMatch = new Map<string, Report[]>();
   if (ids.length > 0) {
     const { data: reps } = await supabase
       .from("match_reports")
