@@ -13,12 +13,16 @@ export type TournamentTabsProps = {
 
 type TabDef = {
   label: string;
-  /** Path segment under /organizer/tournaments/[id]/ — null for not-yet-built routes. */
+  /**
+   * Path segment under /organizer/tournaments/[id]/.
+   * Empty string "" means the tab links to the base route (no segment appended).
+   * null means the route doesn't exist yet — renders as a dimmed placeholder.
+   */
   segment: string | null;
 };
 
 const TABS: TabDef[] = [
-  { label: "Übersicht", segment: null },
+  { label: "Übersicht", segment: "" },
   { label: "Teilnehmer", segment: "participants" },
   { label: "Check-in", segment: "checkin" },
   { label: "Bracket", segment: "bracket" },
@@ -30,10 +34,10 @@ const TAB_BASE =
   "border-b-2 px-4 py-3 font-display text-[13px] uppercase tracking-[0.04em] transition-colors";
 
 /**
- * Per-tournament tab bar for the organizer area. Live tabs (Teilnehmer,
- * Check-in, Bracket, Matches, Stationen) link to their routes and the active
- * one is highlighted lime; the not-yet-built tab (Übersicht) renders as a
- * dimmed, non-interactive label so it never 404s.
+ * Per-tournament tab bar for the organizer area. All live tabs link to their
+ * routes and the active one is highlighted lime. Tabs with segment="" link to
+ * the base route (/organizer/tournaments/[id]); tabs with segment=null are
+ * rendered as dimmed, non-interactive placeholders for not-yet-built routes.
  */
 export function TournamentTabs({ tournamentId, className }: TournamentTabsProps) {
   const pathname = usePathname();
@@ -63,7 +67,8 @@ export function TournamentTabs({ tournamentId, className }: TournamentTabsProps)
           );
         }
 
-        const href = `${base}/${tab.segment}`;
+        // segment "" = base route (Übersicht); otherwise append the segment
+        const href = tab.segment ? `${base}/${tab.segment}` : base;
         const active = pathname === href;
 
         return (

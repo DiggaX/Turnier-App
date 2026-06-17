@@ -91,7 +91,7 @@ export default async function OrganizerPage() {
                 return (
                   <li key={tournament.id}>
                     <Link
-                      href={`/organizer/tournaments/${tournament.id}/participants`}
+                      href={`/organizer/tournaments/${tournament.id}`}
                       className="group flex items-center gap-4 rounded-2xl border border-line bg-surface p-5 outline-none transition-colors hover:border-lime/40 focus-visible:ring-2 focus-visible:ring-ring sm:p-[18px_22px]"
                     >
                       <div className="min-w-0 flex-1">
