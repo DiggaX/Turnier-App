@@ -5,8 +5,9 @@
 //
 // This spec is fully self-contained: it creates a throwaway fixture tournament
 // (unique name, format='single_elim') with 4 programmatically registered +
-// checked-in participants in `beforeAll`, seeds them, generates the bracket via
-// the UI bracket page, and verifies at least 2 pending round-1 matches exist;
+// checked-in participants in `beforeAll`, seeds them, inserts round-1 matches
+// programmatically via the staff API (avoids slow/flaky UI bracket generation),
+// and verifies at least 2 pending round-1 matches exist;
 // `afterAll` deletes the tournament (cascades to participants / matches /
 // consents). It never touches the shared seeded "Sommer Cup 2026".
 //
@@ -117,9 +118,8 @@ async function loginAsOrganizer(page: Page): Promise<void> {
 }
 
 let fixtureId = "";
-let matchA = "";
-let matchB = "";
 
+test.describe("Result station", () => {
 // Create a throwaway single_elim fixture tournament with 4 checked-in players,
 // assign seeds, then insert two pending round-1 matches directly via the staff
 // API. N=4 single_elim → seed 1 vs 4 (slot 0), seed 2 vs 3 (slot 1); both
@@ -208,10 +208,6 @@ test.beforeAll(async () => {
     );
   }
 
-  const slotMap = new Map(r1Rows.map((m) => [m.slot as number, m.id as string]));
-  matchA = slotMap.get(0) ?? "";
-  matchB = slotMap.get(1) ?? "";
-
   // Insert the empty final (round 2) so the bracket shape is complete.
   await staff.from("matches").insert([
     {
@@ -271,3 +267,4 @@ test("enters and confirms a result at the station", async ({ page }) => {
     expect(await cards.count()).toBeLessThan(before);
   }).toPass();
 });
+}); // end test.describe("Result station")
