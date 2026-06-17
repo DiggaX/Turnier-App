@@ -137,6 +137,7 @@ export interface Database {
           winner_id: string | null; next_match_id: string | null; next_slot: string | null;
           loser_next_match_id: string | null; loser_next_slot: string | null;
           status: MatchStatus; score_a: number | null; score_b: number | null; created_at: string;
+          group_no: number | null;
         };
         Insert: {
           id?: string; tournament_id: string; round: number; slot: number;
@@ -145,6 +146,7 @@ export interface Database {
           winner_id?: string | null; next_match_id?: string | null; next_slot?: string | null;
           loser_next_match_id?: string | null; loser_next_slot?: string | null;
           status?: MatchStatus; score_a?: number | null; score_b?: number | null; created_at?: string;
+          group_no?: number | null;
         };
         Update: {
           id?: string; tournament_id?: string; round?: number; slot?: number;
@@ -153,6 +155,7 @@ export interface Database {
           winner_id?: string | null; next_match_id?: string | null; next_slot?: string | null;
           loser_next_match_id?: string | null; loser_next_slot?: string | null;
           status?: MatchStatus; score_a?: number | null; score_b?: number | null; created_at?: string;
+          group_no?: number | null;
         };
         Relationships: [
           { foreignKeyName: "matches_tournament_id_fkey"; columns: ["tournament_id"]; referencedRelation: "tournaments"; referencedColumns: ["id"] },

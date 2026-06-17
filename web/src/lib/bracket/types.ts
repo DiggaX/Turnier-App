@@ -30,4 +30,7 @@ export interface GeneratedMatch {
   nextRef: MatchRef | null;
   // Where the LOSER of this match drops to (null = eliminated / not applicable).
   loserRef: MatchRef | null;
+  // Group-stage tag (groups->playoffs). null/undefined for every other format
+  // and for the playoff bracket itself.
+  groupNo?: number | null;
 }
