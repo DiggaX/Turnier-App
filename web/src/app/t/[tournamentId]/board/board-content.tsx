@@ -232,7 +232,7 @@ export function BoardContent({
           <GroupsView
             matches={
               matches.filter(
-                (m) => m.groupNo !== null && m.groupNo !== undefined,
+                (m) => m.groupNo != null,
               ) as GroupMatch[]
             }
             standingsByGroup={standingsByGroup}

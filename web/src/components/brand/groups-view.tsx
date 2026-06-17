@@ -18,6 +18,7 @@ export type GroupsViewProps = {
   className?: string;
 };
 
+// groupCountFor never exceeds 25 groups, so index 0-25 → A-Z is safe.
 const GROUP_LABEL = (n: number) => `Gruppe ${String.fromCharCode(65 + n)}`;
 
 /**

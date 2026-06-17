@@ -159,53 +159,60 @@ export default async function BracketPage({
     .filter((x): x is string => !!x);
   const swissStandingRows = swissStandings(doneForStandings, byeIdsForStandings);
 
-  // Groups-playoffs derived data (computed regardless of format; no-ops when empty).
-  const groupMatches: GroupMatch[] = (rawMatches ?? []).map((m) => ({
-    id: m.id,
-    bracket: m.bracket,
-    round: m.round,
-    slot: m.slot,
-    status: m.status,
-    winnerId: m.winner_id,
-    participantAId: m.participant_a_id,
-    participantBId: m.participant_b_id,
-    aName: m.a?.display_name ?? null,
-    bName: m.b?.display_name ?? null,
-    groupNo: m.group_no,
-    scoreA: m.score_a,
-    scoreB: m.score_b,
-  }));
+  // Groups-playoffs derived data — only computed for the groups_playoffs format
+  // (mirrors the guard in board/page.tsx; avoids unnecessary work for other formats).
+  let groupMatches: GroupMatch[] = [];
+  let standingsByGroup: Record<number, ReturnType<typeof computeStandings>> = {};
+  let groupStageComplete = false;
+  let playoffExists = false;
 
-  const groupNosPresent = [
-    ...new Set(
-      groupMatches.map((m) => m.groupNo).filter((g): g is number => g !== null),
-    ),
-  ];
-  const standingsByGroup: Record<number, ReturnType<typeof computeStandings>> = {};
-  for (const gNo of groupNosPresent) {
-    const done: DoneMatch[] = groupMatches
-      .filter(
-        (m) =>
-          m.groupNo === gNo &&
-          m.status === "done" &&
-          m.participantAId &&
-          m.participantBId &&
-          m.scoreA != null &&
-          m.scoreB != null,
-      )
-      .map((m) => ({
-        participantAId: m.participantAId!,
-        participantBId: m.participantBId!,
-        scoreA: m.scoreA!,
-        scoreB: m.scoreB!,
-      }));
-    standingsByGroup[gNo] = computeStandings(done);
+  if (tournament.format === "groups_playoffs") {
+    groupMatches = (rawMatches ?? []).map((m) => ({
+      id: m.id,
+      bracket: m.bracket,
+      round: m.round,
+      slot: m.slot,
+      status: m.status,
+      winnerId: m.winner_id,
+      participantAId: m.participant_a_id,
+      participantBId: m.participant_b_id,
+      aName: m.a?.display_name ?? null,
+      bName: m.b?.display_name ?? null,
+      groupNo: m.group_no,
+      scoreA: m.score_a,
+      scoreB: m.score_b,
+    }));
+
+    const groupNosPresent = [
+      ...new Set(
+        groupMatches.map((m) => m.groupNo).filter((g): g is number => g !== null),
+      ),
+    ];
+    for (const gNo of groupNosPresent) {
+      const done: DoneMatch[] = groupMatches
+        .filter(
+          (m) =>
+            m.groupNo === gNo &&
+            m.status === "done" &&
+            m.participantAId &&
+            m.participantBId &&
+            m.scoreA != null &&
+            m.scoreB != null,
+        )
+        .map((m) => ({
+          participantAId: m.participantAId!,
+          participantBId: m.participantBId!,
+          scoreA: m.scoreA!,
+          scoreB: m.scoreB!,
+        }));
+      standingsByGroup[gNo] = computeStandings(done);
+    }
+    const stageGroupMatches = groupMatches.filter((m) => m.groupNo !== null);
+    groupStageComplete =
+      stageGroupMatches.length > 0 &&
+      stageGroupMatches.every((m) => m.status === "done" || m.status === "bye");
+    playoffExists = groupMatches.some((m) => m.groupNo === null);
   }
-  const stageGroupMatches = groupMatches.filter((m) => m.groupNo !== null);
-  const groupStageComplete =
-    stageGroupMatches.length > 0 &&
-    stageGroupMatches.every((m) => m.status === "done" || m.status === "bye");
-  const playoffExists = groupMatches.some((m) => m.groupNo === null);
 
   const entrantCount = new Set(
     swissMatches
@@ -306,10 +313,8 @@ export default async function BracketPage({
                           Playoffs
                         </h3>
                         <BracketView
-                          matches={matches.filter(
-                            (m) =>
-                              groupMatches.find((g) => g.id === m.id)
-                                ?.groupNo == null,
+                          matches={groupMatches.filter(
+                            (m) => m.groupNo === null,
                           )}
                         />
                       </section>
