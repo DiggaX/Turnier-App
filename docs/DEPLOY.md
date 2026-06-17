@@ -301,6 +301,31 @@ Web Push on iOS 16.4+ requires the site to be **added to the Home Screen** (inst
 Notifications will not appear in Safari without this step. Instruct participants
 accordingly.
 
+## Plan 11 — Result Stations
+
+**No migration.** The `confirm_match` RPC and `matches` Realtime publication are
+already in place from Plans 5 and 6.
+
+The organizer **"Stationen"** tab (previously dimmed) opens a fullscreen result-station
+kiosk at `/organizer/tournaments/<id>/station`. It lists every **playable** match
+(both opponent slots filled, status `pending` or `live`) as large touch-friendly cards.
+A referee at the match table enters the score directly (no player reports needed) and
+clicks **"Freigeben"** — this calls the existing staff-only `confirm_match` RPC, sets
+`winner_id` / `score_a` / `score_b`, and advances the winner in single-elim brackets,
+exactly as the organizer Matches tab does.
+
+A Supabase Realtime channel (`station-<id>`) subscribes to `matches` changes and calls
+`router.refresh()` on any update, so confirmed matches drop off all open station windows
+and the public board simultaneously. Realtime is best-effort — a normal reload always
+reflects the latest state.
+
+Access is staff-gated (`admin` / `organizer` / `referee` profile role), identical to the
+other organizer pages. `confirm_match` itself enforces `is_staff()` in the RPC body (RLS
+defense in depth). No PII beyond `display_name` and scores is shown.
+
+The kiosk also provides a **⛶ Vollbild** button using the Fullscreen API for tablet or
+monitor deployment.
+
 ## Tests
 
 - Unit: `cd web && npm test` (Vitest)
