@@ -12,8 +12,8 @@ import { Label } from "@/components/ui/label";
 import { updateParticipant, removeParticipant } from "../actions";
 
 const schema = z.object({
-  displayName: z.string().trim().min(1, "Anzeigename erforderlich"),
-  gamertag: z.string().optional(),
+  displayName: z.string().trim().min(1, "Anzeigename erforderlich").max(64, "Anzeigename max. 64 Zeichen"),
+  gamertag: z.string().max(64, "Gamertag max. 64 Zeichen").optional(),
 });
 type Values = z.infer<typeof schema>;
 

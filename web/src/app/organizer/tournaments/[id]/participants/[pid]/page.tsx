@@ -97,7 +97,7 @@ export default async function ParticipantDetailPage({
                 </dt>
                 <dd className="text-fg-muted">
                   {participant.birthdate
-                    ? new Date(participant.birthdate).toLocaleDateString("de-DE", {
+                    ? new Date(participant.birthdate + "T12:00:00").toLocaleDateString("de-DE", {
                         day: "2-digit",
                         month: "2-digit",
                         year: "numeric",
