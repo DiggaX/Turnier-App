@@ -1,5 +1,6 @@
 import { BracketView, type BracketMatch } from "@/components/brand/bracket-view";
 import { DoubleElimView } from "@/components/brand/double-elim-view";
+import { GroupsView, type GroupMatch } from "@/components/brand/groups-view";
 import { RoundRobinView } from "@/components/brand/round-robin-view";
 import { StandingsTable } from "@/components/brand/standings-table";
 import { SwissView } from "@/components/brand/swiss-view";
@@ -17,6 +18,7 @@ export type BoardMatch = BracketMatch & {
   bracket: string;
   scoreA: number | null;
   scoreB: number | null;
+  groupNo?: number | null;
 };
 
 export type BoardContentProps = {
@@ -28,6 +30,8 @@ export type BoardContentProps = {
   /** Map participant id → display name (for standings). */
   names: Record<string, string>;
   standings: StandingRow[];
+  /** Per-group standings for groups_playoffs, indexed by group_no. */
+  standingsByGroup?: Record<number, StandingRow[]>;
 };
 
 const SECTION_LABEL =
@@ -144,12 +148,14 @@ export function BoardContent({
   matches,
   names,
   standings,
+  standingsByGroup = {},
 }: BoardContentProps) {
   const playable = matches.filter(isPlayable);
   const decided = matches.filter(isDecided);
   const isSwiss = format === "swiss";
   const isRoundRobin = format === "round_robin";
   const isDoubleElim = format === "double_elim";
+  const isGroupsPlayoffs = format === "groups_playoffs";
 
   return (
     <div className="mx-auto max-w-[1280px] px-6 pb-20 pt-8 sm:px-10">
@@ -221,7 +227,25 @@ export function BoardContent({
 
       {/* standings + schedule (round-robin / swiss), WB/LB/GF (double-elim), or
           the single bracket (single-elim). */}
-      {isSwiss ? (
+      {isGroupsPlayoffs ? (
+        <div className="flex flex-col gap-8">
+          <GroupsView
+            matches={
+              matches.filter(
+                (m) => m.groupNo !== null && m.groupNo !== undefined,
+              ) as GroupMatch[]
+            }
+            standingsByGroup={standingsByGroup}
+            names={names}
+          />
+          {matches.some((m) => m.groupNo == null) && (
+            <section className="flex flex-col gap-3 border-t border-line pt-6">
+              <div className={cn(SECTION_LABEL, "mb-2")}>Playoffs</div>
+              <BracketView matches={matches.filter((m) => m.groupNo == null)} />
+            </section>
+          )}
+        </div>
+      ) : isSwiss ? (
         <section>
           <div className={cn(SECTION_LABEL, "mb-4")}>Swiss</div>
           <SwissView matches={matches} standings={standings} names={names} />

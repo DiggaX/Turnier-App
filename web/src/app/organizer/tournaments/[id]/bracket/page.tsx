@@ -9,18 +9,20 @@ import {
   DoubleElimView,
   type DoubleElimMatch,
 } from "@/components/brand/double-elim-view";
+import { GroupsView, type GroupMatch } from "@/components/brand/groups-view";
 import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { RoundRobinView } from "@/components/brand/round-robin-view";
 import { SwissView, type SwissMatch } from "@/components/brand/swiss-view";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
 import { formatLabel } from "@/lib/labels";
-import type { DoneMatch } from "@/lib/standings";
+import { computeStandings, type DoneMatch } from "@/lib/standings";
 import { createClient } from "@/lib/supabase/server";
 import { swissRoundCount } from "@/lib/swiss/pairing";
 import { swissStandings } from "@/lib/swiss/standings";
 
 import { AdvanceRoundButton } from "./advance-round-button";
 import { GenerateButton } from "./generate-button";
+import { GeneratePlayoffsButton } from "./generate-playoffs-button";
 import { SeedingClient } from "./seeding-client";
 
 export const metadata: Metadata = {
@@ -39,6 +41,7 @@ type RawMatch = {
   participant_b_id: string | null;
   score_a: number | null;
   score_b: number | null;
+  group_no: number | null;
   a: { display_name: string } | null;
   b: { display_name: string } | null;
 };
@@ -93,7 +96,7 @@ export default async function BracketPage({
     .from("matches")
     .select(
       "id, bracket, round, slot, status, winner_id, participant_a_id, participant_b_id, " +
-        "score_a, score_b, a:participant_a_id(display_name), b:participant_b_id(display_name)",
+        "score_a, score_b, group_no, a:participant_a_id(display_name), b:participant_b_id(display_name)",
     )
     .eq("tournament_id", id)
     .order("round", { ascending: true })
@@ -155,6 +158,54 @@ export default async function BracketPage({
     .map((m) => m.winnerId ?? m.participantAId)
     .filter((x): x is string => !!x);
   const swissStandingRows = swissStandings(doneForStandings, byeIdsForStandings);
+
+  // Groups-playoffs derived data (computed regardless of format; no-ops when empty).
+  const groupMatches: GroupMatch[] = (rawMatches ?? []).map((m) => ({
+    id: m.id,
+    bracket: m.bracket,
+    round: m.round,
+    slot: m.slot,
+    status: m.status,
+    winnerId: m.winner_id,
+    participantAId: m.participant_a_id,
+    participantBId: m.participant_b_id,
+    aName: m.a?.display_name ?? null,
+    bName: m.b?.display_name ?? null,
+    groupNo: m.group_no,
+    scoreA: m.score_a,
+    scoreB: m.score_b,
+  }));
+
+  const groupNosPresent = [
+    ...new Set(
+      groupMatches.map((m) => m.groupNo).filter((g): g is number => g !== null),
+    ),
+  ];
+  const standingsByGroup: Record<number, ReturnType<typeof computeStandings>> = {};
+  for (const gNo of groupNosPresent) {
+    const done: DoneMatch[] = groupMatches
+      .filter(
+        (m) =>
+          m.groupNo === gNo &&
+          m.status === "done" &&
+          m.participantAId &&
+          m.participantBId &&
+          m.scoreA != null &&
+          m.scoreB != null,
+      )
+      .map((m) => ({
+        participantAId: m.participantAId!,
+        participantBId: m.participantBId!,
+        scoreA: m.scoreA!,
+        scoreB: m.scoreB!,
+      }));
+    standingsByGroup[gNo] = computeStandings(done);
+  }
+  const stageGroupMatches = groupMatches.filter((m) => m.groupNo !== null);
+  const groupStageComplete =
+    stageGroupMatches.length > 0 &&
+    stageGroupMatches.every((m) => m.status === "done" || m.status === "bye");
+  const playoffExists = groupMatches.some((m) => m.groupNo === null);
 
   const entrantCount = new Set(
     swissMatches
@@ -242,7 +293,33 @@ export default async function BracketPage({
                 <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
                   Spielplan
                 </h2>
-                {tournament.format === "swiss" ? (
+                {tournament.format === "groups_playoffs" ? (
+                  <div className="flex flex-col gap-8">
+                    <GroupsView
+                      matches={groupMatches.filter((m) => m.groupNo !== null)}
+                      standingsByGroup={standingsByGroup}
+                      names={names}
+                    />
+                    {playoffExists ? (
+                      <section className="flex flex-col gap-3 border-t border-line pt-6">
+                        <h3 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+                          Playoffs
+                        </h3>
+                        <BracketView
+                          matches={matches.filter(
+                            (m) =>
+                              groupMatches.find((g) => g.id === m.id)
+                                ?.groupNo == null,
+                          )}
+                        />
+                      </section>
+                    ) : groupStageComplete ? (
+                      <section className="flex flex-col gap-3 border-t border-line pt-6">
+                        <GeneratePlayoffsButton tournamentId={id} />
+                      </section>
+                    ) : null}
+                  </div>
+                ) : tournament.format === "swiss" ? (
                   <div className="flex flex-col gap-6">
                     <SwissView
                       matches={swissMatches}
