@@ -26,3 +26,28 @@ export async function requireStaff(): Promise<
   }
   return { supabase };
 }
+
+/**
+ * Guard for actions that require admin or organizer privileges.
+ * Referees are excluded: they are match scorers and must not manage the
+ * game catalog (add/rename/remove sport types).
+ */
+export async function requireOrganizerOrAdmin(): Promise<
+  { supabase: Supabase } | { error: string }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Nicht angemeldet." };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!profile || !["admin", "organizer"].includes(profile.role)) {
+    return { error: "Diese Aktion ist nicht erlaubt." };
+  }
+  return { supabase };
+}

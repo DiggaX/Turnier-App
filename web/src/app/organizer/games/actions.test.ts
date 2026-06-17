@@ -20,6 +20,7 @@ let requireStaffResult: { supabase: MockSupabase } | { error: string };
 
 vi.mock("@/lib/auth/staff", () => ({
   requireStaff: () => Promise.resolve(requireStaffResult),
+  requireOrganizerOrAdmin: () => Promise.resolve(requireStaffResult),
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,6 +60,44 @@ describe("createGame", () => {
     const { createGame } = await import("./actions");
     const result = await createGame("Darts", 1.5);
     expect(result).toEqual({ error: "Teamgröße ≥ 1." });
+  });
+
+  it("propagates requireStaff auth error", async () => {
+    requireStaffResult = { error: "Nicht angemeldet." };
+    const { createGame } = await import("./actions");
+    const result = await createGame("Darts", 2);
+    expect(result).toEqual({ error: "Nicht angemeldet." });
+  });
+
+  it("returns ok when insert succeeds", async () => {
+    setupStaff((table: string) => {
+      if (table === "games") {
+        return {
+          insert: () => Promise.resolve({ error: null }),
+        };
+      }
+      return {};
+    });
+    const { createGame } = await import("./actions");
+    const result = await createGame("Darts", 2);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("returns friendly error when insert fails", async () => {
+    setupStaff((table: string) => {
+      if (table === "games") {
+        return {
+          insert: () =>
+            Promise.resolve({
+              error: { code: "08006", message: "connection failure" },
+            }),
+        };
+      }
+      return {};
+    });
+    const { createGame } = await import("./actions");
+    const result = await createGame("Darts", 2);
+    expect(result).toEqual({ error: "Spiel konnte nicht angelegt werden." });
   });
 });
 
@@ -117,6 +156,13 @@ describe("updateGame", () => {
     const { updateGame } = await import("./actions");
     const result = await updateGame("g1", "Tischtennis", 2);
     expect(result).toEqual({ ok: true });
+  });
+
+  it("propagates requireStaff auth error", async () => {
+    requireStaffResult = { error: "Nicht angemeldet." };
+    const { updateGame } = await import("./actions");
+    const result = await updateGame("g1", "Tischtennis", 2);
+    expect(result).toEqual({ error: "Nicht angemeldet." });
   });
 });
 
@@ -214,5 +260,12 @@ describe("deleteGame", () => {
     const { deleteGame } = await import("./actions");
     const result = await deleteGame("g1");
     expect(result).toEqual({ ok: true });
+  });
+
+  it("propagates requireStaff auth error", async () => {
+    requireStaffResult = { error: "Nicht angemeldet." };
+    const { deleteGame } = await import("./actions");
+    const result = await deleteGame("g1");
+    expect(result).toEqual({ error: "Nicht angemeldet." });
   });
 });

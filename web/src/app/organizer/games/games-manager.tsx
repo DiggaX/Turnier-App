@@ -24,6 +24,8 @@ function GameRow({ game }: { game: Game }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  const teamSizeValid = Number.isInteger(teamSize) && teamSize >= 1;
+
   function save() {
     setError(null);
     setSaved(false);
@@ -39,7 +41,7 @@ function GameRow({ game }: { game: Game }) {
   }
 
   function remove() {
-    if (!window.confirm(`Spiel "${game.name}" wirklich löschen?`)) return;
+    if (!window.confirm(`Spiel "${name}" wirklich löschen?`)) return;
     setError(null);
     startTransition(async () => {
       const res = await deleteGame(game.id);
@@ -79,7 +81,7 @@ function GameRow({ game }: { game: Game }) {
             <button
               type="button"
               onClick={save}
-              disabled={pending}
+              disabled={pending || !teamSizeValid}
               className="rounded-[8px] bg-lime px-3 py-1.5 font-display text-[10px] font-bold uppercase tracking-wider text-bg transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               Speichern
@@ -111,6 +113,8 @@ function AddGameRow() {
   const [name, setName] = useState("");
   const [teamSize, setTeamSize] = useState(1);
   const [error, setError] = useState<string | null>(null);
+
+  const teamSizeValid = Number.isInteger(teamSize) && teamSize >= 1;
 
   function add() {
     setError(null);
@@ -155,7 +159,7 @@ function AddGameRow() {
             <button
               type="button"
               onClick={add}
-              disabled={pending || !name.trim()}
+              disabled={pending || !name.trim() || !teamSizeValid}
               className="w-fit rounded-[8px] bg-lime px-3 py-1.5 font-display text-[10px] font-bold uppercase tracking-wider text-bg transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {pending ? "Wird angelegt…" : "Hinzufügen"}

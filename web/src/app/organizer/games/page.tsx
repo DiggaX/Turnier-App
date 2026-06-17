@@ -20,7 +20,7 @@ export default async function GamesPage() {
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
-  if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
+  if (!profile || !["admin", "organizer"].includes(profile.role)) {
     redirect("/login");
   }
 

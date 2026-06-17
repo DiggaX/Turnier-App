@@ -1,10 +1,10 @@
 "use server";
 
 import { friendlyDbError, pgErrorCode } from "@/lib/db-errors";
-import { requireStaff, type ActionResult } from "@/lib/auth/staff";
+import { requireOrganizerOrAdmin, type ActionResult } from "@/lib/auth/staff";
 
 export async function createGame(name: string, teamSize: number): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
   const n = name?.trim();
   if (!n) return { error: "Name ist erforderlich." };
@@ -15,7 +15,7 @@ export async function createGame(name: string, teamSize: number): Promise<Action
 }
 
 export async function updateGame(id: string, name: string, teamSize: number): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
   const n = name?.trim();
   if (!n) return { error: "Name ist erforderlich." };
@@ -31,7 +31,7 @@ export async function updateGame(id: string, name: string, teamSize: number): Pr
 
 /** Delete a game only when no tournament references it. */
 export async function deleteGame(id: string): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
   const { count, error: countError } = await guard.supabase
     .from("tournaments")
