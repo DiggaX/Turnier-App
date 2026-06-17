@@ -5,7 +5,7 @@ import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
 import { StatusBadge } from "@/components/brand/status-badge";
 import { formatLabel, modeLabel } from "@/lib/labels";
-import { teamLabel } from "@/lib/tournament/lifecycle";
+import { teamLabel, canEditStructure } from "@/lib/tournament/lifecycle";
 import { createClient } from "@/lib/supabase/server";
 
 import { EditTournamentForm } from "./edit-tournament-form";
@@ -99,7 +99,7 @@ export default async function TournamentOverviewPage({
                 teamSize: tournament.team_size,
                 startsAt: tournament.starts_at,
               }}
-              canEditStructure={!hasMatches}
+              canEditStructure={canEditStructure(tournament.status, hasMatches)}
             />
           </section>
         </div>

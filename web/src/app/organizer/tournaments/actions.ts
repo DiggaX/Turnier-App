@@ -93,6 +93,13 @@ export async function updateTournament(
 
   const name = input.name?.trim();
   if (!name) return { error: "Name ist erforderlich." };
+  if (!input.gameId) return { error: "Bitte ein Spiel wählen." };
+  if (!FORMATS.includes(input.format as TournamentFormat)) {
+    return { error: "Ungültiges Format." };
+  }
+  if (!MODES.includes(input.mode as TournamentMode)) {
+    return { error: "Ungültiger Modus." };
+  }
   const teamSize = Number(input.teamSize);
   if (!Number.isInteger(teamSize) || teamSize < 1) {
     return { error: "Teamgröße muss mindestens 1 sein." };
@@ -137,13 +144,16 @@ export async function advanceStatus(
   const target = nextStatus(current as TournamentStatus);
   if (!target) return { error: "Kein gültiger nächster Status." };
 
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from("tournaments")
-    .update({ status: target })
+    .update({ status: target }, { count: "exact" })
     .eq("id", id)
     .eq("status", current as TournamentStatus); // optimistic guard: only if status hasn't moved
   if (error) {
     return { error: friendlyDbError(error, "Status konnte nicht geändert werden.") };
+  }
+  if ((count ?? 0) === 0) {
+    return { error: "Status wurde bereits geändert." };
   }
   return { ok: true };
 }
@@ -153,6 +163,16 @@ export async function deleteTournament(id: string): Promise<ActionResult> {
   const guard = await requireStaff();
   if ("error" in guard) return guard;
   const { supabase } = guard;
+
+  const { data: t } = await supabase
+    .from("tournaments")
+    .select("status")
+    .eq("id", id)
+    .single();
+  if (t?.status === "running" || t?.status === "finished") {
+    return { error: "Laufende oder beendete Turniere können nicht gelöscht werden." };
+  }
+
   const { error } = await supabase.from("tournaments").delete().eq("id", id);
   if (error) {
     return { error: friendlyDbError(error, "Turnier konnte nicht gelöscht werden.") };
