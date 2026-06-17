@@ -4,6 +4,9 @@ import { generateDoubleElim } from "@/lib/bracket/double-elim";
 import { generateRoundRobin } from "@/lib/bracket/round-robin";
 import { generateSingleElim } from "@/lib/bracket/single-elim";
 import { generateSwissRoundOne } from "@/lib/swiss/generate";
+import { pairKey, pairSwissRound, swissRoundCount } from "@/lib/swiss/pairing";
+import { swissStandings } from "@/lib/swiss/standings";
+import type { DoneMatch } from "@/lib/standings";
 import {
   buildIdMap,
   resolveByeAdvances,
@@ -318,6 +321,145 @@ export async function generateBracket(
     .eq("id", tournamentId);
   if (statusErr) {
     return { error: friendlyDbError(statusErr, "Turnierstatus konnte nicht aktualisiert werden.") };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Advance a Swiss tournament to its next round.
+ *
+ * Reads every match so far, verifies the current round is fully decided
+ * (`done`/`bye`) and that fewer than `R = ceil(log2(N))` rounds have been
+ * played, computes the live standings (byes count as wins), pairs the next
+ * round via `pairSwissRound` (avoiding rematches and repeat byes), and inserts
+ * the new round's matches. A bye row is inserted already decided.
+ */
+export async function advanceSwissRound(
+  tournamentId: string,
+): Promise<ActionResult> {
+  const guard = await requireStaff();
+  if ("error" in guard) return guard;
+  const { supabase } = guard;
+
+  const { data: tournament, error: tErr } = await supabase
+    .from("tournaments")
+    .select("id, format")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  if (tErr) {
+    return { error: friendlyDbError(tErr, "Turnier konnte nicht geladen werden.") };
+  }
+  if (!tournament) return { error: "Turnier nicht gefunden." };
+  if (tournament.format !== "swiss") {
+    return { error: "Nur für Swiss-Turniere verfügbar." };
+  }
+
+  const { data: matches, error: mErr } = await supabase
+    .from("matches")
+    .select(
+      "round, status, participant_a_id, participant_b_id, winner_id, score_a, score_b",
+    )
+    .eq("tournament_id", tournamentId)
+    .order("round", { ascending: true });
+  if (mErr) {
+    return { error: friendlyDbError(mErr, "Matches konnten nicht geladen werden.") };
+  }
+  if (!matches || matches.length === 0) {
+    return { error: "Erst Runde 1 generieren." };
+  }
+
+  const currentRound = Math.max(...matches.map((m) => m.round));
+
+  // Entrants = the distinct participants of round 1 (everyone plays each round).
+  const entrants = new Set<string>();
+  for (const m of matches) {
+    if (m.round !== 1) continue;
+    if (m.participant_a_id) entrants.add(m.participant_a_id);
+    if (m.participant_b_id) entrants.add(m.participant_b_id);
+  }
+  const totalRounds = swissRoundCount(entrants.size);
+  if (currentRound >= totalRounds) {
+    return { error: "Alle Swiss-Runden sind gespielt — der Endstand steht fest." };
+  }
+
+  const currentDone = matches
+    .filter((m) => m.round === currentRound)
+    .every((m) => m.status === "done" || m.status === "bye");
+  if (!currentDone) {
+    return { error: "Die aktuelle Runde ist noch nicht abgeschlossen." };
+  }
+
+  // Build standings inputs + play/bye history across ALL rounds.
+  const done: DoneMatch[] = [];
+  const byeIds: string[] = [];
+  const played = new Set<string>();
+  const byeHistory = new Set<string>();
+  for (const m of matches) {
+    if (m.status === "bye") {
+      const w = m.winner_id ?? m.participant_a_id;
+      if (w) {
+        byeIds.push(w);
+        byeHistory.add(w);
+      }
+      continue;
+    }
+    if (
+      m.status === "done" &&
+      m.participant_a_id &&
+      m.participant_b_id &&
+      m.score_a != null &&
+      m.score_b != null
+    ) {
+      done.push({
+        participantAId: m.participant_a_id,
+        participantBId: m.participant_b_id,
+        scoreA: m.score_a,
+        scoreB: m.score_b,
+      });
+      played.add(pairKey(m.participant_a_id, m.participant_b_id));
+    }
+  }
+
+  const ranked = swissStandings(done, byeIds).map((r) => r.participantId);
+  // Safety net: ensure every entrant is ranked (no-op in normal play).
+  for (const id of entrants) {
+    if (!ranked.includes(id)) ranked.push(id);
+  }
+
+  const { pairings, bye } = pairSwissRound(ranked, played, byeHistory);
+
+  const nextRound = currentRound + 1;
+  const rows: MatchInsert[] = [];
+  let slot = 0;
+  for (const [a, b] of pairings) {
+    rows.push({
+      tournament_id: tournamentId,
+      bracket: "winner",
+      round: nextRound,
+      slot,
+      participant_a_id: a,
+      participant_b_id: b,
+      status: "pending",
+    });
+    slot++;
+  }
+  if (bye) {
+    rows.push({
+      tournament_id: tournamentId,
+      bracket: "winner",
+      round: nextRound,
+      slot,
+      participant_a_id: bye,
+      participant_b_id: null,
+      winner_id: bye,
+      status: "bye",
+    });
+  }
+
+  const { error: insErr } = await supabase.from("matches").insert(rows);
+  if (insErr) {
+    return { error: friendlyDbError(insErr, "Nächste Runde konnte nicht angelegt werden.") };
   }
 
   return { ok: true };
