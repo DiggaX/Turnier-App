@@ -87,6 +87,25 @@ two match participants), and two `security definer` RPCs. No new Auth/Storage to
   `next_match_id`/`next_slot`. Round-robin shows a live standings table (`computeStandings`)
   on the Matches tab.
 
+## Live-Board & Realtime (Plan 6) — additional setup
+
+Apply `supabase/migrations/20260621090000_realtime.sql` (SQL Editor → Run). It adds the
+`matches` and `tournaments` tables to the `supabase_realtime` publication so the public
+live board receives push updates. (If a table is already in the publication, run the two
+`alter publication` lines individually.) No new Auth/Storage toggles.
+
+**Public live board** (`/t/<id>/board`): a login-free beamer view. Single-elim shows the
+full bracket; round-robin shows the standings table + schedule. A **"Jetzt spielbar"**
+section lists matches with both participants present that aren't done yet, and an
+**"Ergebnisse"** section shows decided matches' final scores with the winner highlighted.
+A **Vollbild** button toggles the Fullscreen API.
+
+The page is a server component (anon read via RLS); a thin `"use client"` wrapper opens a
+Supabase Realtime channel (`board-<id>`) subscribed to `matches`/`tournaments` changes and
+calls `router.refresh()` on any change, so the board updates when the referee confirms a
+result. Realtime is **best-effort** — if the publication above isn't applied the board still
+renders correctly and a normal reload reflects the latest state.
+
 ## Local dev
 
 1. Create `web/.env.local` (copy `web/.env.example`) and fill in:
