@@ -7,7 +7,8 @@ import { generateGroupStage, groupCountFor } from "@/lib/groups/groups";
 import { generateSwissRoundOne } from "@/lib/swiss/generate";
 import { pairKey, pairSwissRound, swissRoundCount } from "@/lib/swiss/pairing";
 import { swissStandings } from "@/lib/swiss/standings";
-import type { DoneMatch } from "@/lib/standings";
+import { computeStandings, type DoneMatch } from "@/lib/standings";
+import { seedPlayoffAdvancers } from "@/lib/groups/playoff-seeding";
 import {
   buildIdMap,
   resolveByeAdvances,
@@ -472,6 +473,151 @@ export async function advanceSwissRound(
   const { error: insErr } = await supabase.from("matches").insert(rows);
   if (insErr) {
     return { error: friendlyDbError(insErr, "Nächste Runde konnte nicht angelegt werden.") };
+  }
+
+  return { ok: true };
+}
+
+const ADVANCE_PER_GROUP = 2;
+
+/**
+ * Generate the single-elimination playoff for a groups->playoffs tournament.
+ *
+ * Guards: staff only, format must be `groups_playoffs`, a group stage must
+ * exist, every group match must be decided, and the playoff must not already
+ * exist. Computes each group's standings (top `ADVANCE_PER_GROUP` advance),
+ * seeds them so group winners sit opposite their runners-up, generates a seeded
+ * single-elim bracket (group_no = NULL), inserts it, and wires advancement +
+ * bye links exactly like generateBracket does for single-elim.
+ */
+export async function generatePlayoffs(
+  tournamentId: string,
+): Promise<ActionResult> {
+  const guard = await requireStaff();
+  if ("error" in guard) return guard;
+  const { supabase } = guard;
+
+  const { data: tournament, error: tErr } = await supabase
+    .from("tournaments")
+    .select("id, format")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  if (tErr) {
+    return { error: friendlyDbError(tErr, "Turnier konnte nicht geladen werden.") };
+  }
+  if (!tournament) return { error: "Turnier nicht gefunden." };
+  if (tournament.format !== "groups_playoffs") {
+    return { error: "Nur für Gruppen → Playoffs verfügbar." };
+  }
+
+  const { data: matches, error: mErr } = await supabase
+    .from("matches")
+    .select(
+      "group_no, status, participant_a_id, participant_b_id, score_a, score_b",
+    )
+    .eq("tournament_id", tournamentId);
+  if (mErr) {
+    return { error: friendlyDbError(mErr, "Matches konnten nicht geladen werden.") };
+  }
+  const all = matches ?? [];
+  const groupMatches = all.filter((m) => m.group_no !== null);
+  const playoffMatches = all.filter((m) => m.group_no === null);
+
+  if (groupMatches.length === 0) {
+    return { error: "Erst die Gruppenphase generieren." };
+  }
+  if (playoffMatches.length > 0) {
+    return { error: "Die Playoffs wurden bereits ausgelost." };
+  }
+  const allDone = groupMatches.every(
+    (m) => m.status === "done" || m.status === "bye",
+  );
+  if (!allDone) {
+    return { error: "Die Gruppenphase ist noch nicht abgeschlossen." };
+  }
+
+  // Per-group standings from that group's decided matches.
+  const groupNos = [...new Set(groupMatches.map((m) => m.group_no as number))].sort(
+    (a, b) => a - b,
+  );
+  const rankedByGroup: string[][] = groupNos.map((gNo) => {
+    const done: DoneMatch[] = groupMatches
+      .filter(
+        (m) =>
+          m.group_no === gNo &&
+          m.status === "done" &&
+          m.participant_a_id &&
+          m.participant_b_id &&
+          m.score_a != null &&
+          m.score_b != null,
+      )
+      .map((m) => ({
+        participantAId: m.participant_a_id as string,
+        participantBId: m.participant_b_id as string,
+        scoreA: m.score_a as number,
+        scoreB: m.score_b as number,
+      }));
+    return computeStandings(done).map((r) => r.participantId);
+  });
+
+  const seeded = seedPlayoffAdvancers(rankedByGroup, ADVANCE_PER_GROUP);
+  if (seeded.length < 2) {
+    return { error: "Zu wenige Teilnehmer für die Playoffs." };
+  }
+
+  const generated = generateSingleElim(seeded);
+  if (generated.length === 0) {
+    return { error: "Playoff-Bracket konnte nicht erzeugt werden." };
+  }
+
+  // Insert the playoff matches (group_no stays NULL).
+  const rows: MatchInsert[] = generated.map((m) => ({
+    tournament_id: tournamentId,
+    bracket: m.bracket,
+    round: m.round,
+    slot: m.slot,
+    participant_a_id: m.participantAId,
+    participant_b_id: m.participantBId,
+    winner_id: m.winnerId,
+    status: m.status,
+    group_no: null,
+  }));
+  const { data: inserted, error: insErr2 } = await supabase
+    .from("matches")
+    .insert(rows)
+    .select("id, bracket, round, slot");
+  if (insErr2 || !inserted) {
+    return { error: friendlyDbError(insErr2, "Playoff-Matches konnten nicht angelegt werden.") };
+  }
+
+  // Wire winner advancement + auto-advance byes (same as single-elim).
+  let idMap;
+  try {
+    idMap = buildIdMap(generated, inserted);
+  } catch {
+    return { error: "Playoff-Bracket konnte nicht verknüpft werden." };
+  }
+  for (const u of resolveLinkUpdates(generated, idMap)) {
+    const { error: linkErr } = await supabase
+      .from("matches")
+      .update({ next_match_id: u.nextMatchId, next_slot: u.nextSlot })
+      .eq("id", u.id);
+    if (linkErr) {
+      return { error: friendlyDbError(linkErr, "Bracket-Verknüpfung fehlgeschlagen.") };
+    }
+  }
+  for (const a of resolveByeAdvances(generated, idMap)) {
+    const patch =
+      a.nextSlot === "a"
+        ? { participant_a_id: a.winnerId }
+        : { participant_b_id: a.winnerId };
+    const { error: advErr } = await supabase
+      .from("matches")
+      .update(patch)
+      .eq("id", a.nextMatchId);
+    if (advErr) {
+      return { error: friendlyDbError(advErr, "Freilos konnte nicht weitergeleitet werden.") };
+    }
   }
 
   return { ok: true };
