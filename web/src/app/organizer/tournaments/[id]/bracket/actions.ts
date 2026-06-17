@@ -3,6 +3,7 @@
 import { generateDoubleElim } from "@/lib/bracket/double-elim";
 import { generateRoundRobin } from "@/lib/bracket/round-robin";
 import { generateSingleElim } from "@/lib/bracket/single-elim";
+import { generateSwissRoundOne } from "@/lib/swiss/generate";
 import {
   buildIdMap,
   resolveByeAdvances,
@@ -115,6 +116,8 @@ function generatorFor(
       return generateRoundRobin;
     case "double_elim":
       return generateDoubleElim;
+    case "swiss":
+      return generateSwissRoundOne;
     default:
       return null;
   }
