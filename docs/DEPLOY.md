@@ -227,10 +227,19 @@ Supported formats are now `single_elim`, `round_robin`, `double_elim`, `swiss`, 
 
 ### Schema migration
 
-Apply `supabase/migrations/20260625090000_push_subscriptions.sql` (SQL Editor → Run). It
-creates the `push_subscriptions` table (one row per participant/endpoint pair), enables RLS,
-and adds three policies: participants may insert and delete their own subscriptions; staff
-may select and delete any subscription (needed for delivery and stale-subscription pruning).
+Apply **both** migrations in order (SQL Editor → Run each separately):
+
+1. `supabase/migrations/20260625090000_push_subscriptions.sql` — creates the
+   `push_subscriptions` table (one row per participant/endpoint pair), enables RLS, and adds
+   three policies: participants may insert and delete their own subscriptions; staff may select
+   and delete any subscription (needed for delivery and stale-subscription pruning).
+
+2. `supabase/migrations/20260626090000_push_subscriptions_update_policy.sql` — adds the
+   fourth policy: participants may update their own subscription row. **This policy is required
+   for idempotent re-subscription.** Without it, the `upserted by endpoint` upsert
+   (`onConflict: 'endpoint'`) is denied on the UPDATE path when an endpoint already exists,
+   causing re-clicking "Benachrichtigungen aktivieren" to silently fail.
+
 No new Auth/Storage toggles are needed beyond what Plans 2–9 already enable.
 
 ### VAPID environment variables

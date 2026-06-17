@@ -11,7 +11,7 @@ export function PushOptIn({ tournamentId }: { tournamentId: string }) {
   );
   const [msg, setMsg] = useState<string | null>(null);
 
-  if (typeof window !== "undefined" && !pushSupported()) return null;
+  if (!pushSupported()) return null;
   const configured = !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
   async function onClick() {
