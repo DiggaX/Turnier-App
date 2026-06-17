@@ -63,13 +63,21 @@ export default async function OrganizerPage() {
         />
 
         <div className="relative mx-auto w-full max-w-3xl px-5 pb-20 pt-10 sm:px-8 sm:pt-12">
-          <div className="mb-7">
-            <div className="mb-2 font-display text-[10px] uppercase tracking-[0.18em] text-fg-dim">
-              Eingeloggt als Organizer
+          <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <div className="mb-2 font-display text-[10px] uppercase tracking-[0.18em] text-fg-dim">
+                Eingeloggt als Organizer
+              </div>
+              <h1 className="font-display text-2xl font-bold uppercase leading-[1.05] tracking-tight text-ink sm:text-3xl">
+                Turniere
+              </h1>
             </div>
-            <h1 className="font-display text-2xl font-bold uppercase leading-[1.05] tracking-tight text-ink sm:text-3xl">
-              Turniere
-            </h1>
+            <Link
+              href="/organizer/tournaments/new"
+              className="inline-flex w-fit items-center gap-2 rounded-[10px] bg-lime px-5 py-2.5 font-display text-xs font-bold uppercase tracking-wider text-bg transition-opacity hover:opacity-90"
+            >
+              ＋ Neues Turnier
+            </Link>
           </div>
 
           {!tournaments || tournaments.length === 0 ? (
