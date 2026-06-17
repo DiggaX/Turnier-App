@@ -81,5 +81,5 @@ export default async function MePage(props: {
     };
   }
 
-  return <MeClient participant={participant} currentMatch={currentMatch} />;
+  return <MeClient participant={participant} currentMatch={currentMatch} tournamentId={tournamentId} />;
 }

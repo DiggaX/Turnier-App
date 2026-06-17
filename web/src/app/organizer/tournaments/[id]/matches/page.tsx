@@ -9,6 +9,7 @@ import { computeStandings, type DoneMatch } from "@/lib/standings";
 import { createClient } from "@/lib/supabase/server";
 
 import { ReportRow, type MatchRowView } from "./report-row";
+import { NotifyButton } from "./notify-button";
 
 export const metadata: Metadata = {
   title: "Matches — Turnier-App",
@@ -194,6 +195,10 @@ export default async function MatchesPage({
           </div>
 
           <TournamentTabs tournamentId={id} />
+
+          <div className="mb-6">
+            <NotifyButton tournamentId={id} />
+          </div>
 
           {isRoundRobin && (
             <section className="mb-8 flex flex-col gap-4">

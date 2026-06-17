@@ -12,6 +12,7 @@ import {
   ParticipantShell,
   SectionLabel,
 } from "@/components/brand/participant-shell";
+import { PushOptIn } from "./push-opt-in";
 
 interface Participant {
   id: string;
@@ -38,6 +39,7 @@ export interface CurrentMatch {
 interface MeClientProps {
   participant: Participant;
   currentMatch: CurrentMatch | null;
+  tournamentId: string;
 }
 
 /** Map a check_in RPC failure to a friendly German message (no raw DB leak). */
@@ -222,7 +224,7 @@ function MatchReportCard({
   );
 }
 
-export function MeClient({ participant, currentMatch }: MeClientProps) {
+export function MeClient({ participant, currentMatch, tournamentId }: MeClientProps) {
   const [supabase] = useState<SupabaseClient<Database>>(() => createClient());
   const [checkedIn, setCheckedIn] = useState(
     participant.checked_in_at !== null,
@@ -275,6 +277,9 @@ export function MeClient({ participant, currentMatch }: MeClientProps) {
         {currentMatch && (
           <MatchReportCard supabase={supabase} match={currentMatch} />
         )}
+
+        {/* push opt-in */}
+        <PushOptIn tournamentId={tournamentId} />
 
         {/* QR card */}
         <div className="rounded-2xl border border-line bg-surface p-6">
