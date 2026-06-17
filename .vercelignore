@@ -1,0 +1,15 @@
+# Only web/ is built (project Root Directory = web). Exclude everything heavy/irrelevant.
+node_modules
+.git
+/ruflo
+/.claude-flow
+/.claude
+/.agents
+/design-refs
+/.superpowers
+/agentdb.rvf
+/agentdb.rvf.lock
+*.rvf
+*.rvf.lock
+.env
+.env.*
