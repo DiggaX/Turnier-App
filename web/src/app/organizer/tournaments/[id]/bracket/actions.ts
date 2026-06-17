@@ -3,6 +3,7 @@
 import { generateDoubleElim } from "@/lib/bracket/double-elim";
 import { generateRoundRobin } from "@/lib/bracket/round-robin";
 import { generateSingleElim } from "@/lib/bracket/single-elim";
+import { generateGroupStage, groupCountFor } from "@/lib/groups/groups";
 import { generateSwissRoundOne } from "@/lib/swiss/generate";
 import { pairKey, pairSwissRound, swissRoundCount } from "@/lib/swiss/pairing";
 import { swissStandings } from "@/lib/swiss/standings";
@@ -158,11 +159,6 @@ export async function generateBracket(
     return { error: "Turnier nicht gefunden." };
   }
 
-  const generator = generatorFor(tournament.format);
-  if (!generator) {
-    return { error: "Format wird noch nicht unterstützt." };
-  }
-
   // Load checked-in participants ordered so that seeded ones come first (by
   // seed asc), unseeded ones after (by created_at). This gives a stable order
   // for assigning a clean 1..N sequence below.
@@ -204,19 +200,34 @@ export async function generateBracket(
     }
   }
 
-  // The double-elim generator throws for non-power-of-two entrant counts;
-  // surface that as a friendly message instead of a 500.
   let generated: GeneratedMatch[];
-  try {
-    generated = generator(seeded);
-  } catch {
-    if (tournament.format === "double_elim") {
+  if (tournament.format === "groups_playoffs") {
+    const g = groupCountFor(seeded.length);
+    if (g === 0) {
       return {
         error:
-          "Double Elimination braucht 4, 8, 16 … (Zweierpotenz) eingecheckte Teilnehmer.",
+          "Gruppen → Playoffs braucht mindestens 6 eingecheckte Teilnehmer.",
       };
     }
-    return { error: "Es konnten keine Matches erzeugt werden." };
+    generated = generateGroupStage(seeded, g);
+  } else {
+    const generator = generatorFor(tournament.format);
+    if (!generator) {
+      return { error: "Format wird noch nicht unterstützt." };
+    }
+    // The double-elim generator throws for non-power-of-two entrant counts;
+    // surface that as a friendly message instead of a 500.
+    try {
+      generated = generator(seeded);
+    } catch {
+      if (tournament.format === "double_elim") {
+        return {
+          error:
+            "Double Elimination braucht 4, 8, 16 … (Zweierpotenz) eingecheckte Teilnehmer.",
+        };
+      }
+      return { error: "Es konnten keine Matches erzeugt werden." };
+    }
   }
   if (generated.length === 0) {
     return { error: "Es konnten keine Matches erzeugt werden." };
@@ -242,6 +253,7 @@ export async function generateBracket(
     participant_b_id: m.participantBId,
     winner_id: m.winnerId,
     status: m.status,
+    group_no: m.groupNo ?? null,
   }));
 
   const { data: inserted, error: insErr } = await supabase
