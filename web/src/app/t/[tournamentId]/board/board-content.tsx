@@ -2,6 +2,7 @@ import { BracketView, type BracketMatch } from "@/components/brand/bracket-view"
 import { DoubleElimView } from "@/components/brand/double-elim-view";
 import { RoundRobinView } from "@/components/brand/round-robin-view";
 import { StandingsTable } from "@/components/brand/standings-table";
+import { SwissView } from "@/components/brand/swiss-view";
 import { statusLabel } from "@/lib/labels";
 import type {
   TournamentFormat,
@@ -146,6 +147,7 @@ export function BoardContent({
 }: BoardContentProps) {
   const playable = matches.filter(isPlayable);
   const decided = matches.filter(isDecided);
+  const isSwiss = format === "swiss";
   const isRoundRobin = format === "round_robin";
   const isDoubleElim = format === "double_elim";
 
@@ -217,9 +219,14 @@ export function BoardContent({
         </section>
       )}
 
-      {/* standings + schedule (round-robin), WB/LB/GF (double-elim), or the
-          single bracket (single-elim). */}
-      {isRoundRobin ? (
+      {/* standings + schedule (round-robin / swiss), WB/LB/GF (double-elim), or
+          the single bracket (single-elim). */}
+      {isSwiss ? (
+        <section>
+          <div className={cn(SECTION_LABEL, "mb-4")}>Swiss</div>
+          <SwissView matches={matches} standings={standings} names={names} />
+        </section>
+      ) : isRoundRobin ? (
         <div className="grid gap-10 lg:grid-cols-[1fr_1.2fr]">
           <section>
             <div className={cn(SECTION_LABEL, "mb-4")}>Tabelle</div>

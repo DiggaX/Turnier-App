@@ -11,10 +11,15 @@ import {
 } from "@/components/brand/double-elim-view";
 import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { RoundRobinView } from "@/components/brand/round-robin-view";
+import { SwissView, type SwissMatch } from "@/components/brand/swiss-view";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
 import { formatLabel } from "@/lib/labels";
+import type { DoneMatch } from "@/lib/standings";
 import { createClient } from "@/lib/supabase/server";
+import { swissRoundCount } from "@/lib/swiss/pairing";
+import { swissStandings } from "@/lib/swiss/standings";
 
+import { AdvanceRoundButton } from "./advance-round-button";
 import { GenerateButton } from "./generate-button";
 import { SeedingClient } from "./seeding-client";
 
@@ -32,6 +37,8 @@ type RawMatch = {
   winner_id: string | null;
   participant_a_id: string | null;
   participant_b_id: string | null;
+  score_a: number | null;
+  score_b: number | null;
   a: { display_name: string } | null;
   b: { display_name: string } | null;
 };
@@ -86,7 +93,7 @@ export default async function BracketPage({
     .from("matches")
     .select(
       "id, bracket, round, slot, status, winner_id, participant_a_id, participant_b_id, " +
-        "a:participant_a_id(display_name), b:participant_b_id(display_name)",
+        "score_a, score_b, a:participant_a_id(display_name), b:participant_b_id(display_name)",
     )
     .eq("tournament_id", id)
     .order("round", { ascending: true })
@@ -105,6 +112,65 @@ export default async function BracketPage({
     aName: m.a?.display_name ?? null,
     bName: m.b?.display_name ?? null,
   }));
+
+  // Swiss-specific derived data (computed regardless of format; no-ops when empty).
+  const swissMatches: SwissMatch[] = (rawMatches ?? []).map((m) => ({
+    id: m.id,
+    bracket: m.bracket,
+    round: m.round,
+    slot: m.slot,
+    status: m.status,
+    winnerId: m.winner_id,
+    participantAId: m.participant_a_id,
+    participantBId: m.participant_b_id,
+    aName: m.a?.display_name ?? null,
+    bName: m.b?.display_name ?? null,
+    scoreA: m.score_a,
+    scoreB: m.score_b,
+  }));
+
+  const names: Record<string, string> = {};
+  for (const m of swissMatches) {
+    if (m.participantAId && m.aName) names[m.participantAId] = m.aName;
+    if (m.participantBId && m.bName) names[m.participantBId] = m.bName;
+  }
+
+  const doneForStandings: DoneMatch[] = swissMatches
+    .filter(
+      (m) =>
+        m.status === "done" &&
+        m.participantAId &&
+        m.participantBId &&
+        m.scoreA != null &&
+        m.scoreB != null,
+    )
+    .map((m) => ({
+      participantAId: m.participantAId!,
+      participantBId: m.participantBId!,
+      scoreA: m.scoreA!,
+      scoreB: m.scoreB!,
+    }));
+  const byeIdsForStandings = swissMatches
+    .filter((m) => m.status === "bye")
+    .map((m) => m.winnerId ?? m.participantAId)
+    .filter((x): x is string => !!x);
+  const swissStandingRows = swissStandings(doneForStandings, byeIdsForStandings);
+
+  const entrantCount = new Set(
+    swissMatches
+      .filter((m) => m.round === 1)
+      .flatMap((m) => [m.participantAId, m.participantBId])
+      .filter((x): x is string => !!x),
+  ).size;
+  const currentRound = swissMatches.length
+    ? Math.max(...swissMatches.map((m) => m.round))
+    : 0;
+  const totalRounds = swissRoundCount(entrantCount);
+  const currentRoundComplete =
+    currentRound > 0 &&
+    swissMatches
+      .filter((m) => m.round === currentRound)
+      .every((m) => m.status === "done" || m.status === "bye");
 
   const hasMatches = matches.length > 0;
   const seedParticipants = (checkedIn ?? []).map((p) => ({
@@ -176,7 +242,23 @@ export default async function BracketPage({
                 <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
                   Spielplan
                 </h2>
-                {tournament.format === "round_robin" ? (
+                {tournament.format === "swiss" ? (
+                  <div className="flex flex-col gap-6">
+                    <SwissView
+                      matches={swissMatches}
+                      standings={swissStandingRows}
+                      names={names}
+                    />
+                    {currentRoundComplete && currentRound < totalRounds && (
+                      <AdvanceRoundButton tournamentId={id} />
+                    )}
+                    {currentRound >= totalRounds && totalRounds > 0 && (
+                      <p className="font-display text-sm uppercase tracking-[0.12em] text-lime">
+                        Alle {totalRounds} Runden gespielt — Endstand steht.
+                      </p>
+                    )}
+                  </div>
+                ) : tournament.format === "round_robin" ? (
                   <RoundRobinView matches={matches} />
                 ) : tournament.format === "double_elim" ? (
                   <DoubleElimView matches={matches} />

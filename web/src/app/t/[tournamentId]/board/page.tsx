@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { computeStandings, type DoneMatch } from "@/lib/standings";
 import { createClient } from "@/lib/supabase/server";
+import { swissStandings } from "@/lib/swiss/standings";
 
 import { BoardContent, type BoardMatch } from "./board-content";
 import { LiveBoard } from "./live-board";
@@ -83,27 +84,37 @@ export default async function BoardPage(props: {
     if (m.participant_b_id && m.b) names[m.participant_b_id] = m.b.display_name;
   }
 
-  // Round-robin standings from the decided matches.
+  // Standings from the decided matches (round-robin and swiss).
   const isRoundRobin = tournament.format === "round_robin";
-  const standings = isRoundRobin
-    ? computeStandings(
-        matchRows
-          .filter(
-            (m) =>
-              m.status === "done" &&
-              m.participant_a_id != null &&
-              m.participant_b_id != null &&
-              m.score_a != null &&
-              m.score_b != null,
-          )
-          .map<DoneMatch>((m) => ({
-            participantAId: m.participant_a_id!,
-            participantBId: m.participant_b_id!,
-            scoreA: m.score_a!,
-            scoreB: m.score_b!,
-          })),
-      )
-    : [];
+  const isSwiss = tournament.format === "swiss";
+
+  const doneMatches: DoneMatch[] = matchRows
+    .filter(
+      (m) =>
+        m.status === "done" &&
+        m.participant_a_id != null &&
+        m.participant_b_id != null &&
+        m.score_a != null &&
+        m.score_b != null,
+    )
+    .map<DoneMatch>((m) => ({
+      participantAId: m.participant_a_id!,
+      participantBId: m.participant_b_id!,
+      scoreA: m.score_a!,
+      scoreB: m.score_b!,
+    }));
+
+  const byeIds: string[] = matchRows
+    .filter((m) => m.status === "bye")
+    .map((m) => m.winner_id ?? m.participant_a_id)
+    .filter((x): x is string => !!x);
+
+  const standings =
+    isSwiss
+      ? swissStandings(doneMatches, byeIds)
+      : isRoundRobin
+        ? computeStandings(doneMatches)
+        : [];
 
   return (
     <LiveBoard tournamentId={tournament.id}>
