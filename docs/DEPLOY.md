@@ -326,6 +326,55 @@ defense in depth). No PII beyond `display_name` and scores is shown.
 The kiosk also provides a **⛶ Vollbild** button using the Fullscreen API for tablet or
 monitor deployment.
 
+## Organizer-Admin (Modul 1) — one migration required
+
+Apply `supabase/migrations/20260627090000_organizer_admin.sql` (SQL Editor → Run). It makes
+two changes:
+
+1. **`tournaments.team_size` column** — `int not null default 1`, check `team_size >= 1`.
+   Team size is now stored per-tournament; the seeded game value is only used as a default
+   in the create form. Existing rows default to `1`.
+
+2. **RLS hardening for `tournaments` and `games`** — the prior write policies allowed any
+   authenticated user (including anonymous players) to insert/update/delete these rows. They
+   are replaced with staff-only policies (`is_staff()` — `admin`, `organizer`, or `referee`
+   role). This closes a security hole where a registered anonymous player could modify or
+   delete tournaments and games. Public `SELECT` is unchanged.
+
+No new Auth/Storage toggles are needed beyond what Plans 1–11 already enable.
+
+### New organizer routes
+
+| Route | Description |
+|---|---|
+| `/organizer/games` | List, add, inline-edit, and delete games (delete blocked while in use by a tournament). |
+| `/organizer/tournaments/new` | Create a draft tournament: name, game, format, mode, team size, optional start time. |
+| `/organizer/tournaments/[id]` | Tournament overview — facts, `EditTournamentForm`, `LifecycleControls`, delete. |
+| `/organizer/tournaments/[id]/participants/[pid]` | Participant detail — display name, gamertag, birthdate, QR code, edit + remove. |
+
+### Guided status flow
+
+```
+draft  →  registration  →  (bracket generation sets running)  →  finished
+         "Anmeldung öffnen"                                        "Turnier beenden"
+```
+
+- **draft → registration**: click "Anmeldung öffnen" on the overview. Players can now
+  register at `/t/<id>/register`.
+- **registration → running**: generated from the **Bracket** tab ("Generieren"). This also
+  flips status to `running` (unchanged from previous plans).
+- **running → finished**: click "Turnier beenden" on the overview.
+
+The "Löschen" button on the overview hard-deletes the tournament and cascades to all
+matches, participants, and consents.
+
+### Team size is now per-tournament
+
+`tournament.team_size` is the authoritative value — the game's `team_size` only seeds the
+default in the create form. The public registration and board pages read `tournament.team_size`
+directly; the `teamLabel()` helper (in `web/src/lib/tournament/lifecycle.ts`) renders it as
+`"Solo"` for `1` or `"NvN"` for larger values.
+
 ## Tests
 
 - Unit: `cd web && npm test` (Vitest)

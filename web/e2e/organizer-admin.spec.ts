@@ -1,0 +1,171 @@
+// End-to-end Organizer-Admin (Modul 1) against the live hosted Supabase:
+// the organizer adds a game, creates a tournament from /organizer/tournaments/new,
+// opens registration via the lifecycle controls, then visits the public register
+// page and asserts it renders (proves registration is open).
+//
+// This spec is fully self-contained: it creates a throwaway fixture game "E2E Game"
+// (skips creation if it already exists) and a uniquely-named tournament in `beforeAll`,
+// then deletes them in `afterAll` via the staff client (cascades to matches/participants/
+// consents). It never touches the shared seeded "Sommer Cup 2026".
+//
+// The game add step goes through the UI on /organizer/games.
+// The tournament creation step goes through the UI on /organizer/tournaments/new.
+// The status advance step is done via the LifecycleControls button on the overview page.
+import { test, expect, type Page } from "@playwright/test";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+const ORG_EMAIL = process.env.E2E_ORG_EMAIL;
+const ORG_PASSWORD = process.env.E2E_ORG_PASSWORD;
+
+// All actions require a staff session. Skip cleanly when organizer creds are
+// not configured (mirrors the other organizer specs).
+test.skip(!ORG_EMAIL || !ORG_PASSWORD, "organizer creds not configured");
+
+/**
+ * Sign in as the organizer and return a staff-scoped Supabase client. Used for
+ * cleanup in afterAll.
+ */
+async function staffClient(): Promise<SupabaseClient> {
+  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { error } = await client.auth.signInWithPassword({
+    email: ORG_EMAIL!,
+    password: ORG_PASSWORD!,
+  });
+  if (error) throw new Error(`organizer sign-in failed: ${error.message}`);
+  return client;
+}
+
+/** Log in as the organizer through the UI (default `page` context). */
+async function loginAsOrganizer(page: Page): Promise<void> {
+  await page.goto("/login");
+  await page.getByLabel(/e-?mail/i).first().fill(ORG_EMAIL!);
+  await page.getByLabel(/passwort|password/i).fill(ORG_PASSWORD!);
+  await page.getByRole("button", { name: /anmelden/i }).first().click();
+  await expect(page).toHaveURL(/\/organizer/);
+}
+
+const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+const FIXTURE_GAME_NAME = "E2E Game";
+const FIXTURE_TOURNAMENT_NAME = `E2E Admin ${uniqueSuffix}`;
+
+let fixtureId = "";
+let createdGameId = "";
+
+test.describe("Organizer admin", () => {
+  test.beforeAll(async () => {
+    expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
+    expect(
+      SUPABASE_ANON_KEY,
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set",
+    ).not.toBe("");
+  });
+
+  test.afterAll(async () => {
+    const staff = await staffClient();
+    // Delete the created tournament (cascades to participants / matches / consents).
+    if (fixtureId) {
+      await staff.from("tournaments").delete().eq("id", fixtureId);
+    }
+    // Delete the game only if we created it (skip if it pre-existed).
+    if (createdGameId) {
+      await staff.from("games").delete().eq("id", createdGameId);
+    }
+  });
+
+  test("create tournament, open registration, register page reachable", async ({
+    page,
+  }) => {
+    await loginAsOrganizer(page);
+
+    // ── Step 1: Go to /organizer/games and add "E2E Game" (team size 1) ──────
+    await page.goto("/organizer/games");
+
+    // Only add if the game does not already exist in the list.
+    const existingRow = page.getByRole("cell", { name: FIXTURE_GAME_NAME });
+    const gameAlreadyExists = await existingRow.count().then((c) => c > 0);
+
+    if (!gameAlreadyExists) {
+      // Fill the "add game" row at the bottom of the games table.
+      await page
+        .getByLabel("Name des neuen Spiels")
+        .fill(FIXTURE_GAME_NAME);
+      // team_size defaults to 1 in the AddGameRow, so no change needed.
+      await page.getByRole("button", { name: /hinzufügen/i }).click();
+
+      // Wait for the new row to appear — indicates the server action succeeded
+      // and router.refresh() has repopulated the list.
+      await expect(
+        page.getByRole("cell", { name: FIXTURE_GAME_NAME }),
+      ).toBeVisible({ timeout: 10_000 });
+
+      // Record the game id for cleanup via the staff client.
+      const staff = await staffClient();
+      const { data: g } = await staff
+        .from("games")
+        .select("id")
+        .eq("name", FIXTURE_GAME_NAME)
+        .maybeSingle();
+      if (g) createdGameId = g.id as string;
+    }
+
+    // ── Step 2: Create the tournament via /organizer/tournaments/new ──────────
+    await page.goto("/organizer/tournaments/new");
+    await expect(page.getByRole("heading", { name: /neues turnier/i })).toBeVisible();
+
+    await page.getByLabel("Name").fill(FIXTURE_TOURNAMENT_NAME);
+
+    // Select the game from the dropdown.
+    await page.getByLabel("Spiel").selectOption({ label: FIXTURE_GAME_NAME });
+
+    // Format: keep default (single_elim) or explicitly set it.
+    await page.getByLabel("Format").selectOption("single_elim");
+
+    // Mode: keep default (hybrid).
+    await page.getByLabel("Modus").selectOption("hybrid");
+
+    // Team size is seeded from the game (1); leave as-is.
+    // Leave "Start" empty — it's optional.
+
+    await page.getByRole("button", { name: /turnier anlegen/i }).click();
+
+    // After a successful create the server action redirects to the overview.
+    await expect(page).toHaveURL(/\/organizer\/tournaments\/[^/]+$/, {
+      timeout: 15_000,
+    });
+
+    // Capture the tournament id from the URL for cleanup.
+    const url = page.url();
+    const match = url.match(/\/organizer\/tournaments\/([^/]+)$/);
+    if (match) fixtureId = match[1];
+    expect(fixtureId, "tournament id must be captured from redirect URL").toBeTruthy();
+
+    // The overview page should show the tournament name and a "draft" status.
+    // Use a text locator rather than role-heading because the h1 applies CSS
+    // `uppercase` which does not affect the underlying text content, but
+    // role-heading name matching may vary by browser/accessibility-tree impl.
+    await expect(page.getByText(FIXTURE_TOURNAMENT_NAME, { exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // ── Step 3: Advance from "draft" to "registration" ────────────────────────
+    // The LifecycleControls renders "Anmeldung öffnen" for the draft→registration step.
+    const openBtn = page.getByRole("button", { name: /anmeldung öffnen/i });
+    await expect(openBtn).toBeVisible();
+    await openBtn.click();
+
+    // After the server action the status badge should update to "Anmeldung offen".
+    await expect(
+      page.getByText(/anmeldung offen/i, { exact: false }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // ── Step 4: Visit the public register page and assert it renders ──────────
+    await page.goto(`/t/${fixtureId}/register`);
+    // The register-client shows a heading "Anmeldung" when the tournament is in
+    // registration status; a 404 would leave the page without it.
+    await expect(
+      page.getByRole("heading", { name: /anmeldung/i }),
+    ).toBeVisible({ timeout: 10_000 });
+  });
+});
