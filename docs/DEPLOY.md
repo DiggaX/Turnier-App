@@ -223,6 +223,75 @@ No new Auth/Storage toggles needed.
 Supported formats are now `single_elim`, `round_robin`, `double_elim`, `swiss`, and
 `groups_playoffs`.
 
+## Plan 10 — Web Push
+
+### Schema migration
+
+Apply `supabase/migrations/20260625090000_push_subscriptions.sql` (SQL Editor → Run). It
+creates the `push_subscriptions` table (one row per participant/endpoint pair), enables RLS,
+and adds three policies: participants may insert and delete their own subscriptions; staff
+may select and delete any subscription (needed for delivery and stale-subscription pruning).
+No new Auth/Storage toggles are needed beyond what Plans 2–9 already enable.
+
+### VAPID environment variables
+
+Generate a VAPID key pair once:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Then add all three values to **`web/.env.local`** (local dev) AND to the **Vercel project
+environment** (Production + Preview):
+
+| Variable | Description |
+|---|---|
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | The public VAPID key (URL-safe base64). Exposed to the browser — safe to be public. |
+| `VAPID_PRIVATE_KEY` | The private VAPID key. **Server-only** — never include in `NEXT_PUBLIC_*`. |
+| `VAPID_SUBJECT` | Contact URI, e.g. `mailto:admin@example.com`. Identifies the push sender to browser vendors. |
+
+### How it works
+
+- **Players opt in** on their personal tournament page (`/t/<id>/me`). A
+  "Match-Benachrichtigungen" card shows a button "Benachrichtigungen aktivieren". Clicking
+  it registers the service worker (`/sw.js`), requests the browser notification permission,
+  subscribes via the Push API, and stores the encrypted subscription in `push_subscriptions`
+  via the `subscribeParticipant` server action. The subscription is **upserted by endpoint**,
+  so re-clicking is idempotent.
+- **Staff push** via the **"Spielbare Matches benachrichtigen"** button on the organizer
+  matches page (`/organizer/tournaments/<id>/matches`). The `notifyPlayableMatches` server
+  action selects all matches whose status is `pending` or `live` with both participant slots
+  filled, collects their subscriptions from `push_subscriptions`, and sends each a
+  VAPID-signed push via the `web-push` library. Subscriptions that respond with HTTP 404 or
+  410 (expired/unsubscribed) are automatically pruned.
+- The service worker (`public/sw.js`) renders incoming pushes as OS notifications and
+  focuses or opens the app URL on click.
+
+### Graceful degradation (no VAPID keys configured)
+
+The feature degrades safely when the VAPID environment variables are absent:
+
+- The opt-in card shows a disabled button and the message "Push ist noch nicht konfiguriert."
+- The notify action returns `{ error: "Push ist nicht konfiguriert (VAPID-Keys fehlen)." }`
+  and shows it in the UI without crashing.
+- The build and all unit tests pass without any VAPID keys set.
+
+### MVP scope and deferred work
+
+This release covers: manual staff-triggered delivery for all participants with a currently
+playable match. The following are **deferred** for a later plan:
+
+- Auto-send when a result is confirmed or a new round is generated (would hook each result
+  action — significant blast radius).
+- Per-event or per-participant notification preferences.
+- Team-wide fan-out (notify all registered teammates, not just the playing participant).
+
+### iOS note
+
+Web Push on iOS 16.4+ requires the site to be **added to the Home Screen** (installed PWA).
+Notifications will not appear in Safari without this step. Instruct participants
+accordingly.
+
 ## Tests
 
 - Unit: `cd web && npm test` (Vitest)
