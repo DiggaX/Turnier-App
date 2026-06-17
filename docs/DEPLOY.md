@@ -158,6 +158,31 @@ public **live board** (`/t/<id>/board`). Supported formats are now `single_elim`
   - `NEXT_PUBLIC_SUPABASE_URL` = hosted Supabase project URL
   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = hosted anon/publishable key
 
+## Swiss System (Plan 8) — no migration required
+
+**No migration.** The `tournament_format` enum already includes `'swiss'` (declared in
+`20260616120000_base_schema.sql`) and the `matches` table already supports byes
+(`status = 'bye'`, nullable `participant_b_id`) — single-elim already emits them.
+This plan is application code only.
+
+**How Swiss works:**
+
+- `R = ceil(log2(N))` rounds are played (e.g. 4 entrants → 2 rounds, 8 → 3 rounds).
+- No one is eliminated; the final standings after all `R` rounds decide the winner.
+- Odd entrant counts give the lowest-ranked bye-less player a **bye** (free win) each round.
+- Round 1 is generated from the bracket page like any other format (seed → "Generieren").
+- The organizer **advances** rounds from the bracket page: once every match in the current
+  round is decided (`done` or `bye`), a **"Nächste Runde auslosen"** button appears. Clicking
+  it computes the next round's pairings from the live standings (avoiding rematches and
+  repeat byes) and inserts the new matches.
+- Results use the existing `report_match` / `confirm_match` flow — no RPC changes.
+- Both the organizer **Bracket** page and the public **live board** render a
+  **standings table** (byes counted as wins) plus a **per-round schedule**.
+- After all `R` rounds are played the advance button is replaced by
+  "Alle R Runden gespielt — Endstand steht."
+
+Supported formats are now `single_elim`, `round_robin`, `double_elim`, and `swiss`.
+
 ## Tests
 
 - Unit: `cd web && npm test` (Vitest)
