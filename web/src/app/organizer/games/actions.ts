@@ -1,6 +1,6 @@
 "use server";
 
-import { friendlyDbError } from "@/lib/db-errors";
+import { friendlyDbError, pgErrorCode } from "@/lib/db-errors";
 import { requireStaff, type ActionResult } from "@/lib/auth/staff";
 
 export async function createGame(name: string, teamSize: number): Promise<ActionResult> {
@@ -20,8 +20,12 @@ export async function updateGame(id: string, name: string, teamSize: number): Pr
   const n = name?.trim();
   if (!n) return { error: "Name ist erforderlich." };
   if (!Number.isInteger(teamSize) || teamSize < 1) return { error: "Teamgröße ≥ 1." };
-  const { error } = await guard.supabase.from("games").update({ name: n, team_size: teamSize }).eq("id", id);
+  const { error, count } = await guard.supabase
+    .from("games")
+    .update({ name: n, team_size: teamSize }, { count: "exact" })
+    .eq("id", id);
   if (error) return { error: friendlyDbError(error, "Spiel konnte nicht gespeichert werden.") };
+  if ((count ?? 0) === 0) return { error: "Spiel wurde nicht gefunden oder bereits gelöscht." };
   return { ok: true };
 }
 
@@ -29,14 +33,20 @@ export async function updateGame(id: string, name: string, teamSize: number): Pr
 export async function deleteGame(id: string): Promise<ActionResult> {
   const guard = await requireStaff();
   if ("error" in guard) return guard;
-  const { count } = await guard.supabase
+  const { count, error: countError } = await guard.supabase
     .from("tournaments")
     .select("id", { count: "exact", head: true })
     .eq("game_id", id);
+  if (countError) return { error: friendlyDbError(countError, "Prüfung fehlgeschlagen.") };
   if ((count ?? 0) > 0) {
     return { error: `Spiel wird von ${count} Turnier(en) genutzt und kann nicht gelöscht werden.` };
   }
   const { error } = await guard.supabase.from("games").delete().eq("id", id);
-  if (error) return { error: friendlyDbError(error, "Spiel konnte nicht gelöscht werden.") };
+  if (error) {
+    if (pgErrorCode(error) === "23503") {
+      return { error: "Spiel wird noch von einem Turnier genutzt und kann nicht gelöscht werden." };
+    }
+    return { error: friendlyDbError(error, "Spiel konnte nicht gelöscht werden.") };
+  }
   return { ok: true };
 }
