@@ -114,6 +114,30 @@ calls `router.refresh()` on any change, so the board updates when the referee co
 result. Realtime is **best-effort** — if the publication above isn't applied the board still
 renders correctly and a normal reload reflects the latest state.
 
+## Double Elimination (Plan 7) — additional setup
+
+Apply two migrations (SQL Editor → Run, in order):
+
+1. `supabase/migrations/20260622090000_double_elim.sql` — adds `matches.bracket`
+   (`'winner' | 'loser' | 'grand_final'`, default `'winner'`) plus the loser-advancement
+   links `matches.loser_next_match_id` / `matches.loser_next_slot`. Idempotent
+   (`add column if not exists`).
+2. `supabase/migrations/20260622093000_confirm_match_loser.sql` — replaces `confirm_match`
+   so that, in addition to advancing the winner, it **drops the loser** into the loser
+   bracket via the stored `loser_next_match_id` / `loser_next_slot` (keeping the Plan 5
+   downstream-correction guard for both the winner's and the loser's follow-up matches).
+
+No new Auth/Storage toggles.
+
+**Double Elimination** supports **power-of-two** entrant counts (4 / 8 / 16 …); other counts
+are rejected with a friendly message. Generation builds a Winner Bracket (the seeded
+single-elim), a Loser Bracket (`2·(log2 N − 1)` rounds of alternating minor/major rounds
+where WB losers drop in), and a single Grand Final fed by the WB-final and LB-final winners.
+The bracket is rendered as three labelled sections (**Winner Bracket / Loser Bracket / Grand
+Final**) on both the organizer **Bracket** page (`/organizer/tournaments/<id>/bracket`) and the
+public **live board** (`/t/<id>/board`). Supported formats are now `single_elim`,
+`round_robin`, and `double_elim`.
+
 ## Local dev
 
 1. Create `web/.env.local` (copy `web/.env.example`) and fill in:
