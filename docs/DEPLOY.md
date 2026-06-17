@@ -94,6 +94,14 @@ Apply `supabase/migrations/20260621090000_realtime.sql` (SQL Editor → Run). It
 live board receives push updates. (If a table is already in the publication, run the two
 `alter publication` lines individually.) No new Auth/Storage toggles.
 
+Also apply `supabase/migrations/20260621093000_board_participants_public.sql` (SQL Editor →
+Run). The board is anon and renders each match side's **display name**; the prior
+`participants` RLS only let the owner/staff read those rows, so without this the board shows
+"TBD" sides. It adds a public SELECT policy scoped **to the `anon` role** plus a
+column-level grant limiting `anon` to `(id, tournament_id, display_name)` — so display
+names are public but PII (birthdate, user_id, gamertag) stays private, and authenticated
+registrants keep the stricter owner-or-staff policy.
+
 **Public live board** (`/t/<id>/board`): a login-free beamer view. Single-elim shows the
 full bracket; round-robin shows the standings table + schedule. A **"Jetzt spielbar"**
 section lists matches with both participants present that aren't done yet, and an
