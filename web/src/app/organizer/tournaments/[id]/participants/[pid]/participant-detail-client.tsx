@@ -50,6 +50,7 @@ export function ParticipantDetailClient({
     setSaved(false);
     const res = await updateParticipant(
       participantId,
+      tournamentId,
       values.displayName,
       values.gamertag?.trim() || null,
     );
@@ -71,7 +72,7 @@ export function ParticipantDetailClient({
     }
     setError(null);
     setRemoving(true);
-    const res = await removeParticipant(participantId);
+    const res = await removeParticipant(participantId, tournamentId);
     if (res && "error" in res) {
       setError(res.error);
       setRemoving(false);

@@ -7,13 +7,9 @@ import { QrCode } from "@/components/qr-code";
 import { createClient } from "@/lib/supabase/server";
 
 import { ParticipantDetailClient } from "./participant-detail-client";
+import { TYPE_LABELS } from "../participant-types";
 
 export const metadata: Metadata = { title: "Teilnehmer — Turnier-App" };
-
-const TYPE_LABELS: Record<string, string> = {
-  solo: "Solo",
-  team: "Team",
-};
 
 export default async function ParticipantDetailPage({
   params,
@@ -99,7 +95,15 @@ export default async function ParticipantDetailPage({
                 <dt className="font-display text-[10px] uppercase tracking-[0.12em] text-fg-dim">
                   Geburtsdatum
                 </dt>
-                <dd className="text-fg-muted">{participant.birthdate}</dd>
+                <dd className="text-fg-muted">
+                  {participant.birthdate
+                    ? new Date(participant.birthdate).toLocaleDateString("de-DE", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                      })
+                    : "—"}
+                </dd>
 
                 <dt className="font-display text-[10px] uppercase tracking-[0.12em] text-fg-dim">
                   Einwilligung

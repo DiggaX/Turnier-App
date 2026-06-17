@@ -13,14 +13,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
+import { TYPE_LABELS } from "./participant-types";
 
 export const metadata: Metadata = {
   title: "Teilnehmer — Turnier-App",
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  solo: "Solo",
-  team: "Team",
 };
 
 export default async function ParticipantsPage({
