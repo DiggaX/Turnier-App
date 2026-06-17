@@ -132,20 +132,26 @@ export interface Database {
       matches: {
         Row: {
           id: string; tournament_id: string; round: number; slot: number;
+          bracket: string;
           participant_a_id: string | null; participant_b_id: string | null;
           winner_id: string | null; next_match_id: string | null; next_slot: string | null;
+          loser_next_match_id: string | null; loser_next_slot: string | null;
           status: MatchStatus; score_a: number | null; score_b: number | null; created_at: string;
         };
         Insert: {
           id?: string; tournament_id: string; round: number; slot: number;
+          bracket?: string;
           participant_a_id?: string | null; participant_b_id?: string | null;
           winner_id?: string | null; next_match_id?: string | null; next_slot?: string | null;
+          loser_next_match_id?: string | null; loser_next_slot?: string | null;
           status?: MatchStatus; score_a?: number | null; score_b?: number | null; created_at?: string;
         };
         Update: {
           id?: string; tournament_id?: string; round?: number; slot?: number;
+          bracket?: string;
           participant_a_id?: string | null; participant_b_id?: string | null;
           winner_id?: string | null; next_match_id?: string | null; next_slot?: string | null;
+          loser_next_match_id?: string | null; loser_next_slot?: string | null;
           status?: MatchStatus; score_a?: number | null; score_b?: number | null; created_at?: string;
         };
         Relationships: [

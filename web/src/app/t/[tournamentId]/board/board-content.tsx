@@ -1,4 +1,5 @@
 import { BracketView, type BracketMatch } from "@/components/brand/bracket-view";
+import { DoubleElimView } from "@/components/brand/double-elim-view";
 import { RoundRobinView } from "@/components/brand/round-robin-view";
 import { StandingsTable } from "@/components/brand/standings-table";
 import { statusLabel } from "@/lib/labels";
@@ -11,6 +12,8 @@ import { cn } from "@/lib/utils";
 
 /** A match enriched with names + scores for the board. */
 export type BoardMatch = BracketMatch & {
+  /** Which sub-bracket the match belongs to (winner/loser/grand_final). */
+  bracket: string;
   scoreA: number | null;
   scoreB: number | null;
 };
@@ -144,6 +147,7 @@ export function BoardContent({
   const playable = matches.filter(isPlayable);
   const decided = matches.filter(isDecided);
   const isRoundRobin = format === "round_robin";
+  const isDoubleElim = format === "double_elim";
 
   return (
     <div className="mx-auto max-w-[1280px] px-6 pb-20 pt-8 sm:px-10">
@@ -213,7 +217,8 @@ export function BoardContent({
         </section>
       )}
 
-      {/* bracket (single-elim) or standings + schedule (round-robin) */}
+      {/* standings + schedule (round-robin), WB/LB/GF (double-elim), or the
+          single bracket (single-elim). */}
       {isRoundRobin ? (
         <div className="grid gap-10 lg:grid-cols-[1fr_1.2fr]">
           <section>
@@ -225,6 +230,11 @@ export function BoardContent({
             <RoundRobinView matches={matches} />
           </section>
         </div>
+      ) : isDoubleElim ? (
+        <section>
+          <div className={cn(SECTION_LABEL, "mb-4")}>Turnierbaum</div>
+          <DoubleElimView matches={matches} />
+        </section>
       ) : (
         <section>
           <div className={cn(SECTION_LABEL, "mb-4")}>Turnierbaum</div>

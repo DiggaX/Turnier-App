@@ -5,6 +5,10 @@ import {
   BracketView,
   type BracketMatch,
 } from "@/components/brand/bracket-view";
+import {
+  DoubleElimView,
+  type DoubleElimMatch,
+} from "@/components/brand/double-elim-view";
 import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { RoundRobinView } from "@/components/brand/round-robin-view";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
@@ -21,6 +25,7 @@ export const metadata: Metadata = {
 /** A match row with the embedded participant rows PostgREST returns. */
 type RawMatch = {
   id: string;
+  bracket: string;
   round: number;
   slot: number;
   status: BracketMatch["status"];
@@ -80,7 +85,7 @@ export default async function BracketPage({
   const { data: rawMatches } = await supabase
     .from("matches")
     .select(
-      "id, round, slot, status, winner_id, participant_a_id, participant_b_id, " +
+      "id, bracket, round, slot, status, winner_id, participant_a_id, participant_b_id, " +
         "a:participant_a_id(display_name), b:participant_b_id(display_name)",
     )
     .eq("tournament_id", id)
@@ -88,8 +93,9 @@ export default async function BracketPage({
     .order("slot", { ascending: true })
     .overrideTypes<RawMatch[]>();
 
-  const matches: BracketMatch[] = (rawMatches ?? []).map((m) => ({
+  const matches: DoubleElimMatch[] = (rawMatches ?? []).map((m) => ({
     id: m.id,
+    bracket: m.bracket,
     round: m.round,
     slot: m.slot,
     status: m.status,
@@ -172,6 +178,8 @@ export default async function BracketPage({
                 </h2>
                 {tournament.format === "round_robin" ? (
                   <RoundRobinView matches={matches} />
+                ) : tournament.format === "double_elim" ? (
+                  <DoubleElimView matches={matches} />
                 ) : (
                   <BracketView matches={matches} />
                 )}

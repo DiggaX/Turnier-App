@@ -14,6 +14,7 @@ export const metadata: Metadata = {
 /** A match row with embedded participant names, as PostgREST returns it. */
 type RawMatch = {
   id: string;
+  bracket: string;
   round: number;
   slot: number;
   status: BoardMatch["status"];
@@ -49,7 +50,7 @@ export default async function BoardPage(props: {
   const { data: rawMatches } = await supabase
     .from("matches")
     .select(
-      "id, round, slot, status, winner_id, participant_a_id, participant_b_id, " +
+      "id, bracket, round, slot, status, winner_id, participant_a_id, participant_b_id, " +
         "score_a, score_b, a:participant_a_id(display_name), b:participant_b_id(display_name)",
     )
     .eq("tournament_id", tournamentId)
@@ -61,6 +62,7 @@ export default async function BoardPage(props: {
 
   const matches: BoardMatch[] = matchRows.map((m) => ({
     id: m.id,
+    bracket: m.bracket,
     round: m.round,
     slot: m.slot,
     status: m.status,

@@ -1,11 +1,13 @@
 "use server";
 
+import { generateDoubleElim } from "@/lib/bracket/double-elim";
 import { generateRoundRobin } from "@/lib/bracket/round-robin";
 import { generateSingleElim } from "@/lib/bracket/single-elim";
 import {
   buildIdMap,
   resolveByeAdvances,
   resolveLinkUpdates,
+  resolveLoserLinkUpdates,
 } from "@/lib/bracket/resolve-links";
 import type { GeneratedMatch, SeededParticipant } from "@/lib/bracket/types";
 import type { Database, TournamentFormat } from "@/lib/database.types";
@@ -111,6 +113,8 @@ function generatorFor(
       return generateSingleElim;
     case "round_robin":
       return generateRoundRobin;
+    case "double_elim":
+      return generateDoubleElim;
     default:
       return null;
   }
@@ -194,7 +198,20 @@ export async function generateBracket(
     }
   }
 
-  const generated = generator(seeded);
+  // The double-elim generator throws for non-power-of-two entrant counts;
+  // surface that as a friendly message instead of a 500.
+  let generated: GeneratedMatch[];
+  try {
+    generated = generator(seeded);
+  } catch {
+    if (tournament.format === "double_elim") {
+      return {
+        error:
+          "Double Elimination braucht 4, 8, 16 … (Zweierpotenz) eingecheckte Teilnehmer.",
+      };
+    }
+    return { error: "Es konnten keine Matches erzeugt werden." };
+  }
   if (generated.length === 0) {
     return { error: "Es konnten keine Matches erzeugt werden." };
   }
@@ -208,9 +225,11 @@ export async function generateBracket(
     return { error: friendlyDbError(delErr, "Vorhandene Matches konnten nicht entfernt werden.") };
   }
 
-  // 2. Insert the generated matches. next_match_id/next_slot stay null for now.
+  // 2. Insert the generated matches. Advancement-link columns stay null for
+  // now; the `bracket` column is persisted so resolution can key on it.
   const rows: MatchInsert[] = generated.map((m) => ({
     tournament_id: tournamentId,
+    bracket: m.bracket,
     round: m.round,
     slot: m.slot,
     participant_a_id: m.participantAId,
@@ -222,14 +241,18 @@ export async function generateBracket(
   const { data: inserted, error: insErr } = await supabase
     .from("matches")
     .insert(rows)
-    .select("id, round, slot");
+    .select("id, bracket, round, slot");
 
   if (insErr || !inserted) {
     return { error: friendlyDbError(insErr, "Matches konnten nicht angelegt werden.") };
   }
 
-  // 3. Single-elim: resolve advancement links and bye auto-advances.
-  if (tournament.format === "single_elim") {
+  // 3. Elimination formats: resolve advancement links. Single-elim also
+  // auto-advances byes; double-elim additionally wires each match's loser drop.
+  if (
+    tournament.format === "single_elim" ||
+    tournament.format === "double_elim"
+  ) {
     let idMap;
     try {
       idMap = buildIdMap(generated, inserted);
@@ -237,6 +260,7 @@ export async function generateBracket(
       return { error: "Bracket konnte nicht verknüpft werden." };
     }
 
+    // 3a. Winner advancement links (both formats).
     const linkUpdates = resolveLinkUpdates(generated, idMap);
     for (const u of linkUpdates) {
       const { error: linkErr } = await supabase
@@ -248,19 +272,38 @@ export async function generateBracket(
       }
     }
 
-    // 4. Bye propagation: a bye winner already advances into its next match.
-    const advances = resolveByeAdvances(generated, idMap);
-    for (const a of advances) {
-      const patch =
-        a.nextSlot === "a"
-          ? { participant_a_id: a.winnerId }
-          : { participant_b_id: a.winnerId };
-      const { error: advErr } = await supabase
-        .from("matches")
-        .update(patch)
-        .eq("id", a.nextMatchId);
-      if (advErr) {
-        return { error: friendlyDbError(advErr, "Freilos konnte nicht weitergeleitet werden.") };
+    if (tournament.format === "double_elim") {
+      // 3b. Loser drop links (double-elim only): each WB loser falls to the LB.
+      const loserUpdates = resolveLoserLinkUpdates(generated, idMap);
+      for (const u of loserUpdates) {
+        const { error: loserErr } = await supabase
+          .from("matches")
+          .update({
+            loser_next_match_id: u.loserNextMatchId,
+            loser_next_slot: u.loserNextSlot,
+          })
+          .eq("id", u.id);
+        if (loserErr) {
+          return { error: friendlyDbError(loserErr, "Bracket-Verknüpfung fehlgeschlagen.") };
+        }
+      }
+      // No bye propagation: a power-of-two double-elim bracket has no byes.
+    } else {
+      // 4. Single-elim bye propagation: a bye winner already advances into its
+      // next match.
+      const advances = resolveByeAdvances(generated, idMap);
+      for (const a of advances) {
+        const patch =
+          a.nextSlot === "a"
+            ? { participant_a_id: a.winnerId }
+            : { participant_b_id: a.winnerId };
+        const { error: advErr } = await supabase
+          .from("matches")
+          .update(patch)
+          .eq("id", a.nextMatchId);
+        if (advErr) {
+          return { error: friendlyDbError(advErr, "Freilos konnte nicht weitergeleitet werden.") };
+        }
       }
     }
   }
