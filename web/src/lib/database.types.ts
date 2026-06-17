@@ -39,17 +39,17 @@ export interface Database {
         Row: {
           id: string; name: string; game_id: string; format: TournamentFormat;
           mode: TournamentMode; status: TournamentStatus; starts_at: string | null;
-          created_by: string | null; created_at: string;
+          created_by: string | null; created_at: string; team_size: number;
         };
         Insert: {
           id?: string; name: string; game_id: string; format: TournamentFormat;
           mode?: TournamentMode; status?: TournamentStatus; starts_at?: string | null;
-          created_by?: string | null; created_at?: string;
+          created_by?: string | null; created_at?: string; team_size?: number;
         };
         Update: {
           id?: string; name?: string; game_id?: string; format?: TournamentFormat;
           mode?: TournamentMode; status?: TournamentStatus; starts_at?: string | null;
-          created_by?: string | null; created_at?: string;
+          created_by?: string | null; created_at?: string; team_size?: number;
         };
         Relationships: [
           { foreignKeyName: "tournaments_game_id_fkey"; columns: ["game_id"]; referencedRelation: "games"; referencedColumns: ["id"] }
