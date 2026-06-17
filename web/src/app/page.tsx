@@ -5,6 +5,7 @@ import { TournamentCard } from "@/components/brand/tournament-card";
 import { createClient } from "@/lib/supabase/server";
 import { formatLabel } from "@/lib/labels";
 import type { TournamentStatus } from "@/lib/database.types";
+import { teamLabel } from "@/lib/tournament/lifecycle";
 
 /** Sort order: running first, then registration, then drafts, then finished. */
 const STATUS_RANK: Record<TournamentStatus, number> = {
@@ -52,7 +53,7 @@ export default async function Home() {
   const { data } = await supabase
     .from("tournaments")
     .select(
-      "id, name, format, mode, status, starts_at, games(name, team_size), participants(id)",
+      "id, name, format, mode, status, starts_at, team_size, games(name), participants(id)",
     )
     .order("starts_at", { ascending: true, nullsFirst: false });
 
@@ -92,10 +93,10 @@ export default async function Home() {
 
             {tournaments.map((t) => {
               const gameName = t.games?.name ?? "Unbekanntes Spiel";
-              const teamSize = t.games?.team_size;
+              const teamSize = t.team_size ?? 1;
               const gameLine =
-                teamSize && teamSize > 1
-                  ? `${gameName} · ${teamSize}v${teamSize}`
+                teamSize > 1
+                  ? `${gameName} · ${teamLabel(teamSize)}`
                   : gameName;
               const count = t.participants?.length ?? 0;
 

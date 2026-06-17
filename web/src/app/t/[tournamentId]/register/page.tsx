@@ -10,7 +10,7 @@ export default async function RegisterPage(props: {
 
   const { data: tournament } = await supabase
     .from("tournaments")
-    .select("id, name, status, game:games(team_size)")
+    .select("id, name, status, team_size")
     .eq("id", tournamentId)
     .maybeSingle();
 
@@ -18,7 +18,7 @@ export default async function RegisterPage(props: {
     notFound();
   }
 
-  const teamSize = tournament.game?.team_size ?? 1;
+  const teamSize = tournament.team_size ?? 1;
 
   return (
     <RegisterClient

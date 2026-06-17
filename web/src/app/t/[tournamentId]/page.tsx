@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatLabel, modeLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { TournamentStatus } from "@/lib/database.types";
+import { teamLabel } from "@/lib/tournament/lifecycle";
 
 /** Lifecycle phases in order, as shown in the design's "Status der Phasen". */
 const PHASES: TournamentStatus[] = [
@@ -47,7 +48,7 @@ export default async function TournamentDetailPage(props: {
   const { data: tournament } = await supabase
     .from("tournaments")
     .select(
-      "id, name, format, mode, status, starts_at, games(name, team_size), participants(id)",
+      "id, name, format, mode, status, starts_at, team_size, games(name), participants(id)",
     )
     .eq("id", tournamentId)
     .maybeSingle();
@@ -57,9 +58,9 @@ export default async function TournamentDetailPage(props: {
   }
 
   const gameName = tournament.games?.name ?? "Unbekanntes Spiel";
-  const teamSize = tournament.games?.team_size;
-  const isTeam = !!teamSize && teamSize > 1;
-  const gameLine = isTeam ? `${gameName} · ${teamSize}v${teamSize}` : gameName;
+  const teamSize = tournament.team_size ?? 1;
+  const isTeam = teamSize > 1;
+  const gameLine = isTeam ? `${gameName} · ${teamLabel(teamSize)}` : gameName;
   const participantCount = tournament.participants?.length ?? 0;
   const currentPhase = PHASES.indexOf(tournament.status);
 
