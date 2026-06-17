@@ -13,25 +13,6 @@ type MockClient = {
   from: ReturnType<typeof vi.fn>;
 };
 
-// Build a chainable Supabase query builder stub.
-function makeQueryBuilder(resolveWith: unknown) {
-  const stub: Record<string, unknown> = {};
-  const chain = (returnValue: unknown = stub) =>
-    new Proxy(stub, {
-      get(_, prop: string) {
-        if (prop === "then") return undefined; // not a thenable
-        return (..._args: unknown[]) => {
-          // terminal selectors return a promise
-          if (prop === "maybeSingle" || prop === "select") {
-            return Promise.resolve(resolveWith);
-          }
-          return chain(returnValue);
-        };
-      },
-    });
-  return chain();
-}
-
 let mockClient: MockClient;
 
 vi.mock("@/lib/supabase/server", () => ({

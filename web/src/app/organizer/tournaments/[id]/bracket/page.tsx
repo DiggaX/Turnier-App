@@ -162,7 +162,7 @@ export default async function BracketPage({
   // Groups-playoffs derived data — only computed for the groups_playoffs format
   // (mirrors the guard in board/page.tsx; avoids unnecessary work for other formats).
   let groupMatches: GroupMatch[] = [];
-  let standingsByGroup: Record<number, ReturnType<typeof computeStandings>> = {};
+  const standingsByGroup: Record<number, ReturnType<typeof computeStandings>> = {};
   let groupStageComplete = false;
   let playoffExists = false;
 
