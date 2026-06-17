@@ -52,7 +52,7 @@ export default async function Home() {
   const { data } = await supabase
     .from("tournaments")
     .select(
-      "id, name, format, mode, status, starts_at, games(name, team_size), participants(count)",
+      "id, name, format, mode, status, starts_at, games(name, team_size), participants(id)",
     )
     .order("starts_at", { ascending: true, nullsFirst: false });
 
@@ -97,7 +97,7 @@ export default async function Home() {
                 teamSize && teamSize > 1
                   ? `${gameName} · ${teamSize}v${teamSize}`
                   : gameName;
-              const count = t.participants?.[0]?.count ?? 0;
+              const count = t.participants?.length ?? 0;
 
               return (
                 <TournamentCard

@@ -47,7 +47,7 @@ export default async function TournamentDetailPage(props: {
   const { data: tournament } = await supabase
     .from("tournaments")
     .select(
-      "id, name, format, mode, status, starts_at, games(name, team_size), participants(count)",
+      "id, name, format, mode, status, starts_at, games(name, team_size), participants(id)",
     )
     .eq("id", tournamentId)
     .maybeSingle();
@@ -60,7 +60,7 @@ export default async function TournamentDetailPage(props: {
   const teamSize = tournament.games?.team_size;
   const isTeam = !!teamSize && teamSize > 1;
   const gameLine = isTeam ? `${gameName} · ${teamSize}v${teamSize}` : gameName;
-  const participantCount = tournament.participants?.[0]?.count ?? 0;
+  const participantCount = tournament.participants?.length ?? 0;
   const currentPhase = PHASES.indexOf(tournament.status);
 
   return (
