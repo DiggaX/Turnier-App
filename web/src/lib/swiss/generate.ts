@@ -1,5 +1,5 @@
 import type { GeneratedMatch, SeededParticipant } from "@/lib/bracket/types";
-import { pairSwissRound } from "@/lib/swiss/pairing";
+import { pairSwissRound } from "./pairing";
 
 /**
  * Round 1 of a Swiss tournament: pair players in seed order (no history yet, so

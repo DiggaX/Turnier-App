@@ -10,6 +10,8 @@ import {
  * only via a bye are included. Sorted wins desc, diff desc, scoreFor desc, then
  * participantId asc as a deterministic final tiebreak (so the ranked order fed
  * to pairing is stable across calls).
+ *
+ * @param byeIds - one entry per bye awarded; no deduplication is applied.
  */
 export function swissStandings(
   done: DoneMatch[],

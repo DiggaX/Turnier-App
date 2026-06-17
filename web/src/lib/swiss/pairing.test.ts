@@ -54,6 +54,15 @@ describe("pairSwissRound", () => {
     expect(pairings).toEqual([["p1", "p3"]]);
   });
 
+  it("falls back to the last player when everyone already had a bye", () => {
+    const { bye } = pairSwissRound(
+      ["p1", "p2", "p3"],
+      new Set(),
+      new Set(["p1", "p2", "p3"]),
+    );
+    expect(bye).toBe("p3");
+  });
+
   it("avoids rematches by pairing the next un-played opponent", () => {
     const played = new Set([pairKey("p1", "p2"), pairKey("p3", "p4")]);
     const { pairings } = pairSwissRound(

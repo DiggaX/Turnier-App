@@ -23,6 +23,7 @@ describe("generateSwissRoundOne", () => {
       participantBId: null,
       winnerId: "p5",
     });
+    expect(bye.slot).toBe(2);
   });
 
   it("returns [] below 2 participants", () => {
