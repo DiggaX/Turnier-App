@@ -23,10 +23,16 @@ export type MatchStatus = "pending" | "live" | "done" | "bye";
 export interface Database {
   public: {
     Tables: {
+      organizations: {
+        Row: { id: string; name: string; slug: string; created_at: string };
+        Insert: { id?: string; name: string; slug: string; created_at?: string };
+        Update: { id?: string; name?: string; slug?: string; created_at?: string };
+        Relationships: [];
+      };
       profiles: {
-        Row: { id: string; role: UserRole; display_name: string | null; created_at: string };
-        Insert: { id: string; role?: UserRole; display_name?: string | null; created_at?: string };
-        Update: { id?: string; role?: UserRole; display_name?: string | null; created_at?: string };
+        Row: { id: string; role: UserRole; display_name: string | null; created_at: string; org_id: string | null };
+        Insert: { id: string; role?: UserRole; display_name?: string | null; created_at?: string; org_id?: string | null };
+        Update: { id?: string; role?: UserRole; display_name?: string | null; created_at?: string; org_id?: string | null };
         Relationships: [];
       };
       games: {
@@ -40,16 +46,19 @@ export interface Database {
           id: string; name: string; game_id: string; format: TournamentFormat;
           mode: TournamentMode; status: TournamentStatus; starts_at: string | null;
           created_by: string | null; created_at: string; team_size: number;
+          org_id: string;
         };
         Insert: {
           id?: string; name: string; game_id: string; format: TournamentFormat;
           mode?: TournamentMode; status?: TournamentStatus; starts_at?: string | null;
           created_by?: string | null; created_at?: string; team_size?: number;
+          org_id?: string;
         };
         Update: {
           id?: string; name?: string; game_id?: string; format?: TournamentFormat;
           mode?: TournamentMode; status?: TournamentStatus; starts_at?: string | null;
           created_by?: string | null; created_at?: string; team_size?: number;
+          org_id?: string;
         };
         Relationships: [
           { foreignKeyName: "tournaments_game_id_fkey"; columns: ["game_id"]; referencedRelation: "games"; referencedColumns: ["id"] }
