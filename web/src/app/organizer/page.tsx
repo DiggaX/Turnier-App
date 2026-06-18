@@ -47,17 +47,16 @@ export default async function OrganizerPage() {
     redirect("/login");
   }
 
-  const tournamentsQuery = supabase
-    .from("tournaments")
-    .select("id, name, status")
-    .order("created_at", { ascending: false });
-
-  // Defense-in-depth: scope to caller's org even though RLS already does this.
+  // Spec: when org_id is null, render the empty state at the application layer.
+  let tournaments: { id: string; name: string; status: string }[] = [];
   if (profile.org_id) {
-    tournamentsQuery.eq("org_id", profile.org_id);
+    const { data } = await supabase
+      .from("tournaments")
+      .select("id, name, status")
+      .eq("org_id", profile.org_id)
+      .order("created_at", { ascending: false });
+    tournaments = data ?? [];
   }
-
-  const { data: tournaments } = await tournamentsQuery;
 
   return (
     <>

@@ -28,33 +28,6 @@ export async function requireStaff(): Promise<
 }
 
 /**
- * Like requireStaff, but also fetches org_id and user.id in a single DB
- * round-trip so callers don't need a second getUser() + profiles query.
- */
-export async function requireStaffWithOrg(): Promise<
-  { supabase: Supabase; userId: string; orgId: string } | { error: string }
-> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Nicht angemeldet." };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, org_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
-    return { error: "Diese Aktion ist nicht erlaubt." };
-  }
-  if (!profile.org_id) {
-    return { error: "Kein Org-Kontext — dein Account ist keiner Organisation zugeordnet." };
-  }
-  return { supabase, userId: user.id, orgId: profile.org_id };
-}
-
-/**
  * Guard for actions that require admin or organizer privileges.
  * Referees are excluded: they are match scorers and must not manage the
  * game catalog (add/rename/remove sport types).
