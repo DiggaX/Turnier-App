@@ -5,15 +5,17 @@ import { cn } from "@/lib/utils";
 
 export type OrganizerNavProps = {
   className?: string;
+  isAdmin?: boolean;
 };
 
 /**
  * Top bar for the organizer/staff area. Brand wordmark ("TURNIER-APP · ORGA"),
- * a "Turniere" link back to the dashboard, and a sign-out button wired to the
- * existing `signOut` server action. Sticky, dark, lime-accented — mirrors the
- * public <SiteNav> styling for the staff surface.
+ * a "Turniere" link back to the dashboard, an optional admin-only "Mitglieder"
+ * link, and a sign-out button wired to the existing `signOut` server action.
+ * Sticky, dark, lime-accented — mirrors the public <SiteNav> styling for the
+ * staff surface.
  */
-export function OrganizerNav({ className }: OrganizerNavProps) {
+export function OrganizerNav({ className, isAdmin }: OrganizerNavProps) {
   return (
     <header
       className={cn(
@@ -45,12 +47,14 @@ export function OrganizerNav({ className }: OrganizerNavProps) {
           >
             Spiele
           </Link>
-          <Link
-            href="/organizer/members"
-            className="rounded-lg px-3 py-2 text-sm font-medium text-fg-muted transition-colors hover:text-ink"
-          >
-            Mitglieder
-          </Link>
+          {isAdmin && (
+            <Link
+              href="/organizer/members"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-fg-muted transition-colors hover:text-ink"
+            >
+              Mitglieder
+            </Link>
+          )}
           <form action={signOut}>
             <button
               type="submit"

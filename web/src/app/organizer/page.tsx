@@ -58,9 +58,11 @@ export default async function OrganizerPage() {
     tournaments = data ?? [];
   }
 
+  const isAdmin = profile.role === "admin";
+
   return (
     <>
-      <OrganizerNav />
+      <OrganizerNav isAdmin={isAdmin} />
 
       <main className="relative flex-1 overflow-hidden">
         <div
