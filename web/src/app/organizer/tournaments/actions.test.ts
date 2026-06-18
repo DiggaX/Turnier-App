@@ -239,7 +239,26 @@ describe("updateTournament", () => {
     expect(result).toEqual({ error: "Teamgröße muss mindestens 1 sein." });
   });
 
-  // (6) Successful update with no existing matches returns { ok: true }
+  // (6) Matches count query error returns friendly message
+  it("returns friendly error when matches count query fails", async () => {
+    setupStaff((table: string) => {
+      if (table === "matches") {
+        return {
+          select: () => ({
+            count: "exact",
+            head: true,
+            eq: () => Promise.resolve({ count: null, error: { code: "08006", message: "timeout" } }),
+          }),
+        };
+      }
+      return {};
+    });
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament(validUpdateInput);
+    expect(result).toEqual({ error: "Turnier konnte nicht aktualisiert werden." });
+  });
+
+  // (7) Successful update with no existing matches returns { ok: true }
   it("returns ok:true when update succeeds", async () => {
     setupStaff((table: string) => {
       if (table === "matches") {
@@ -265,7 +284,7 @@ describe("updateTournament", () => {
     expect(result).toEqual({ ok: true });
   });
 
-  // (7) Zero-count silent-success — RLS blocked the write without error
+  // (8) Zero-count silent-success — RLS blocked the write without error
   it("returns error when 0 rows were updated (RLS silent block)", async () => {
     setupStaff((table: string) => {
       if (table === "matches") {
@@ -291,7 +310,7 @@ describe("updateTournament", () => {
     expect(result).toEqual({ error: "Turnier nicht gefunden oder keine Berechtigung." });
   });
 
-  // (8) DB error returns friendly message
+  // (9) DB error returns friendly message
   it("returns friendly error when update fails", async () => {
     setupStaff((table: string) => {
       if (table === "matches") {
@@ -417,14 +436,35 @@ describe("deleteTournament", () => {
     expect(result).toEqual({ error: "Nicht angemeldet." });
   });
 
-  // (2) Running tournament cannot be deleted
+  // (2) SELECT returns null (not found or RLS-blocked) — must return an error, not { ok: true }
+  it("returns error when tournament is not found or RLS blocks the read", async () => {
+    setupStaff((table: string) => {
+      if (table === "tournaments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({ data: null, error: { code: "PGRST116", message: "no rows" } }),
+            }),
+          }),
+          delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        };
+      }
+      return {};
+    });
+    const { deleteTournament } = await import("./actions");
+    const result = await deleteTournament("t-1");
+    expect(result).toEqual({ error: "Turnier nicht gefunden oder keine Berechtigung." });
+  });
+
+  // (3) Running tournament cannot be deleted
   it("rejects deletion of a running tournament", async () => {
     setupStaff((table: string) => {
       if (table === "tournaments") {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { status: "running" }, error: null }),
+              maybeSingle: () => Promise.resolve({ data: { status: "running" }, error: null }),
             }),
           }),
           delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
@@ -439,14 +479,14 @@ describe("deleteTournament", () => {
     });
   });
 
-  // (3) Finished tournament cannot be deleted
+  // (4) Finished tournament cannot be deleted
   it("rejects deletion of a finished tournament", async () => {
     setupStaff((table: string) => {
       if (table === "tournaments") {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { status: "finished" }, error: null }),
+              maybeSingle: () => Promise.resolve({ data: { status: "finished" }, error: null }),
             }),
           }),
           delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
@@ -461,14 +501,14 @@ describe("deleteTournament", () => {
     });
   });
 
-  // (4) Draft tournament is deleted and returns { ok: true }
+  // (5) Draft tournament is deleted and returns { ok: true }
   it("deletes a draft tournament and returns ok:true", async () => {
     setupStaff((table: string) => {
       if (table === "tournaments") {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { status: "draft" }, error: null }),
+              maybeSingle: () => Promise.resolve({ data: { status: "draft" }, error: null }),
             }),
           }),
           delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
@@ -481,14 +521,14 @@ describe("deleteTournament", () => {
     expect(result).toEqual({ ok: true });
   });
 
-  // (5) Registration tournament can also be deleted
+  // (6) Registration tournament can also be deleted
   it("deletes a registration-phase tournament and returns ok:true", async () => {
     setupStaff((table: string) => {
       if (table === "tournaments") {
         return {
           select: () => ({
             eq: () => ({
-              single: () =>
+              maybeSingle: () =>
                 Promise.resolve({ data: { status: "registration" }, error: null }),
             }),
           }),
@@ -502,14 +542,14 @@ describe("deleteTournament", () => {
     expect(result).toEqual({ ok: true });
   });
 
-  // (6) DB error on delete returns friendly message
+  // (7) DB error on delete returns friendly message
   it("returns friendly error when delete fails", async () => {
     setupStaff((table: string) => {
       if (table === "tournaments") {
         return {
           select: () => ({
             eq: () => ({
-              single: () => Promise.resolve({ data: { status: "draft" }, error: null }),
+              maybeSingle: () => Promise.resolve({ data: { status: "draft" }, error: null }),
             }),
           }),
           delete: () => ({

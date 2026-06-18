@@ -103,10 +103,13 @@ export async function updateTournament(
     return { error: "Teamgröße muss mindestens 1 sein." };
   }
 
-  const { count: matchCount } = await supabase
+  const { count: matchCount, error: matchCountErr } = await supabase
     .from("matches")
     .select("id", { count: "exact", head: true })
     .eq("tournament_id", input.id);
+  if (matchCountErr) {
+    return { error: friendlyDbError(matchCountErr, "Turnier konnte nicht aktualisiert werden.") };
+  }
   const hasMatches = (matchCount ?? 0) > 0;
 
   const patch: Database["public"]["Tables"]["tournaments"]["Update"] = {
@@ -169,8 +172,11 @@ export async function deleteTournament(id: string): Promise<ActionResult> {
     .from("tournaments")
     .select("status")
     .eq("id", id)
-    .single();
-  if (t?.status === "running" || t?.status === "finished") {
+    .maybeSingle();
+  if (!t) {
+    return { error: "Turnier nicht gefunden oder keine Berechtigung." };
+  }
+  if (t.status === "running" || t.status === "finished") {
     return { error: "Laufende oder beendete Turniere können nicht gelöscht werden." };
   }
 

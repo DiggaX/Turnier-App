@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canEditStructure, nextStatus, teamLabel } from "./lifecycle";
+import { canEditStructure, gameTag, nextStatus, teamLabel } from "./lifecycle";
 
 describe("nextStatus", () => {
   it("advances draft->registration and running->finished", () => {
@@ -26,5 +26,34 @@ describe("teamLabel", () => {
     expect(teamLabel(1)).toBe("Solo");
     expect(teamLabel(2)).toBe("2v2");
     expect(teamLabel(5)).toBe("5v5");
+  });
+});
+
+describe("gameTag", () => {
+  it("returns first letters of first two words for a two-word name", () => {
+    expect(gameTag("Counter-Strike 2")).toBe("CS");
+    expect(gameTag("Rocket League")).toBe("RL");
+  });
+
+  it("slices the first two characters for a single-word name", () => {
+    expect(gameTag("Valorant")).toBe("VA");
+    expect(gameTag("Fortnite")).toBe("FO");
+  });
+
+  it("returns the first letter uppercased and sliced for a single letter name", () => {
+    expect(gameTag("X")).toBe("X");
+  });
+
+  it("returns ?? for an empty string", () => {
+    expect(gameTag("")).toBe("??");
+  });
+
+  it("handles names with special characters by stripping them", () => {
+    expect(gameTag("Dota 2!")).toBe("D2");
+    expect(gameTag("!!!")).toBe("??");
+  });
+
+  it("handles all-numeric names", () => {
+    expect(gameTag("1234")).toBe("12");
   });
 });
