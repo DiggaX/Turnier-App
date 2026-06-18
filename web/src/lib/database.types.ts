@@ -210,6 +210,42 @@ export interface Database {
         };
         Relationships: [];
       };
+      org_invites: {
+        Row: {
+          id: string;
+          org_id: string;
+          code: string;
+          role: "organizer" | "referee";
+          created_by: string | null;
+          expires_at: string;
+          accepted_at: string | null;
+          accepted_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          code: string;
+          role: "organizer" | "referee";
+          created_by?: string | null;
+          expires_at: string;
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          org_id?: string;
+          code?: string;
+          role?: "organizer" | "referee";
+          created_by?: string | null;
+          expires_at?: string;
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -224,6 +260,30 @@ export interface Database {
       confirm_match: {
         Args: { p_match_id: string; p_score_a: number; p_score_b: number };
         Returns: undefined;
+      };
+      bootstrap_org: {
+        Args: { p_name: string; p_slug: string };
+        Returns: string;
+      };
+      accept_invite: {
+        Args: { p_code: string };
+        Returns: string;
+      };
+      peek_invite: {
+        Args: { p_code: string };
+        Returns: { org_name: string; member_role: string }[];
+      };
+      set_member_role: {
+        Args: { p_member: string; p_role: string };
+        Returns: undefined;
+      };
+      remove_member: {
+        Args: { p_member: string };
+        Returns: undefined;
+      };
+      is_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
       };
     };
     Enums: {
