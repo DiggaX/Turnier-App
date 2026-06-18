@@ -1,65 +1,16 @@
 import Link from "next/link";
 
 import { SiteNav } from "@/components/brand/site-nav";
-import { TournamentCard } from "@/components/brand/tournament-card";
 import { createPublicClient } from "@/lib/supabase/public";
-import { formatLabel } from "@/lib/labels";
-import type { TournamentStatus } from "@/lib/database.types";
-import { teamLabel } from "@/lib/tournament/lifecycle";
-
-/** Sort order: running first, then registration, then drafts, then finished. */
-const STATUS_RANK: Record<TournamentStatus, number> = {
-  running: 0,
-  registration: 1,
-  draft: 2,
-  finished: 3,
-};
-
-const TAG_COLOR_BY_STATUS: Record<
-  TournamentStatus,
-  "lime" | "cyan" | "muted"
-> = {
-  running: "lime",
-  registration: "cyan",
-  draft: "muted",
-  finished: "muted",
-};
-
-/** Two-letter game chip tag, e.g. "Valorant" → "VL", "Counter-Strike 2" → "CS". */
-function gameTag(name: string): string {
-  const cleaned = name.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
-  const words = cleaned.split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
-  }
-  return cleaned.slice(0, 2).toUpperCase() || "??";
-}
-
-/** Format the time line: format label · localized start date (German). */
-function metaLine(format: string, startsAt: string | null): string {
-  if (!startsAt) return format;
-  const when = new Date(startsAt).toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `${format} · ${when}`;
-}
 
 export default async function Home() {
   const supabase = createPublicClient();
   const { data } = await supabase
-    .from("tournaments")
-    .select(
-      "id, name, format, mode, status, starts_at, team_size, games(name), participants(id)",
-    )
-    .order("starts_at", { ascending: true, nullsFirst: false });
+    .from("organizations")
+    .select("name, slug")
+    .order("name", { ascending: true });
 
-  const tournaments = (data ?? [])
-    .slice()
-    .sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status]);
+  const organizations = data ?? [];
 
   return (
     <>
@@ -78,82 +29,35 @@ export default async function Home() {
             Finde dein <span className="text-lime">Turnier</span>
           </h1>
           <p className="mt-4 max-w-[480px] text-base text-fg-muted sm:text-lg">
-            Offene und laufende Turniere auf einen Blick. Anmelden, einchecken,
-            live mitfiebern — alles vom Handy.
+            Wähle eine Organisation und entdecke ihre Turniere. Anmelden,
+            einchecken, live mitfiebern — alles vom Handy.
           </p>
 
-          {/* tournament list */}
+          {/* org directory */}
           <div className="mt-10 flex flex-col gap-3.5">
-            {tournaments.length === 0 && (
+            {organizations.length === 0 && (
               <div className="rounded-2xl border border-line bg-surface p-8 text-center text-fg-muted">
-                Aktuell sind keine Turniere ausgeschrieben. Schau bald wieder
-                vorbei.
+                Aktuell sind keine Organisationen registriert.
               </div>
             )}
 
-            {tournaments.map((t) => {
-              const gameName = t.games?.name ?? "Unbekanntes Spiel";
-              const teamSize = t.team_size ?? 1;
-              const gameLine =
-                teamSize > 1
-                  ? `${gameName} · ${teamLabel(teamSize)}`
-                  : gameName;
-              const count = t.participants?.length ?? 0;
-
-              return (
-                <TournamentCard
-                  key={t.id}
-                  gameTag={gameTag(gameName)}
-                  game={gameLine}
-                  title={t.name}
-                  status={t.status}
-                  meta={metaLine(formatLabel(t.format), t.starts_at)}
-                  participantCount={count}
-                  tagColor={TAG_COLOR_BY_STATUS[t.status]}
-                  dim={t.status === "draft" || t.status === "finished"}
-                  action={<CardActions id={t.id} status={t.status} />}
-                />
-              );
-            })}
+            {organizations.map((org) => (
+              <Link
+                key={org.slug}
+                href={`/o/${org.slug}`}
+                className="flex items-center justify-between rounded-2xl border border-line bg-surface p-5 transition-colors hover:border-cyan/40 sm:p-[18px_22px]"
+              >
+                <span className="font-display text-xl font-semibold text-ink">
+                  {org.name}
+                </span>
+                <span className="font-display text-xs font-bold uppercase tracking-wider text-fg-muted transition-colors hover:text-ink">
+                  Turniere ansehen →
+                </span>
+              </Link>
+            ))}
           </div>
         </div>
       </main>
     </>
-  );
-}
-
-/** Per-status action buttons, mirroring the design's lime/cyan/muted styles. */
-function CardActions({
-  id,
-  status,
-}: {
-  id: string;
-  status: TournamentStatus;
-}) {
-  return (
-    <div className="flex items-center gap-2.5">
-      {status === "registration" && (
-        <Link
-          href={`/t/${id}/register`}
-          className="rounded-lg bg-lime px-4 py-2.5 font-display text-xs font-bold uppercase tracking-wider text-bg transition-opacity hover:opacity-90"
-        >
-          Anmelden
-        </Link>
-      )}
-      {status === "running" && (
-        <Link
-          href={`/t/${id}/board`}
-          className="rounded-lg border border-cyan/35 bg-cyan/10 px-4 py-2.5 font-display text-xs font-bold uppercase tracking-wider text-cyan transition-colors hover:bg-cyan/20"
-        >
-          Live-Board
-        </Link>
-      )}
-      <Link
-        href={`/t/${id}`}
-        className="rounded-lg border border-line px-4 py-2.5 font-display text-xs font-bold uppercase tracking-wider text-fg-muted transition-colors hover:text-ink"
-      >
-        Details
-      </Link>
-    </div>
   );
 }
