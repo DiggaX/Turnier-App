@@ -16,9 +16,9 @@ import { SwissView, type SwissMatch } from "@/components/brand/swiss-view";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
 import { formatLabel } from "@/lib/labels";
 import { computeStandings, type DoneMatch } from "@/lib/standings";
-import { createClient } from "@/lib/supabase/server";
 import { requireOrgTournament } from "@/lib/auth/org-tournament";
 import { type TournamentFormat, type TournamentStatus } from "@/lib/database.types";
+import { createClient } from "@/lib/supabase/server";
 import { swissRoundCount } from "@/lib/swiss/pairing";
 import { swissStandings } from "@/lib/swiss/standings";
 
