@@ -109,8 +109,7 @@ test.describe("Self-serve signup — create org happy path", () => {
     const admin = createSupabase(SUPABASE_URL, SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: listData } = await admin.auth.admin.listUsers();
-    const found = listData?.users?.find((u) => u.email === FIXTURE_EMAIL);
-    if (found) createdUserId = found.id;
+    const { data: { user: foundUser } } = await admin.auth.admin.getUserByEmail(FIXTURE_EMAIL);
+    if (foundUser) createdUserId = foundUser.id;
   });
 });
