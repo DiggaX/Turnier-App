@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { SiteNav } from "@/components/brand/site-nav";
 import { StatusBadge } from "@/components/brand/status-badge";
-import { createClient } from "@/lib/supabase/server";
+import { createPublicClient } from "@/lib/supabase/public";
 import { formatLabel, modeLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { TournamentStatus } from "@/lib/database.types";
@@ -43,7 +43,7 @@ export default async function TournamentDetailPage(props: {
   params: Promise<{ tournamentId: string }>;
 }) {
   const { tournamentId } = await props.params;
-  const supabase = await createClient();
+  const supabase = createPublicClient();
 
   const { data: tournament } = await supabase
     .from("tournaments")

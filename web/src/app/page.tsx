@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { SiteNav } from "@/components/brand/site-nav";
 import { TournamentCard } from "@/components/brand/tournament-card";
-import { createClient } from "@/lib/supabase/server";
+import { createPublicClient } from "@/lib/supabase/public";
 import { formatLabel } from "@/lib/labels";
 import type { TournamentStatus } from "@/lib/database.types";
 import { teamLabel } from "@/lib/tournament/lifecycle";
@@ -49,7 +49,7 @@ function metaLine(format: string, startsAt: string | null): string {
 }
 
 export default async function Home() {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
   const { data } = await supabase
     .from("tournaments")
     .select(
