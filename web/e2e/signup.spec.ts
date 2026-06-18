@@ -104,12 +104,25 @@ test.describe("Self-serve signup — create org happy path", () => {
       );
     }
 
-    // Resolve the created user id via the anon client (it's a fresh session or
-    // we use service-role to look it up by email for cleanup).
+    // Resolve the created user id for cleanup via the DB (the admin auth API has
+    // no getUserByEmail in supabase-js v2). bootstrap_org created an org with our
+    // unique name and an admin profile whose id IS the auth user id.
     const admin = createSupabase(SUPABASE_URL, SERVICE_ROLE_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data: { user: foundUser } } = await admin.auth.admin.getUserByEmail(FIXTURE_EMAIL);
-    if (foundUser) createdUserId = foundUser.id;
+    const { data: org } = await admin
+      .from("organizations")
+      .select("id")
+      .eq("name", FIXTURE_ORG_NAME)
+      .maybeSingle();
+    if (org) {
+      const { data: prof } = await admin
+        .from("profiles")
+        .select("id")
+        .eq("org_id", org.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (prof) createdUserId = prof.id as string;
+    }
   });
 });
