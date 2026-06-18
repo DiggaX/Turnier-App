@@ -36,15 +36,11 @@ create policy "orgs_write_staff_same_org" on organizations for all
   using (public.is_staff() and id = public.current_org_id())
   with check (public.is_staff() and id = public.current_org_id());
 
--- 6. org-scope tournament reads and writes.
---    Keep anon reads unrestricted (public pages work without auth).
---    Restrict authenticated reads to the caller's own org only.
-drop policy if exists "tournaments_select_public" on tournaments;
-create policy "tournaments_select_anon" on tournaments for select to anon
-  using (true);
-create policy "tournaments_select_staff_own_org" on tournaments for select to authenticated
-  using (org_id = public.current_org_id() or not public.is_staff());
-
+-- 6. org-scope the staff write/manage policies. Tournament SELECT stays PUBLIC:
+--    tournament metadata (name/format/status) is public by design (shown on the
+--    home + /o/<slug>), so there is nothing to hide. Org isolation is enforced on
+--    WRITES (below) + the organizer UI's app-layer org filter — not by hiding
+--    tournament existence. (matches what was applied live via db2.)
 drop policy if exists "tournaments_write_staff" on tournaments;
 create policy "tournaments_write_staff" on tournaments for all
   using (public.is_staff() and org_id = public.current_org_id())
