@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { MagicLinkForm, PasswordForm } from "./login-forms";
 
@@ -40,6 +41,12 @@ export default function LoginPage() {
 
           <MagicLinkForm />
         </div>
+        <p className="mt-5 text-center text-sm text-fg-muted">
+          Neue Firma?{" "}
+          <Link href="/signup" className="text-cyan hover:text-lime">
+            Registrieren
+          </Link>
+        </p>
       </div>
     </main>
   );
