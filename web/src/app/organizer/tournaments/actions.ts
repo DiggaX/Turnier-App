@@ -31,7 +31,7 @@ export async function createTournament(
 ): Promise<ActionResult> {
   const guard = await requireStaff();
   if ("error" in guard) return guard;
-  const { supabase, orgId } = guard;
+  const { supabase, userId, orgId } = guard;
   if (!orgId) return { error: "Kein Org-Kontext — dein Account ist keiner Organisation zugeordnet." };
 
   const name = input.name?.trim();
@@ -56,7 +56,7 @@ export async function createTournament(
     team_size: teamSize,
     status: "draft",
     starts_at: input.startsAt || null,
-    created_by: (await supabase.auth.getUser()).data.user?.id,
+    created_by: userId,
     org_id: orgId,
   };
 

@@ -16,7 +16,7 @@ type MockSupabase = {
 };
 
 let mockSupabase: MockSupabase;
-let requireStaffResult: { supabase: MockSupabase } | { error: string };
+let requireStaffResult: { supabase: MockSupabase; orgId: string | null } | { error: string };
 
 vi.mock("@/lib/auth/staff", () => ({
   requireStaff: () => Promise.resolve(requireStaffResult),
@@ -28,7 +28,7 @@ vi.mock("@/lib/auth/staff", () => ({
 /** Configure requireStaff to succeed and set up the supabase.from mock. */
 function setupStaff(fromImpl: (table: string) => unknown) {
   mockSupabase = { from: vi.fn().mockImplementation(fromImpl) };
-  requireStaffResult = { supabase: mockSupabase };
+  requireStaffResult = { supabase: mockSupabase, orgId: "org-1" };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
