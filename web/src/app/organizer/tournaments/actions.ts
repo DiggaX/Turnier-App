@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import type { Database, TournamentFormat, TournamentMode, TournamentStatus } from "@/lib/database.types";
 import { friendlyDbError } from "@/lib/db-errors";
-import { requireStaff, type ActionResult } from "@/lib/auth/staff";
+import { requireStaff, requireStaffWithOrg, type ActionResult } from "@/lib/auth/staff";
 import { nextStatus } from "@/lib/tournament/lifecycle";
 
 const FORMATS: TournamentFormat[] = [
@@ -29,9 +29,9 @@ export type CreateTournamentInput = {
 export async function createTournament(
   input: CreateTournamentInput,
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireStaffWithOrg();
   if ("error" in guard) return guard;
-  const { supabase } = guard;
+  const { supabase, userId, orgId } = guard;
 
   const name = input.name?.trim();
   if (!name) return { error: "Name ist erforderlich." };
@@ -47,19 +47,6 @@ export async function createTournament(
     return { error: "Teamgröße muss mindestens 1 sein." };
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("org_id")
-    .eq("id", user?.id ?? "")
-    .maybeSingle();
-  if (!profile?.org_id) {
-    return { error: "Kein Org-Kontext — dein Account ist keiner Organisation zugeordnet." };
-  }
-
   const row: Database["public"]["Tables"]["tournaments"]["Insert"] = {
     name,
     game_id: input.gameId,
@@ -68,8 +55,8 @@ export async function createTournament(
     team_size: teamSize,
     status: "draft",
     starts_at: input.startsAt || null,
-    created_by: user?.id ?? null,
-    org_id: profile.org_id,
+    created_by: userId,
+    org_id: orgId,
   };
 
   const { data, error } = await supabase

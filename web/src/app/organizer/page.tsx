@@ -39,7 +39,7 @@ export default async function OrganizerPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, org_id")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -47,10 +47,17 @@ export default async function OrganizerPage() {
     redirect("/login");
   }
 
-  const { data: tournaments } = await supabase
+  const tournamentsQuery = supabase
     .from("tournaments")
     .select("id, name, status")
     .order("created_at", { ascending: false });
+
+  // Defense-in-depth: scope to caller's org even though RLS already does this.
+  if (profile.org_id) {
+    tournamentsQuery.eq("org_id", profile.org_id);
+  }
+
+  const { data: tournaments } = await tournamentsQuery;
 
   return (
     <>

@@ -36,7 +36,15 @@ create policy "orgs_write_staff_same_org" on organizations for all
   using (public.is_staff() and id = public.current_org_id())
   with check (public.is_staff() and id = public.current_org_id());
 
--- 6. org-scope the staff write/manage policies
+-- 6. org-scope tournament reads and writes.
+--    Keep anon reads unrestricted (public pages work without auth).
+--    Restrict authenticated reads to the caller's own org only.
+drop policy if exists "tournaments_select_public" on tournaments;
+create policy "tournaments_select_anon" on tournaments for select to anon
+  using (true);
+create policy "tournaments_select_staff_own_org" on tournaments for select to authenticated
+  using (org_id = public.current_org_id() or not public.is_staff());
+
 drop policy if exists "tournaments_write_staff" on tournaments;
 create policy "tournaments_write_staff" on tournaments for all
   using (public.is_staff() and org_id = public.current_org_id())
