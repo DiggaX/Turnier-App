@@ -382,6 +382,46 @@ default in the create form. The public registration and board pages read `tourna
 directly; the `teamLabel()` helper (in `web/src/lib/tournament/lifecycle.ts`) renders it as
 `"Solo"` for `1` or `"NvN"` for larger values.
 
+## Multi-Tenancy 2a — org foundation + public org pages
+
+Apply `supabase/migrations/20260629090000_multi_tenant_2a.sql` (applied via db2 MCP; idempotent). It:
+
+1. Creates the `organizations` table (`id`, `name`, `slug`, `created_at`; public SELECT, staff-same-org write).
+2. Adds `org_id uuid` FK columns to `profiles` and `tournaments`.
+3. Creates `current_org_id()` — a `SECURITY DEFINER` helper that returns the calling user's `org_id` from `profiles`; all org-scoped RLS policies read it.
+4. Backfills a default org "Eventpilot" (slug `eventpilot`) and assigns all existing profiles and tournaments to it.
+5. Org-scopes the staff write/manage RLS on `tournaments`, `matches`, and `participants` — staff can only write rows belonging to their own org.
+
+No new Auth/Storage toggles are needed beyond what earlier plans already enable.
+
+### What changed
+
+| Area | Change |
+|---|---|
+| `organizations` table | New — name + URL-safe slug; public readable |
+| `profiles.org_id` / `tournaments.org_id` | New FK columns — every row belongs to one org |
+| `current_org_id()` | New SECURITY DEFINER SQL function |
+| Tournament creation | `org_id` stamped from the staff member's profile |
+| Organizer tournament list | Filtered to the caller's org |
+| Organizer management pages | 404 for tournaments outside the caller's org |
+| `/o/<slug>` | New public per-org page listing that org's tournaments |
+| `/` (home) | Replaced global tournament list with a landing + org directory |
+
+### Existing data
+
+All existing tournaments and staff accounts are placed in the **"Eventpilot"** org (slug `eventpilot`). No data is lost.
+
+### Public URLs
+
+| URL | Content |
+|---|---|
+| `/` | Landing page with org directory (links to `/o/<slug>`) |
+| `/o/eventpilot` | Eventpilot org page — lists all Eventpilot tournaments |
+
+### Phase 2b (next)
+
+Self-serve org sign-up + staff invites. This plan deferred to keep scope tight and avoid needing two staff accounts in e2e.
+
 ## Tests
 
 - Unit: `cd web && npm test` (Vitest)
