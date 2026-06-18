@@ -418,9 +418,82 @@ All existing tournaments and staff accounts are placed in the **"Eventpilot"** o
 | `/` | Landing page with org directory (links to `/o/<slug>`) |
 | `/o/eventpilot` | Eventpilot org page — lists all Eventpilot tournaments |
 
-### Phase 2b (next)
+### Phase 2b
 
-Self-serve org sign-up + staff invites. This plan deferred to keep scope tight and avoid needing two staff accounts in e2e.
+Self-serve org sign-up and staff invites — see the Multi-Tenancy 2b section below.
+
+## Multi-Tenancy 2b — self-serve signup + invites + member management (Module 2 complete)
+
+### Schema migration
+
+Apply `supabase/migrations/20260701090000_multi_tenant_2b.sql` (SQL Editor → Run, or via the db2
+MCP `apply_migration`). It adds:
+
+1. **`org_invites` table** — one row per invite link; RLS-scoped to admin-of-org (codes are
+   secret; only the admin's session can list them). Columns: `id`, `org_id`, `code` (unique
+   random UUID), `role` (`organizer` | `referee`), `created_by`, `expires_at`, `accepted_at`,
+   `accepted_by`, `created_at`.
+
+2. **`is_admin()` helper** — `SECURITY DEFINER` function returning `true` when the calling
+   user has `role = 'admin'` in `profiles`.
+
+3. **Five `SECURITY DEFINER` RPCs:**
+   - `bootstrap_org(p_name, p_slug)` — creates the org + admin profile for a freshly-registered
+     user with no existing profile. Called by the `/signup` create-org path.
+   - `accept_invite(p_code)` — redeems a single-use invite; creates the member profile. Called
+     by the `/signup?invite=<code>` path.
+   - `peek_invite(p_code)` — returns `(org_name, member_role)` for a valid unused code (anon +
+     authenticated). Used by the signup page to show a preview banner.
+   - `set_member_role(p_member, p_role)` — admin-only; changes a member's role (no self-target).
+   - `remove_member(p_member)` — admin-only; sets `profiles.org_id = null` for the member
+     (no self-target).
+
+4. **`profiles_select_same_org` RLS policy** — staff may read all profiles in their own org
+   (powers the members list).
+
+### Auth setting required
+
+**Supabase Auth → Providers → Email → disable "Confirm email"** (email-confirm must be OFF).
+With email-confirm OFF, `signUp` returns a session immediately and `bootstrap_org` /
+`accept_invite` can run in the same request.
+
+If email-confirm is ON, the auth user is still created but the org bootstrap runs in the same
+request without a valid session — it will fail. The user would need to confirm their email and
+then call a separate onboarding step. This flow is out of scope for 2b; the signup e2e spec
+notes the condition and does not hard-fail when it detects the redirect to `/login`.
+
+### New routes
+
+| Route | Description |
+|---|---|
+| `/signup` | Self-serve registration. Without `?invite`: email + password + org name → creates org + admin profile (calls `bootstrap_org`). With `?invite=<code>`: shows org/role preview → creates member profile (calls `accept_invite`). |
+| `/signup?invite=<code>` | Invite-redemption signup. The page calls `peek_invite` to show "Du trittst „Org" als Rolle bei"; invalid/expired codes show an error banner and disable the submit button. |
+| `/organizer/members` | Admin-only members management: view all members (with "du" badge for the current user); change member role; remove member; create 7-day invite links; revoke open invites; copy the shareable invite URL. |
+
+### Nav
+
+`OrganizerNav` accepts an `isAdmin?: boolean` prop. Pages that know the current user is admin
+(e.g. the members page) pass `isAdmin={true}` to show the "Mitglieder" link. Non-admin staff
+do not see the link and are redirected by the page server component if they navigate directly.
+
+### Invite lifecycle
+
+- Codes are random UUIDs generated server-side.
+- Expiry: 7 days from creation.
+- Single-use: `accept_invite` sets `accepted_at` and subsequent redemptions raise
+  "Einladung bereits eingelöst".
+- Admins can revoke open (un-accepted) invites from `/organizer/members` — this deletes the
+  `org_invites` row.
+
+### Signup e2e (web/e2e/signup.spec.ts)
+
+Requires `SUPABASE_SERVICE_ROLE_KEY` in `web/.env.local` (or the CI environment) in addition
+to the standard `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`. The spec skips
+cleanly when the service-role key is absent. `afterAll` deletes the fixture profile, org, and
+auth user via the service-role client so the test is repeatable.
+
+> **Module 2 is complete.** Self-serve org sign-up, staff invites, and member management
+> (role change, remove, revoke) are fully implemented and tested.
 
 ## Tests
 
