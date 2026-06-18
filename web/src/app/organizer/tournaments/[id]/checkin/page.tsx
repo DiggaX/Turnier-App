@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
+import { requireOrgTournament } from "@/lib/auth/org-tournament";
 
 import { ScannerClient } from "./scanner-client";
 
@@ -49,7 +50,7 @@ export default async function CheckinPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, org_id")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -57,15 +58,16 @@ export default async function CheckinPage({
     redirect("/login");
   }
 
-  const { data: tournament } = await supabase
-    .from("tournaments")
-    .select("id, name")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!tournament) {
-    notFound();
-  }
+  const tournament = await requireOrgTournament<{
+    id: string;
+    name: string;
+    org_id: string;
+  }>(
+    supabase,
+    id,
+    profile.org_id as string | null,
+    "id, name, org_id",
+  );
 
   const { data: participants } = await supabase
     .from("participants")

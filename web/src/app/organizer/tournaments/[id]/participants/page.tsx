@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 
 import { OrganizerNav } from "@/components/brand/organizer-nav";
@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
+import { requireOrgTournament } from "@/lib/auth/org-tournament";
 import { TYPE_LABELS } from "./participant-types";
 
 export const metadata: Metadata = {
@@ -37,7 +38,7 @@ export default async function ParticipantsPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, org_id")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -45,15 +46,16 @@ export default async function ParticipantsPage({
     redirect("/login");
   }
 
-  const { data: tournament } = await supabase
-    .from("tournaments")
-    .select("id, name")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!tournament) {
-    notFound();
-  }
+  const tournament = await requireOrgTournament<{
+    id: string;
+    name: string;
+    org_id: string;
+  }>(
+    supabase,
+    id,
+    profile.org_id as string | null,
+    "id, name, org_id",
+  );
 
   // Single query: embed consents (FK consents.participant_id -> participants.id)
   // so PostgREST returns each participant's consent rows. No N+1.

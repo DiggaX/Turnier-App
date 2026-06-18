@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
@@ -7,6 +7,8 @@ import { StatusBadge } from "@/components/brand/status-badge";
 import { formatLabel, modeLabel } from "@/lib/labels";
 import { teamLabel, canEditStructure } from "@/lib/tournament/lifecycle";
 import { createClient } from "@/lib/supabase/server";
+import { requireOrgTournament } from "@/lib/auth/org-tournament";
+import { type TournamentFormat, type TournamentMode, type TournamentStatus } from "@/lib/database.types";
 
 import { EditTournamentForm } from "./edit-tournament-form";
 import { LifecycleControls } from "./lifecycle-controls";
@@ -26,19 +28,30 @@ export default async function TournamentOverviewPage({
   if (!user) redirect("/login");
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, org_id")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
     redirect("/login");
   }
 
-  const { data: tournament } = await supabase
-    .from("tournaments")
-    .select("id, name, format, mode, status, team_size, starts_at, game_id, games(name)")
-    .eq("id", id)
-    .maybeSingle();
-  if (!tournament) notFound();
+  const tournament = await requireOrgTournament<{
+    id: string;
+    name: string;
+    format: TournamentFormat;
+    mode: TournamentMode;
+    status: TournamentStatus;
+    team_size: number;
+    starts_at: string | null;
+    game_id: string;
+    org_id: string;
+    games: { name: string } | { name: string }[] | null;
+  }>(
+    supabase,
+    id,
+    profile.org_id as string | null,
+    "id, name, format, mode, status, team_size, starts_at, game_id, org_id, games(name)",
+  );
 
   const [{ count: pCount }, { count: mCount }, { data: games }] = await Promise.all([
     supabase.from("participants").select("id", { count: "exact", head: true }).eq("tournament_id", id),

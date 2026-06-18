@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { StandingsTable } from "@/components/brand/standings-table";
@@ -7,6 +7,8 @@ import { TournamentTabs } from "@/components/brand/tournament-tabs";
 import { formatLabel } from "@/lib/labels";
 import { computeStandings, type DoneMatch } from "@/lib/standings";
 import { createClient } from "@/lib/supabase/server";
+import { requireOrgTournament } from "@/lib/auth/org-tournament";
+import { type TournamentFormat, type TournamentStatus } from "@/lib/database.types";
 
 import { ReportRow, type MatchRowView } from "./report-row";
 import { NotifyButton } from "./notify-button";
@@ -55,7 +57,7 @@ export default async function MatchesPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, org_id")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -63,15 +65,18 @@ export default async function MatchesPage({
     redirect("/login");
   }
 
-  const { data: tournament } = await supabase
-    .from("tournaments")
-    .select("id, name, format, status")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!tournament) {
-    notFound();
-  }
+  const tournament = await requireOrgTournament<{
+    id: string;
+    name: string;
+    format: TournamentFormat;
+    status: TournamentStatus;
+    org_id: string;
+  }>(
+    supabase,
+    id,
+    profile.org_id as string | null,
+    "id, name, format, status, org_id",
+  );
 
   // Matches with embedded side names + scores, ordered for stable rendering.
   const { data: rawMatches } = await supabase

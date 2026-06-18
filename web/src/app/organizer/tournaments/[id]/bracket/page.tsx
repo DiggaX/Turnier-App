@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import {
   BracketView,
@@ -17,6 +17,8 @@ import { TournamentTabs } from "@/components/brand/tournament-tabs";
 import { formatLabel } from "@/lib/labels";
 import { computeStandings, type DoneMatch } from "@/lib/standings";
 import { createClient } from "@/lib/supabase/server";
+import { requireOrgTournament } from "@/lib/auth/org-tournament";
+import { type TournamentFormat, type TournamentStatus } from "@/lib/database.types";
 import { swissRoundCount } from "@/lib/swiss/pairing";
 import { swissStandings } from "@/lib/swiss/standings";
 
@@ -64,7 +66,7 @@ export default async function BracketPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, org_id")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -72,15 +74,18 @@ export default async function BracketPage({
     redirect("/login");
   }
 
-  const { data: tournament } = await supabase
-    .from("tournaments")
-    .select("id, name, format, status")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!tournament) {
-    notFound();
-  }
+  const tournament = await requireOrgTournament<{
+    id: string;
+    name: string;
+    format: TournamentFormat;
+    status: TournamentStatus;
+    org_id: string;
+  }>(
+    supabase,
+    id,
+    profile.org_id as string | null,
+    "id, name, format, status, org_id",
+  );
 
   // Checked-in participants in seed order (for the seeding editor).
   const { data: checkedIn } = await supabase

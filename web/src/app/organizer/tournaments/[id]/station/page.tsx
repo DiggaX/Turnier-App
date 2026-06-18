@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { ConfirmForm } from "../matches/confirm-form";
 import { createClient } from "@/lib/supabase/server";
+import { requireOrgTournament } from "@/lib/auth/org-tournament";
 import { agreedScore, isPlayable, type Report } from "@/lib/station/station";
 
 import { StationBoard } from "./station-board";
@@ -34,19 +35,23 @@ export default async function StationPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, org_id")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
     redirect("/login");
   }
 
-  const { data: tournament } = await supabase
-    .from("tournaments")
-    .select("id, name")
-    .eq("id", id)
-    .maybeSingle();
-  if (!tournament) notFound();
+  const tournament = await requireOrgTournament<{
+    id: string;
+    name: string;
+    org_id: string;
+  }>(
+    supabase,
+    id,
+    profile.org_id as string | null,
+    "id, name, org_id",
+  );
 
   const { data: rawMatches } = await supabase
     .from("matches")

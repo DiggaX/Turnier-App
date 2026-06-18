@@ -5,6 +5,7 @@ import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
 import { QrCode } from "@/components/qr-code";
 import { createClient } from "@/lib/supabase/server";
+import { requireOrgTournament } from "@/lib/auth/org-tournament";
 
 import { ParticipantDetailClient } from "./participant-detail-client";
 import { TYPE_LABELS } from "../participant-types";
@@ -26,19 +27,23 @@ export default async function ParticipantDetailPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, org_id")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
     redirect("/login");
   }
 
-  const { data: tournament } = await supabase
-    .from("tournaments")
-    .select("id, name")
-    .eq("id", id)
-    .maybeSingle();
-  if (!tournament) notFound();
+  const tournament = await requireOrgTournament<{
+    id: string;
+    name: string;
+    org_id: string;
+  }>(
+    supabase,
+    id,
+    profile.org_id as string | null,
+    "id, name, org_id",
+  );
 
   const { data: participant } = await supabase
     .from("participants")
