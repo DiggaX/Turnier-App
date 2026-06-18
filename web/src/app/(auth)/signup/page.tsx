@@ -10,13 +10,23 @@ export default async function SignupPage(props: {
   searchParams: Promise<{ invite?: string }>;
 }) {
   const { invite } = await props.searchParams;
-  let invitePreview: { orgName: string; role: string } | null = null;
+  let invitePreview: { orgName: string; role: string; roleLabel: string } | null = null;
   let inviteInvalid = false;
   if (invite) {
     const supabase = await createClient();
     const { data } = await supabase.rpc("peek_invite", { p_code: invite });
     const row = Array.isArray(data) ? data[0] : null;
-    if (row) invitePreview = { orgName: row.org_name, role: row.member_role };
+    if (row) {
+      const roleLabelMap: Record<string, string> = {
+        organizer: "Organisator",
+        referee: "Schiedsrichter",
+      };
+      invitePreview = {
+        orgName: row.org_name,
+        role: row.member_role,
+        roleLabel: roleLabelMap[row.member_role] ?? row.member_role,
+      };
+    }
     else inviteInvalid = true;
   }
 
@@ -29,7 +39,7 @@ export default async function SignupPage(props: {
           </div>
           <p className="mt-2 text-sm text-fg-muted">
             {invitePreview
-              ? `Du trittst „${invitePreview.orgName}" als ${invitePreview.role} bei.`
+              ? `Du trittst „${invitePreview.orgName}" als ${invitePreview.roleLabel} bei.`
               : inviteInvalid
                 ? "Diese Einladung ist ungültig oder abgelaufen."
                 : "Registriere deine Organisation."}
