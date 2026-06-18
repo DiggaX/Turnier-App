@@ -6,9 +6,9 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 export type ActionResult = { ok: true } | { error: string };
 
-/** Verify the caller is a signed-in staff member; return the client or an error. */
+/** Verify the caller is a signed-in staff member; return the client and orgId or an error. */
 export async function requireStaff(): Promise<
-  { supabase: Supabase } | { error: string }
+  { supabase: Supabase; orgId: string | null } | { error: string }
 > {
   const supabase = await createClient();
   const {
@@ -18,13 +18,13 @@ export async function requireStaff(): Promise<
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, org_id")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
     return { error: "Diese Aktion ist nicht erlaubt." };
   }
-  return { supabase };
+  return { supabase, orgId: profile.org_id as string | null };
 }
 
 /**
