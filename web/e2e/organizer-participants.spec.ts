@@ -8,5 +8,9 @@ test("organizer sees participants with consent status", async ({ page }) => {
   await page.getByRole("button", { name: /anmelden/i }).first().click();
   await expect(page).toHaveURL(/\/organizer/);
   await page.getByRole("link", { name: /sommer cup/i }).click();
+  // Dashboard links to the tournament overview; the participants table lives
+  // under the "Teilnehmer" tab.
+  await expect(page).toHaveURL(/\/organizer\/tournaments\/[^/]+$/);
+  await page.getByRole("link", { name: /teilnehmer/i }).click();
   await expect(page.getByRole("table")).toBeVisible();
 });

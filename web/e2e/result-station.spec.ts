@@ -55,6 +55,22 @@ async function getValorantGameId(client: SupabaseClient): Promise<string> {
   return data.id as string;
 }
 
+/** Resolve the organizer's org_id — staff write RLS requires org_id = current_org_id(). */
+async function getOrgId(client: SupabaseClient): Promise<string> {
+  const {
+    data: { user },
+  } = await client.auth.getUser();
+  const { data, error } = await client
+    .from("profiles")
+    .select("org_id")
+    .eq("id", user?.id ?? "")
+    .single();
+  if (error || !data?.org_id) {
+    throw new Error(`Could not resolve org_id: ${error?.message ?? "none"}`);
+  }
+  return data.org_id as string;
+}
+
 /**
  * Register a fresh anonymous solo adult participant for the fixture tournament
  * using its own anon client (its own auth user), then check them in online.
@@ -133,6 +149,7 @@ test.beforeAll(async () => {
 
   const staff = await staffClient();
   const gameId = await getValorantGameId(staff);
+  const orgId = await getOrgId(staff);
 
   const name = `Station Test ${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
   const { data: t, error: tErr } = await staff
@@ -140,6 +157,7 @@ test.beforeAll(async () => {
     .insert({
       name,
       game_id: gameId,
+      org_id: orgId,
       format: "single_elim",
       mode: "hybrid",
       status: "registration",

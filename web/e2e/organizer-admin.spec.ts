@@ -132,17 +132,22 @@ test.describe("Organizer admin", () => {
 
     await page.getByRole("button", { name: /turnier anlegen/i }).click();
 
-    // After a successful create the server action redirects to the overview.
-    await expect(page).toHaveURL(/\/organizer\/tournaments\/[^/]+$/, {
-      timeout: 15_000,
-    });
+    // After a successful create the server action redirects to the overview at
+    // /organizer/tournaments/<uuid>. Require the uuid segment explicitly: the
+    // looser /[^/]+$/ also matches the form URL .../tournaments/new, so it would
+    // pass *before* the redirect and capture "new" as the id — sending the later
+    // register-page check to /t/new/register (404) and leaking the real fixture.
+    await expect(page).toHaveURL(
+      /\/organizer\/tournaments\/[0-9a-f-]{36}$/,
+      { timeout: 15_000 },
+    );
 
     // Capture the tournament id from the URL for cleanup.
     // Fail fast with a descriptive message if the URL format is unexpected —
     // a null match would leave fixtureId empty, silently skip afterAll cleanup,
     // and potentially leak the fixture tournament into subsequent specs.
     const url = page.url();
-    const match = url.match(/\/organizer\/tournaments\/([^/]+)$/);
+    const match = url.match(/\/organizer\/tournaments\/([0-9a-f-]{36})$/);
     expect(match, `redirect URL did not match expected pattern — got: ${url}`).not.toBeNull();
     fixtureId = match![1];
     expect(fixtureId, "tournament id must be captured from redirect URL").toBeTruthy();

@@ -1,9 +1,22 @@
-// Public live board (/t/<id>/board) on the seeded single-elim "Sommer Cup 2026":
-// register + check in two solo adults → organizer seeds + generates a 2-entrant
-// final (both slots filled) → open the PUBLIC board (no login) and assert the
-// participants + bracket + status pill render → confirm the result with the
-// organizer supabase-js client → reload the board and assert the winner/score
-// "2:1" is visible (the board reflects confirmed results).
+// Public live board (/t/<id>/board) against the live hosted Supabase:
+// an organizer seeds + generates a 2-entrant single-elim final (both slots
+// filled) for a throwaway fixture tournament → open the PUBLIC board (no login)
+// and assert the bracket + running status pill render → confirm the result with
+// the organizer supabase-js client (confirm_match, 2:1) → reload the board and
+// assert the score "2:1" is visible (the board reflects confirmed results).
+//
+// This spec is fully self-contained: it creates a throwaway fixture tournament
+// (unique name, format='single_elim') with 2 programmatically registered +
+// checked-in participants in `beforeAll`, runs the public-board assertions, and
+// `afterAll` deletes the tournament (cascades to participants / matches /
+// consents). It never touches any pre-existing tournament, so it is
+// order-independent relative to the other specs.
+//
+// Participants are set up programmatically (not via browser flows): the live
+// backend rate-limits anonymous sign-ins per IP, and browser registrations would
+// be slow + flaky. Each participant gets its own anon supabase-js client (its own
+// auth user) so the owner-scoped insert/consent/check_in RLS is satisfied exactly
+// as the real participant flow does it. N=2 → a single 2-entrant final.
 //
 // The realtime subscription (LiveBoard) is best-effort — it pushes a
 // router.refresh() when realtime is enabled on the project, but the explicit
@@ -16,34 +29,13 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const ORG_EMAIL = process.env.E2E_ORG_EMAIL;
 const ORG_PASSWORD = process.env.E2E_ORG_PASSWORD;
 
-// Seeding/generating and confirming the result need a staff session; the
-// reset/cleanup keeps this destructive spec from leaking state into the others.
-// Skip cleanly when organizer creds are not configured (mirrors the other specs).
+// Seeding/generating and confirming the result need a staff session. Skip
+// cleanly when organizer creds are not configured (mirrors the other specs).
 test.skip(!ORG_EMAIL || !ORG_PASSWORD, "organizer creds not configured");
 
-/** Resolve the seeded single-elim "Sommer Cup 2026" by name (status varies). */
-async function getSommerCup(client: SupabaseClient): Promise<string> {
-  const { data, error } = await client
-    .from("tournaments")
-    .select("id")
-    .eq("format", "single_elim")
-    .ilike("name", "%sommer cup%")
-    .limit(1)
-    .single();
-  if (error || !data) {
-    throw new Error(
-      `Could not load Sommer Cup: ${error?.message ?? "none found"}`,
-    );
-  }
-  return data.id as string;
-}
-
 /**
- * Sign in as the organizer and return a staff-scoped Supabase client. Used for
- * the deterministic reset (before) and cleanup (after) so the seeded tournament
- * always returns to `registration` with no matches/reports — other specs assert
- * that status / select the open tournament by it, so we must not leave it
- * `running`.
+ * Sign in as the organizer and return a staff-scoped Supabase client. Used to
+ * create/seed/delete the fixture tournament and to confirm the result.
  */
 async function staffClient(): Promise<SupabaseClient> {
   const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -55,124 +47,86 @@ async function staffClient(): Promise<SupabaseClient> {
   return client;
 }
 
-/**
- * Delete any generated bracket (which cascades match_reports) and restore the
- * tournament to `registration`.
- */
-async function resetTournament(
-  client: SupabaseClient,
-  id: string,
-): Promise<void> {
-  await client.from("matches").delete().eq("tournament_id", id);
-  await client
-    .from("tournaments")
-    .update({ status: "registration" })
-    .eq("id", id);
-}
-
-/**
- * Register a fresh anonymous solo adult participant in its own page (distinct
- * anon session), then check in online from the /me status page. Returns the
- * display name.
- */
-async function registerAndCheckIn(page: Page, id: string): Promise<string> {
-  await page.goto(`/t/${id}/register`);
-
-  const displayName = `E2E Board ${Date.now()}-${Math.floor(
-    Math.random() * 1e6,
-  )}`;
-  await page.getByLabel("Anzeigename").fill(displayName);
-  await page.getByLabel("Geburtsdatum").fill("2000-01-01");
-
-  const captain = page.getByLabel("Captain — Name");
-  if (await captain.isVisible()) {
-    await captain.fill(`${displayName} Captain`);
-  }
-
-  await page.getByRole("button", { name: /weiter zur einwilligung/i }).click();
-
-  const finishButton = page.getByRole("button", {
-    name: /einwilligung abschließen/i,
-  });
-  await expect(finishButton).toBeVisible();
-  await page.getByRole("checkbox", { name: /einwilligung erteilen/i }).click();
-  await page.getByLabel("Name (zur Bestätigung)").fill(displayName);
-  await finishButton.click();
-
-  await expect(
-    page.getByText(/anmeldung & einwilligung abgeschlossen/i),
-  ).toBeVisible();
-
-  // Same context keeps the anon session, so /me resolves this participant.
-  await page.goto(`/t/${id}/me`);
-  await expect(page.getByText(displayName, { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: /jetzt online einchecken/i }).click();
-  await expect(page.getByText(/eingecheckt/i).first()).toBeVisible();
-
-  return displayName;
-}
-
-/**
- * Confirm (as staff) that a participant is checked in, checking them in via the
- * RPC if the browser online check-in didn't persist. The shared live backend
- * rate-limits anonymous sign-ins, which can make the browser RPC flaky under the
- * full suite; this makes the precondition for generation deterministic.
- */
-async function ensureCheckedIn(
-  client: SupabaseClient,
-  id: string,
-  displayName: string,
-): Promise<void> {
-  const { data: p, error } = await client
-    .from("participants")
-    .select("id, checked_in_at")
-    .eq("tournament_id", id)
-    .eq("display_name", displayName)
+/** Resolve the Valorant game id (the format/mode the fixture tournament uses). */
+async function getValorantGameId(client: SupabaseClient): Promise<string> {
+  const { data, error } = await client
+    .from("games")
+    .select("id")
+    .eq("name", "Valorant")
     .single();
-  if (error || !p) {
-    throw new Error(
-      `participant "${displayName}" not found: ${error?.message ?? "missing"}`,
-    );
+  if (error || !data) {
+    throw new Error(`Could not load Valorant game: ${error?.message ?? "none"}`);
   }
-  if (p.checked_in_at) return;
-  const { error: rpcErr } = await client.rpc("check_in", {
-    p_participant_id: p.id,
-    p_method: "qr_scan",
-  });
-  if (rpcErr) {
-    throw new Error(
-      `staff check-in failed for "${displayName}": ${rpcErr.message}`,
-    );
+  return data.id as string;
+}
+
+/** Resolve the organizer's org_id — staff write RLS requires org_id = current_org_id(). */
+async function getOrgId(client: SupabaseClient): Promise<string> {
+  const {
+    data: { user },
+  } = await client.auth.getUser();
+  const { data, error } = await client
+    .from("profiles")
+    .select("org_id")
+    .eq("id", user?.id ?? "")
+    .single();
+  if (error || !data?.org_id) {
+    throw new Error(`Could not resolve org_id: ${error?.message ?? "none"}`);
   }
+  return data.org_id as string;
 }
 
 /**
- * Reset the checked-in set to EXACTLY the two named participants by clearing
- * `checked_in_at` for everyone else in the tournament so the generated bracket
- * is a single 2-entrant final (both slots filled).
+ * Register a fresh anonymous solo adult participant for the fixture tournament
+ * using its own anon client (its own auth user), then check them in online.
+ * Mirrors the real participant flow's DB writes: participant row → consent row →
+ * `check_in('online')` RPC. Returns the new participant id.
  */
-async function keepOnlyCheckedIn(
-  client: SupabaseClient,
-  id: string,
-  keepNames: string[],
-): Promise<void> {
-  const { data: parts, error } = await client
+async function registerAndCheckIn(
+  tournamentId: string,
+  displayName: string,
+): Promise<string> {
+  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data: auth, error: authErr } = await client.auth.signInAnonymously();
+  if (authErr || !auth.user) {
+    throw new Error(`anon sign-in failed: ${authErr?.message ?? "no user"}`);
+  }
+
+  const { data: part, error: partErr } = await client
     .from("participants")
-    .select("id, display_name, checked_in_at")
-    .eq("tournament_id", id)
-    .not("checked_in_at", "is", null);
-  if (error) {
-    throw new Error(`could not load checked-in participants: ${error.message}`);
+    .insert({
+      tournament_id: tournamentId,
+      user_id: auth.user.id,
+      type: "solo",
+      display_name: displayName,
+      birthdate: "2000-01-01",
+    })
+    .select("id")
+    .single();
+  if (partErr || !part) {
+    throw new Error(`participant insert failed: ${partErr?.message ?? "none"}`);
   }
-  const keep = new Set(keepNames);
-  const drop = (parts ?? []).filter((p) => !keep.has(p.display_name));
-  for (const p of drop) {
-    await client
-      .from("participants")
-      .update({ checked_in_at: null })
-      .eq("id", p.id)
-      .eq("tournament_id", id);
+  const participantId = part.id as string;
+
+  const { error: consentErr } = await client.from("consents").insert({
+    participant_id: participantId,
+    grantor: "self",
+    grantor_name: displayName,
+    method: "checkbox",
+  });
+  if (consentErr) {
+    throw new Error(`consent insert failed: ${consentErr.message}`);
   }
+
+  const { error: checkInErr } = await client.rpc("check_in", {
+    p_participant_id: participantId,
+    p_method: "online",
+  });
+  if (checkInErr) {
+    throw new Error(`check_in failed for ${displayName}: ${checkInErr.message}`);
+  }
+
+  return participantId;
 }
 
 /**
@@ -223,58 +177,60 @@ async function loginAsOrganizer(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/organizer/);
 }
 
-let tournamentId = "";
+let fixtureId = "";
 
-// Deterministic starting point: register 404s unless the tournament is in
-// `registration`, so reset before we begin.
+// Create a throwaway single_elim fixture tournament with exactly two checked-in
+// players → seeding + generation produces a single 2-entrant final (both slots
+// filled), which is all the public-board assertions need.
 test.beforeAll(async () => {
-  const client = await staffClient();
-  tournamentId = await getSommerCup(client);
-  await resetTournament(client, tournamentId);
+  expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
+  expect(SUPABASE_ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set").not.toBe(
+    "",
+  );
+
+  const staff = await staffClient();
+  const gameId = await getValorantGameId(staff);
+  const orgId = await getOrgId(staff);
+
+  const name = `Board Test ${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const { data: t, error: tErr } = await staff
+    .from("tournaments")
+    .insert({
+      name,
+      game_id: gameId,
+      org_id: orgId,
+      format: "single_elim",
+      mode: "hybrid",
+      status: "registration",
+    })
+    .select("id")
+    .single();
+  if (tErr || !t) {
+    throw new Error(`fixture tournament insert failed: ${tErr?.message ?? "none"}`);
+  }
+  fixtureId = t.id as string;
+
+  // 2 checked-in participants → a clean single 2-entrant final.
+  for (let i = 1; i <= 2; i++) {
+    await registerAndCheckIn(fixtureId, `Board-P${i}`);
+  }
 });
 
-// Always restore the seeded state so the rest of the suite stays green
-// regardless of run order or a mid-test failure.
+// Always remove the fixture so nothing leaks into the shared backend; the
+// delete cascades to participants / matches / consents.
 test.afterAll(async () => {
-  if (!tournamentId) return;
-  const client = await staffClient();
-  await resetTournament(client, tournamentId);
+  if (!fixtureId) return;
+  const staff = await staffClient();
+  await staff.from("tournaments").delete().eq("id", fixtureId);
 });
 
 test("public live board renders the bracket and reflects confirmed results", async ({
   browser,
   page,
 }) => {
-  expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
-  expect(
-    SUPABASE_ANON_KEY,
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set",
-  ).not.toBe("");
+  const id = fixtureId;
 
-  const id = tournamentId;
-
-  // (1) Two distinct anonymous registrations + online check-ins, each in its
-  // own browser context so they are separate anon users.
-  const names: string[] = [];
-  for (let i = 0; i < 2; i++) {
-    const context = await browser.newContext();
-    const p = await context.newPage();
-    try {
-      names.push(await registerAndCheckIn(p, id));
-    } finally {
-      await context.close();
-    }
-  }
-
-  // Make the check-in deterministic, then narrow the checked-in set to exactly
-  // our two players so the bracket is a single 2-entrant final (both slots).
-  const staff = await staffClient();
-  for (const name of names) {
-    await ensureCheckedIn(staff, id, name);
-  }
-  await keepOnlyCheckedIn(staff, id, names);
-
-  // (2) Organizer seeds + generates the bracket (1 final match, both slots
+  // (1) Organizer seeds + generates the bracket (1 final match, both slots
   // filled) in the default `page` context.
   await loginAsOrganizer(page);
   await page.goto(`/organizer/tournaments/${id}/bracket`);
@@ -284,13 +240,14 @@ test("public live board renders the bracket and reflects confirmed results", asy
   await page.getByRole("button", { name: /^generieren$/i }).click();
   await expect(page.getByTestId("bracket-view")).toBeVisible();
 
-  // (3) Open the PUBLIC board — no login needed. The bracket + the running
+  // (2) Open the PUBLIC board — no login needed. The bracket + the running
   // status pill render, and (when the board-participants migration is applied)
   // both participant names show. Use a fresh anonymous context to prove no
   // auth/session is required.
   const namesVisible = await anonSeesParticipantNames(id);
   const publicCtx = await browser.newContext();
   const board = await publicCtx.newPage();
+  const staff = await staffClient();
   try {
     await board.goto(`/t/${id}/board`);
 
@@ -306,14 +263,14 @@ test("public live board renders the bracket and reflects confirmed results", asy
     // applied; the bracket renders "TBD" sides until then. Gate to keep the
     // spec green either way while fully checking the name path post-migration.
     if (namesVisible) {
-      for (const name of names) {
+      for (const name of ["Board-P1", "Board-P2"]) {
         await expect(
           board.getByText(name, { exact: false }).first(),
         ).toBeVisible();
       }
     }
 
-    // (4) Confirm the result with the organizer supabase-js client (2:1, side A
+    // (3) Confirm the result with the organizer supabase-js client (2:1, side A
     // wins), then reload the board and assert the score is reflected. The
     // realtime subscription is best-effort; the reload guarantees the data path.
     const matchId = await finalMatchId(staff, id);
@@ -329,9 +286,7 @@ test("public live board renders the bracket and reflects confirmed results", asy
     // The decided match surfaces its final score on the board's "Ergebnisse"
     // section. The score cell carries an aria-label "2:1" (the digits live in
     // separate colored spans), so match on the accessible label.
-    await expect(
-      board.getByLabel("2:1").first(),
-    ).toBeVisible();
+    await expect(board.getByLabel("2:1").first()).toBeVisible();
   } finally {
     await publicCtx.close();
   }

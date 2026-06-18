@@ -13,11 +13,11 @@ test("organizer check-in page shows station QR and attendance table", async ({
   await page.getByRole("button", { name: /anmelden/i }).first().click();
   await expect(page).toHaveURL(/\/organizer/);
 
-  // Reach the seeded "Sommer Cup 2026" participants page to capture its id from
-  // the URL, then open the check-in route for the same tournament.
+  // The dashboard link lands on the tournament overview; capture the id from
+  // that URL, then open the check-in route for the same tournament.
   await page.getByRole("link", { name: /sommer cup/i }).click();
-  await expect(page).toHaveURL(/\/organizer\/tournaments\/[^/]+\/participants/);
-  const match = page.url().match(/\/tournaments\/([^/]+)\/participants/);
+  await expect(page).toHaveURL(/\/organizer\/tournaments\/[^/]+$/);
+  const match = page.url().match(/\/tournaments\/([^/?#]+)/);
   const id = match?.[1];
   expect(id, "could not resolve tournament id").toBeTruthy();
 
