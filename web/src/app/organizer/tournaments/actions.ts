@@ -51,6 +51,15 @@ export async function createTournament(
     data: { user },
   } = await supabase.auth.getUser();
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("org_id")
+    .eq("id", user?.id ?? "")
+    .maybeSingle();
+  if (!profile?.org_id) {
+    return { error: "Kein Org-Kontext — dein Account ist keiner Organisation zugeordnet." };
+  }
+
   const row: Database["public"]["Tables"]["tournaments"]["Insert"] = {
     name,
     game_id: input.gameId,
@@ -60,6 +69,7 @@ export async function createTournament(
     status: "draft",
     starts_at: input.startsAt || null,
     created_by: user?.id ?? null,
+    org_id: profile.org_id,
   };
 
   const { data, error } = await supabase

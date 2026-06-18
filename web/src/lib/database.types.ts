@@ -33,7 +33,9 @@ export interface Database {
         Row: { id: string; role: UserRole; display_name: string | null; created_at: string; org_id: string | null };
         Insert: { id: string; role?: UserRole; display_name?: string | null; created_at?: string; org_id?: string | null };
         Update: { id?: string; role?: UserRole; display_name?: string | null; created_at?: string; org_id?: string | null };
-        Relationships: [];
+        Relationships: [
+          { foreignKeyName: "profiles_org_id_fkey"; columns: ["org_id"]; referencedRelation: "organizations"; referencedColumns: ["id"] }
+        ];
       };
       games: {
         Row: { id: string; name: string; team_size: number; created_at: string };
@@ -52,7 +54,7 @@ export interface Database {
           id?: string; name: string; game_id: string; format: TournamentFormat;
           mode?: TournamentMode; status?: TournamentStatus; starts_at?: string | null;
           created_by?: string | null; created_at?: string; team_size?: number;
-          org_id?: string;
+          org_id: string;
         };
         Update: {
           id?: string; name?: string; game_id?: string; format?: TournamentFormat;
@@ -61,7 +63,8 @@ export interface Database {
           org_id?: string;
         };
         Relationships: [
-          { foreignKeyName: "tournaments_game_id_fkey"; columns: ["game_id"]; referencedRelation: "games"; referencedColumns: ["id"] }
+          { foreignKeyName: "tournaments_game_id_fkey"; columns: ["game_id"]; referencedRelation: "games"; referencedColumns: ["id"] },
+          { foreignKeyName: "tournaments_org_id_fkey"; columns: ["org_id"]; referencedRelation: "organizations"; referencedColumns: ["id"] }
         ];
       };
       participants: {

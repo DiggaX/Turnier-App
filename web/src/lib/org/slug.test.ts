@@ -9,6 +9,7 @@ describe("orgSlug", () => {
   });
   it("maps umlauts and returns empty string for no alphanumerics", () => {
     expect(orgSlug("Münchner Löwen")).toBe("muenchner-loewen");
+    expect(orgSlug("ÜBER uns")).toBe("ueber-uns");
     expect(orgSlug("!!!")).toBe("");
   });
 });
