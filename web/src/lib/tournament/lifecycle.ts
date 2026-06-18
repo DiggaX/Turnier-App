@@ -20,3 +20,16 @@ export function canEditStructure(
 export function teamLabel(teamSize: number): string {
   return teamSize > 1 ? `${teamSize}v${teamSize}` : "Solo";
 }
+
+/**
+ * Two-letter game chip tag, e.g. "Valorant" → "VL", "Counter-Strike 2" → "CS".
+ * Used by both the org page and the tournament detail page.
+ */
+export function gameTag(name: string): string {
+  const cleaned = name.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  return cleaned.slice(0, 2).toUpperCase() || "??";
+}

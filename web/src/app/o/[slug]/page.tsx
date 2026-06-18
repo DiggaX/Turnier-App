@@ -6,7 +6,7 @@ import { TournamentCard } from "@/components/brand/tournament-card";
 import { createPublicClient } from "@/lib/supabase/public";
 import { formatLabel } from "@/lib/labels";
 import type { TournamentStatus } from "@/lib/database.types";
-import { teamLabel } from "@/lib/tournament/lifecycle";
+import { teamLabel, gameTag } from "@/lib/tournament/lifecycle";
 
 /** Sort order: running first, then registration, then drafts, then finished. */
 const STATUS_RANK: Record<TournamentStatus, number> = {
@@ -25,16 +25,6 @@ const TAG_COLOR_BY_STATUS: Record<
   draft: "muted",
   finished: "muted",
 };
-
-/** Two-letter game chip tag, e.g. "Valorant" → "VL", "Counter-Strike 2" → "CS". */
-function gameTag(name: string): string {
-  const cleaned = name.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
-  const words = cleaned.split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
-  }
-  return cleaned.slice(0, 2).toUpperCase() || "??";
-}
 
 /** Format the time line: format label · localized start date (German). */
 function metaLine(format: string, startsAt: string | null): string {

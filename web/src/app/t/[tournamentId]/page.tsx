@@ -7,7 +7,7 @@ import { createPublicClient } from "@/lib/supabase/public";
 import { formatLabel, modeLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { TournamentStatus } from "@/lib/database.types";
-import { teamLabel } from "@/lib/tournament/lifecycle";
+import { teamLabel, gameTag } from "@/lib/tournament/lifecycle";
 
 /** Lifecycle phases in order, as shown in the design's "Status der Phasen". */
 const PHASES: TournamentStatus[] = [
@@ -27,16 +27,6 @@ function startLabel(startsAt: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-/** Two-letter game chip tag, mirroring the home list, e.g. "Valorant" → "VL". */
-function gameTag(name: string): string {
-  const cleaned = name.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
-  const words = cleaned.split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
-  }
-  return cleaned.slice(0, 2).toUpperCase() || "??";
 }
 
 export default async function TournamentDetailPage(props: {

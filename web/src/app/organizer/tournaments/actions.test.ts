@@ -183,3 +183,345 @@ describe("createTournament", () => {
     expect(result).toEqual({ error: "Turnier konnte nicht angelegt werden." });
   });
 });
+
+// ── updateTournament ──────────────────────────────────────────────────────────
+
+/** Minimal valid input for updateTournament. */
+const validUpdateInput = {
+  id: "t-1",
+  name: "Winter Cup Updated",
+  gameId: "game-1",
+  format: "single_elim",
+  mode: "lan",
+  teamSize: 2,
+  startsAt: null,
+};
+
+describe("updateTournament", () => {
+  beforeEach(() => {
+    mockRedirect.mockReset();
+    setupStaff(() => ({}));
+  });
+
+  // (1) Auth error propagation
+  it("propagates requireStaff auth error", async () => {
+    requireStaffResult = { error: "Nicht angemeldet." };
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament(validUpdateInput);
+    expect(result).toEqual({ error: "Nicht angemeldet." });
+  });
+
+  // (2) Input validation — empty name
+  it("rejects an empty name", async () => {
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament({ ...validUpdateInput, name: "   " });
+    expect(result).toEqual({ error: "Name ist erforderlich." });
+  });
+
+  // (3) Input validation — invalid format
+  it("rejects an invalid format", async () => {
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament({ ...validUpdateInput, format: "bad_format" });
+    expect(result).toEqual({ error: "Ungültiges Format." });
+  });
+
+  // (4) Input validation — invalid mode
+  it("rejects an invalid mode", async () => {
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament({ ...validUpdateInput, mode: "unknown" });
+    expect(result).toEqual({ error: "Ungültiger Modus." });
+  });
+
+  // (5) Input validation — teamSize < 1
+  it("rejects teamSize of 0", async () => {
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament({ ...validUpdateInput, teamSize: 0 });
+    expect(result).toEqual({ error: "Teamgröße muss mindestens 1 sein." });
+  });
+
+  // (6) Successful update with no existing matches returns { ok: true }
+  it("returns ok:true when update succeeds", async () => {
+    setupStaff((table: string) => {
+      if (table === "matches") {
+        return {
+          select: () => ({
+            count: "exact",
+            head: true,
+            eq: () => Promise.resolve({ count: 0, error: null }),
+          }),
+        };
+      }
+      if (table === "tournaments") {
+        return {
+          update: () => ({
+            eq: () => Promise.resolve({ error: null, count: 1 }),
+          }),
+        };
+      }
+      return {};
+    });
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament(validUpdateInput);
+    expect(result).toEqual({ ok: true });
+  });
+
+  // (7) Zero-count silent-success — RLS blocked the write without error
+  it("returns error when 0 rows were updated (RLS silent block)", async () => {
+    setupStaff((table: string) => {
+      if (table === "matches") {
+        return {
+          select: () => ({
+            count: "exact",
+            head: true,
+            eq: () => Promise.resolve({ count: 0, error: null }),
+          }),
+        };
+      }
+      if (table === "tournaments") {
+        return {
+          update: () => ({
+            eq: () => Promise.resolve({ error: null, count: 0 }),
+          }),
+        };
+      }
+      return {};
+    });
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament(validUpdateInput);
+    expect(result).toEqual({ error: "Turnier nicht gefunden oder keine Berechtigung." });
+  });
+
+  // (8) DB error returns friendly message
+  it("returns friendly error when update fails", async () => {
+    setupStaff((table: string) => {
+      if (table === "matches") {
+        return {
+          select: () => ({
+            count: "exact",
+            head: true,
+            eq: () => Promise.resolve({ count: 0, error: null }),
+          }),
+        };
+      }
+      if (table === "tournaments") {
+        return {
+          update: () => ({
+            eq: () =>
+              Promise.resolve({ error: { code: "08006", message: "fail" }, count: null }),
+          }),
+        };
+      }
+      return {};
+    });
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament(validUpdateInput);
+    expect(result).toEqual({ error: "Turnier konnte nicht gespeichert werden." });
+  });
+});
+
+// ── advanceStatus ─────────────────────────────────────────────────────────────
+
+describe("advanceStatus", () => {
+  beforeEach(() => {
+    mockRedirect.mockReset();
+    setupStaff(() => ({}));
+  });
+
+  // (1) Auth error propagation
+  it("propagates requireStaff auth error", async () => {
+    requireStaffResult = { error: "Nicht angemeldet." };
+    const { advanceStatus } = await import("./actions");
+    const result = await advanceStatus("t-1", "draft");
+    expect(result).toEqual({ error: "Nicht angemeldet." });
+  });
+
+  // (2) No valid next status returns error
+  it("returns error when there is no valid next status", async () => {
+    const { advanceStatus } = await import("./actions");
+    const result = await advanceStatus("t-1", "finished");
+    expect(result).toEqual({ error: "Kein gültiger nächster Status." });
+  });
+
+  // (3) draft -> registration succeeds with count 1
+  it("advances draft to registration and returns ok:true", async () => {
+    setupStaff((table: string) => {
+      if (table === "tournaments") {
+        return {
+          update: () => ({
+            eq: () => ({
+              eq: () => Promise.resolve({ error: null, count: 1 }),
+            }),
+          }),
+        };
+      }
+      return {};
+    });
+    const { advanceStatus } = await import("./actions");
+    const result = await advanceStatus("t-1", "draft");
+    expect(result).toEqual({ ok: true });
+  });
+
+  // (4) Zero count means status was already changed (optimistic guard)
+  it("returns error when 0 rows updated (status already moved)", async () => {
+    setupStaff((table: string) => {
+      if (table === "tournaments") {
+        return {
+          update: () => ({
+            eq: () => ({
+              eq: () => Promise.resolve({ error: null, count: 0 }),
+            }),
+          }),
+        };
+      }
+      return {};
+    });
+    const { advanceStatus } = await import("./actions");
+    const result = await advanceStatus("t-1", "draft");
+    expect(result).toEqual({ error: "Status wurde bereits geändert." });
+  });
+
+  // (5) DB error returns friendly message
+  it("returns friendly error when update fails", async () => {
+    setupStaff((table: string) => {
+      if (table === "tournaments") {
+        return {
+          update: () => ({
+            eq: () => ({
+              eq: () =>
+                Promise.resolve({ error: { code: "08006", message: "fail" }, count: null }),
+            }),
+          }),
+        };
+      }
+      return {};
+    });
+    const { advanceStatus } = await import("./actions");
+    const result = await advanceStatus("t-1", "draft");
+    expect(result).toEqual({ error: "Status konnte nicht geändert werden." });
+  });
+});
+
+// ── deleteTournament ──────────────────────────────────────────────────────────
+
+describe("deleteTournament", () => {
+  beforeEach(() => {
+    mockRedirect.mockReset();
+    setupStaff(() => ({}));
+  });
+
+  // (1) Auth error propagation
+  it("propagates requireStaff auth error", async () => {
+    requireStaffResult = { error: "Nicht angemeldet." };
+    const { deleteTournament } = await import("./actions");
+    const result = await deleteTournament("t-1");
+    expect(result).toEqual({ error: "Nicht angemeldet." });
+  });
+
+  // (2) Running tournament cannot be deleted
+  it("rejects deletion of a running tournament", async () => {
+    setupStaff((table: string) => {
+      if (table === "tournaments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { status: "running" }, error: null }),
+            }),
+          }),
+          delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        };
+      }
+      return {};
+    });
+    const { deleteTournament } = await import("./actions");
+    const result = await deleteTournament("t-1");
+    expect(result).toEqual({
+      error: "Laufende oder beendete Turniere können nicht gelöscht werden.",
+    });
+  });
+
+  // (3) Finished tournament cannot be deleted
+  it("rejects deletion of a finished tournament", async () => {
+    setupStaff((table: string) => {
+      if (table === "tournaments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { status: "finished" }, error: null }),
+            }),
+          }),
+          delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        };
+      }
+      return {};
+    });
+    const { deleteTournament } = await import("./actions");
+    const result = await deleteTournament("t-1");
+    expect(result).toEqual({
+      error: "Laufende oder beendete Turniere können nicht gelöscht werden.",
+    });
+  });
+
+  // (4) Draft tournament is deleted and returns { ok: true }
+  it("deletes a draft tournament and returns ok:true", async () => {
+    setupStaff((table: string) => {
+      if (table === "tournaments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { status: "draft" }, error: null }),
+            }),
+          }),
+          delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        };
+      }
+      return {};
+    });
+    const { deleteTournament } = await import("./actions");
+    const result = await deleteTournament("t-1");
+    expect(result).toEqual({ ok: true });
+  });
+
+  // (5) Registration tournament can also be deleted
+  it("deletes a registration-phase tournament and returns ok:true", async () => {
+    setupStaff((table: string) => {
+      if (table === "tournaments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () =>
+                Promise.resolve({ data: { status: "registration" }, error: null }),
+            }),
+          }),
+          delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+        };
+      }
+      return {};
+    });
+    const { deleteTournament } = await import("./actions");
+    const result = await deleteTournament("t-1");
+    expect(result).toEqual({ ok: true });
+  });
+
+  // (6) DB error on delete returns friendly message
+  it("returns friendly error when delete fails", async () => {
+    setupStaff((table: string) => {
+      if (table === "tournaments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: { status: "draft" }, error: null }),
+            }),
+          }),
+          delete: () => ({
+            eq: () =>
+              Promise.resolve({ error: { code: "08006", message: "fail" } }),
+          }),
+        };
+      }
+      return {};
+    });
+    const { deleteTournament } = await import("./actions");
+    const result = await deleteTournament("t-1");
+    expect(result).toEqual({ error: "Turnier konnte nicht gelöscht werden." });
+  });
+});

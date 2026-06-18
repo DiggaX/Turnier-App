@@ -103,11 +103,11 @@ export async function updateTournament(
     return { error: "Teamgröße muss mindestens 1 sein." };
   }
 
-  const { count } = await supabase
+  const { count: matchCount } = await supabase
     .from("matches")
     .select("id", { count: "exact", head: true })
     .eq("tournament_id", input.id);
-  const hasMatches = (count ?? 0) > 0;
+  const hasMatches = (matchCount ?? 0) > 0;
 
   const patch: Database["public"]["Tables"]["tournaments"]["Update"] = {
     name,
@@ -120,12 +120,15 @@ export async function updateTournament(
     patch.format = input.format as TournamentFormat;
   }
 
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from("tournaments")
-    .update(patch)
+    .update(patch, { count: "exact" })
     .eq("id", input.id);
   if (error) {
     return { error: friendlyDbError(error, "Turnier konnte nicht gespeichert werden.") };
+  }
+  if ((count ?? 0) === 0) {
+    return { error: "Turnier nicht gefunden oder keine Berechtigung." };
   }
   return { ok: true };
 }
