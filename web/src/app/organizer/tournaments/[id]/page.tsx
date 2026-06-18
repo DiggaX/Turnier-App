@@ -62,7 +62,7 @@ export default async function TournamentOverviewPage({
 
   return (
     <>
-      <OrganizerNav />
+      <OrganizerNav isAdmin={profile.role === "admin"} />
       <main className="relative flex-1 overflow-hidden">
         <div className="relative mx-auto w-full max-w-3xl px-5 pb-20 pt-8 sm:px-8 sm:pt-10">
           <div className="mb-5">

@@ -243,7 +243,7 @@ export default async function BracketPage({
 
   return (
     <>
-      <OrganizerNav />
+      <OrganizerNav isAdmin={profile.role === "admin"} />
 
       <main className="relative flex-1 overflow-hidden">
         <div

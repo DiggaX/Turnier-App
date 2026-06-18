@@ -56,7 +56,8 @@ export default async function MembersPage() {
 
   return (
     <>
-      <OrganizerNav isAdmin={profile.role === "admin"} />
+      {/* only admins reach this point — the redirect above guards non-admins */}
+      <OrganizerNav isAdmin={true} />
       <main className="relative flex-1 overflow-hidden">
         <div
           aria-hidden

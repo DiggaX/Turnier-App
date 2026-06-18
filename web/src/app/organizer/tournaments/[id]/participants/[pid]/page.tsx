@@ -57,7 +57,7 @@ export default async function ParticipantDetailPage({
 
   return (
     <>
-      <OrganizerNav />
+      <OrganizerNav isAdmin={profile.role === "admin"} />
       <main className="relative flex-1 overflow-hidden">
         <div
           aria-hidden

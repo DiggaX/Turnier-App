@@ -31,7 +31,7 @@ export default async function GamesPage() {
 
   return (
     <>
-      <OrganizerNav />
+      <OrganizerNav isAdmin={profile.role === "admin"} />
       <main className="relative flex-1 overflow-hidden">
         <div className="relative mx-auto w-full max-w-3xl px-5 pb-20 pt-10 sm:px-8 sm:pt-12">
           <div className="mb-7">

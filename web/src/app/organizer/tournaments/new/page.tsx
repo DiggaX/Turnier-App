@@ -30,7 +30,7 @@ export default async function NewTournamentPage() {
 
   return (
     <>
-      <OrganizerNav />
+      <OrganizerNav isAdmin={profile.role === "admin"} />
       <main className="relative flex-1 overflow-hidden">
         <div className="relative mx-auto w-full max-w-xl px-5 pb-20 pt-10 sm:px-8">
           <h1 className="mb-6 font-display text-2xl font-bold uppercase tracking-tight text-ink sm:text-3xl">
