@@ -11,40 +11,17 @@
 // The game add step goes through the UI on /organizer/games.
 // The tournament creation step goes through the UI on /organizer/tournaments/new.
 // The status advance step is done via the LifecycleControls button on the overview page.
-import { test, expect, type Page } from "@playwright/test";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-const ORG_EMAIL = process.env.E2E_ORG_EMAIL;
-const ORG_PASSWORD = process.env.E2E_ORG_PASSWORD;
+import { test, expect } from "@playwright/test";
+import {
+  hasOrgCreds,
+  expectSupabaseEnv,
+  staffClient,
+  loginAsOrganizer,
+} from "./fixtures";
 
 // All actions require a staff session. Skip cleanly when organizer creds are
 // not configured (mirrors the other organizer specs).
-test.skip(!ORG_EMAIL || !ORG_PASSWORD, "organizer creds not configured");
-
-/**
- * Sign in as the organizer and return a staff-scoped Supabase client. Used for
- * cleanup in afterAll.
- */
-async function staffClient(): Promise<SupabaseClient> {
-  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { error } = await client.auth.signInWithPassword({
-    email: ORG_EMAIL!,
-    password: ORG_PASSWORD!,
-  });
-  if (error) throw new Error(`organizer sign-in failed: ${error.message}`);
-  return client;
-}
-
-/** Log in as the organizer through the UI (default `page` context). */
-async function loginAsOrganizer(page: Page): Promise<void> {
-  await page.goto("/login");
-  await page.getByLabel(/e-?mail/i).first().fill(ORG_EMAIL!);
-  await page.getByLabel(/passwort|password/i).fill(ORG_PASSWORD!);
-  await page.getByRole("button", { name: /anmelden/i }).first().click();
-  await expect(page).toHaveURL(/\/organizer/);
-}
+test.skip(!hasOrgCreds, "organizer creds not configured");
 
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const FIXTURE_GAME_NAME = "E2E Game";
@@ -55,11 +32,7 @@ let createdGameId = "";
 
 test.describe("Organizer admin", () => {
   test.beforeAll(async () => {
-    expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
-    expect(
-      SUPABASE_ANON_KEY,
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set",
-    ).not.toBe("");
+    expectSupabaseEnv();
   });
 
   test.afterAll(async () => {

@@ -21,122 +21,19 @@
 // the hosted Supabase project. Without it, generateBracket will fail on insert
 // and the tests will error. Apply the migration manually via the SQL Editor
 // before running this spec in CI.
-import { test, expect, type Page } from "@playwright/test";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-const ORG_EMAIL = process.env.E2E_ORG_EMAIL;
-const ORG_PASSWORD = process.env.E2E_ORG_PASSWORD;
+import { test, expect } from "@playwright/test";
+import {
+  hasOrgCreds,
+  expectSupabaseEnv,
+  staffClient,
+  loginAsOrganizer,
+  registerAndCheckIn,
+  createFixtureTournament,
+} from "./fixtures";
 
 // Generation + confirmation require a staff session. Skip cleanly when organizer
 // creds are not configured (mirrors the other organizer specs).
-test.skip(!ORG_EMAIL || !ORG_PASSWORD, "organizer creds not configured");
-
-/**
- * Sign in as the organizer and return a staff-scoped Supabase client. Used to
- * create/seed/delete the fixture tournament and to confirm results.
- */
-async function staffClient(): Promise<SupabaseClient> {
-  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { error } = await client.auth.signInWithPassword({
-    email: ORG_EMAIL!,
-    password: ORG_PASSWORD!,
-  });
-  if (error) throw new Error(`organizer sign-in failed: ${error.message}`);
-  return client;
-}
-
-/** Resolve the Valorant game id (the format/mode the fixture tournament uses). */
-async function getValorantGameId(client: SupabaseClient): Promise<string> {
-  const { data, error } = await client
-    .from("games")
-    .select("id")
-    .eq("name", "Valorant")
-    .single();
-  if (error || !data) {
-    throw new Error(`Could not load Valorant game: ${error?.message ?? "none"}`);
-  }
-  return data.id as string;
-}
-
-/** Resolve the organizer's org_id — staff write RLS requires org_id = current_org_id(). */
-async function getOrgId(client: SupabaseClient): Promise<string> {
-  const {
-    data: { user },
-  } = await client.auth.getUser();
-  const { data, error } = await client
-    .from("profiles")
-    .select("org_id")
-    .eq("id", user?.id ?? "")
-    .single();
-  if (error || !data?.org_id) {
-    throw new Error(`Could not resolve org_id: ${error?.message ?? "none"}`);
-  }
-  return data.org_id as string;
-}
-
-/**
- * Register a fresh anonymous solo adult participant for the fixture tournament
- * using its own anon client (its own auth user), then check them in online.
- * Mirrors the real participant flow's DB writes: participant row → consent row →
- * `check_in('online')` RPC. Returns the new participant id.
- */
-async function registerAndCheckIn(
-  tournamentId: string,
-  displayName: string,
-): Promise<string> {
-  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data: auth, error: authErr } = await client.auth.signInAnonymously();
-  if (authErr || !auth.user) {
-    throw new Error(`anon sign-in failed: ${authErr?.message ?? "no user"}`);
-  }
-
-  const { data: part, error: partErr } = await client
-    .from("participants")
-    .insert({
-      tournament_id: tournamentId,
-      user_id: auth.user.id,
-      type: "solo",
-      display_name: displayName,
-      birthdate: "2000-01-01",
-    })
-    .select("id")
-    .single();
-  if (partErr || !part) {
-    throw new Error(`participant insert failed: ${partErr?.message ?? "none"}`);
-  }
-  const participantId = part.id as string;
-
-  const { error: consentErr } = await client.from("consents").insert({
-    participant_id: participantId,
-    grantor: "self",
-    grantor_name: displayName,
-    method: "checkbox",
-  });
-  if (consentErr) {
-    throw new Error(`consent insert failed: ${consentErr.message}`);
-  }
-
-  const { error: checkInErr } = await client.rpc("check_in", {
-    p_participant_id: participantId,
-    p_method: "online",
-  });
-  if (checkInErr) {
-    throw new Error(`check_in failed for ${displayName}: ${checkInErr.message}`);
-  }
-
-  return participantId;
-}
-
-/** Log in as the organizer through the UI (default `page` context). */
-async function loginAsOrganizer(page: Page): Promise<void> {
-  await page.goto("/login");
-  await page.getByLabel(/e-?mail/i).first().fill(ORG_EMAIL!);
-  await page.getByLabel(/passwort|password/i).fill(ORG_PASSWORD!);
-  await page.getByRole("button", { name: /anmelden/i }).first().click();
-  await expect(page).toHaveURL(/\/organizer/);
-}
+test.skip(!hasOrgCreds, "organizer creds not configured");
 
 let fixtureId = "";
 
@@ -144,32 +41,13 @@ let fixtureId = "";
 // N=8 → G=ceil(8/4)=2 groups of 4 → C(4,2)=6 matches per group → 12 group matches.
 // Top 2 per group advance → 4 playoff advancers → single-elim of 4 (2 semis + 1 final).
 test.beforeAll(async () => {
-  expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
-  expect(SUPABASE_ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set").not.toBe(
-    "",
-  );
+  expectSupabaseEnv();
 
   const staff = await staffClient();
-  const gameId = await getValorantGameId(staff);
-  const orgId = await getOrgId(staff);
-
-  const name = `GroupsPlayoffs Test ${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-  const { data: t, error: tErr } = await staff
-    .from("tournaments")
-    .insert({
-      name,
-      game_id: gameId,
-      org_id: orgId,
-      format: "groups_playoffs",
-      mode: "hybrid",
-      status: "registration",
-    })
-    .select("id")
-    .single();
-  if (tErr || !t) {
-    throw new Error(`fixture tournament insert failed: ${tErr?.message ?? "none"}`);
-  }
-  fixtureId = t.id as string;
+  fixtureId = await createFixtureTournament(staff, {
+    format: "groups_playoffs",
+    namePrefix: "GroupsPlayoffs Test",
+  });
 
   // 8 checked-in participants → 2 groups of 4, 12 group matches, 4 advancers.
   for (let i = 1; i <= 8; i++) {

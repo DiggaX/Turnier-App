@@ -45,14 +45,17 @@ test("tournament detail shows title, register CTA and phase stepper", async ({
   // multi-tenant refactor; home only lists organizations.
   await page.goto("/");
   await page.locator(`a[href="/o/${slug}"]`).first().click();
-  await expect(page).toHaveURL(new RegExp(`/o/${slug}$`));
+  // Match on the exact pathname rather than interpolating the slug into a RegExp
+  // (organizations.slug has no format constraint, so a regex metachar in it would
+  // change the match semantics or throw).
+  await expect(page).toHaveURL((url) => url.pathname === `/o/${slug}`);
   await page
     .locator(`a[href="/t/${id}"]`)
     .filter({ hasText: /details/i })
     .first()
     .click();
 
-  await expect(page).toHaveURL(new RegExp(`/t/${id}$`));
+  await expect(page).toHaveURL((url) => url.pathname === `/t/${id}`);
 
   // Title is visible.
   await expect(page.getByRole("heading", { name })).toBeVisible();

@@ -33,36 +33,49 @@ const FIXTURE_EMAIL = `e2e-signup-${uniqueSuffix}@test.invalid`;
 const FIXTURE_PASSWORD = "Test1234!";
 const FIXTURE_ORG_NAME = `E2E Org ${uniqueSuffix}`;
 
-/** Auth user id captured during the test for cleanup. */
-let createdUserId = "";
-
 test.describe("Self-serve signup — create org happy path", () => {
   test.afterAll(async () => {
-    // Cleanup: delete the org + profile + auth user created by the test so that
-    // re-running the spec with the same seed produces a clean slate.
-    if (!createdUserId) return;
+    // Cleanup runs INDEPENDENTLY of the test body: it resolves the fixture by
+    // its unique org name (with an email fallback) so the created auth user +
+    // org + profile are removed even if an assertion failed before the test
+    // reached any in-test id capture — otherwise a flaky run leaks a real auth
+    // user + org into the live backend.
+    const admin = createSupabase(SUPABASE_URL, SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
     try {
-      const admin = createSupabase(SUPABASE_URL, SERVICE_ROLE_KEY, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
-
-      // Fetch the org_id from profiles before deleting the profile.
-      const { data: profile } = await admin
-        .from("profiles")
-        .select("org_id")
-        .eq("id", createdUserId)
+      // bootstrap_org creates an org with our unique name; its admin profile id
+      // IS the auth user id.
+      const { data: org } = await admin
+        .from("organizations")
+        .select("id")
+        .eq("name", FIXTURE_ORG_NAME)
         .maybeSingle();
 
-      // Delete profile row (no FK cascade needed — we do it explicitly).
-      await admin.from("profiles").delete().eq("id", createdUserId);
-
-      // Delete the org (cascades to org_invites).
-      if (profile?.org_id) {
-        await admin.from("organizations").delete().eq("id", profile.org_id);
+      let userId = "";
+      if (org) {
+        const { data: prof } = await admin
+          .from("profiles")
+          .select("id")
+          .eq("org_id", org.id)
+          .eq("role", "admin")
+          .maybeSingle();
+        if (prof) userId = prof.id as string;
       }
 
-      // Delete the auth user.
-      await admin.auth.admin.deleteUser(createdUserId);
+      // Edge: signUp succeeded but bootstrap_org did not (no org/profile) — find
+      // the orphan auth user by its unique email so it does not leak either.
+      if (!userId) {
+        const { data: list } = await admin.auth.admin.listUsers({
+          perPage: 1000,
+        });
+        const u = list?.users?.find((x) => x.email === FIXTURE_EMAIL);
+        if (u) userId = u.id;
+      }
+
+      if (userId) await admin.from("profiles").delete().eq("id", userId);
+      if (org) await admin.from("organizations").delete().eq("id", org.id);
+      if (userId) await admin.auth.admin.deleteUser(userId);
     } catch {
       // Best-effort — a failure here leaves a small fixture in the DB but does
       // not break the test result.
@@ -103,26 +116,7 @@ test.describe("Self-serve signup — create org happy path", () => {
           "Disable it at Auth → Providers → Email → 'Confirm email'.",
       );
     }
-
-    // Resolve the created user id for cleanup via the DB (the admin auth API has
-    // no getUserByEmail in supabase-js v2). bootstrap_org created an org with our
-    // unique name and an admin profile whose id IS the auth user id.
-    const admin = createSupabase(SUPABASE_URL, SERVICE_ROLE_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-    const { data: org } = await admin
-      .from("organizations")
-      .select("id")
-      .eq("name", FIXTURE_ORG_NAME)
-      .maybeSingle();
-    if (org) {
-      const { data: prof } = await admin
-        .from("profiles")
-        .select("id")
-        .eq("org_id", org.id)
-        .eq("role", "admin")
-        .maybeSingle();
-      if (prof) createdUserId = prof.id as string;
-    }
+    // Cleanup is handled entirely in afterAll (resolves the fixture by org name),
+    // so no in-test id capture is needed — a pre-redirect flake no longer leaks.
   });
 });
