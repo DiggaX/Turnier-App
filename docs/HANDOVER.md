@@ -1,6 +1,6 @@
 # Turnier-App — Übergabe an den nächsten Agent
 
-**Stand:** 2026-06-18 · Branch `main` @ `b8bd7cd` · **103 Commits vor `origin/main` (bewusst NICHT gepusht)** · live unter https://turnier-app-opal.vercel.app
+**Stand:** 2026-06-19 · Branch `main` @ `cd19253` · **auf `origin/main` gepusht** (`github.com/DiggaX/Turnier-App`) · live unter https://turnier-app-opal.vercel.app
 
 Lies zuerst diese Datei, dann `CLAUDE.md` (Regeln) und die Auto-Memory unter
 `C:\Users\Rene\.claude\projects\C--Users-Rene-Turnierapp\memory\` (MEMORY.md + die verlinkten Dateien).
@@ -17,7 +17,7 @@ Ein **Multi-Tenant-Esports-Turnier-SaaS**. Firmen (Organisationen) registrieren 
 - **Forms:** react-hook-form + zod. **Tests:** Vitest (226 Unit-Tests grün) + Playwright (e2e geschrieben, s.u.).
 
 ## 3. Deploy & DB — WIE (wichtig!)
-- **Deploy: NUR manuell per Vercel CLI** vom Repo-Root: `vercel deploy --prod --yes`. **KEIN GitHub-Auto-Deploy** (GitHub an zwei Projekten → Account-Sperre). Darum ist `main` lokal und wird **nicht gepusht**. CLI ist als `moellersrene-3676` eingeloggt.
+- **Deploy: manuell per Vercel CLI** vom Repo-Root: `vercel deploy --prod --yes` (eingeloggt als `moellersrene-3676`, Root Directory = `web`). **GitHub-Push ist OK** (Update 2026-06-19): der GitHub-Account ist NICHT mit Vercel verbunden → ein Push löst KEINEN Auto-Deploy/keine Account-Sperre aus. `git push origin main` nach `github.com/DiggaX/Turnier-App` ist normal + erwünscht; die alte „nicht pushen"-Regel ist überholt. Deploy bleibt trotzdem ein separater, manueller CLI-Schritt (kein Auto-Deploy bei Push). ⚠️ **Brain (Obsidian `Zweites-Gehiern`) NIE pushen** — nur lokales Git, kein Remote.
 - **Migrationen: über den `supabase-db2` MCP** (`mcp__supabase-db2__apply_migration` / `execute_sql`). Der db2-MCP zeigt auf `zqhdbygopftretjtlods` und ist read-write (Token via User-Env `SUPABASE_ACCESS_TOKEN_DB2`). **Workflow:** Migrations-`.sql` schreiben → `apply_migration` → mit `execute_sql` + simulierten Rollen verifizieren → Datei committen. Der **primäre** Supabase-MCP (`mcp__1830aac2…`) gehört einem ANDEREN Account (Eventpilotos) und kann das Turnier-Projekt NICHT lesen (`permission denied`) — **immer db2 nehmen**. Details: Memory `turnier-app-supabase-mcps`.
 - RLS simulieren (Isolation/Guards beweisen): `begin; set local role authenticated; set local "request.jwt.claims" to '{"sub":"<uuid>","role":"authenticated"}'; <query>; rollback;`
 

@@ -1,6 +1,6 @@
 # Turnier-App — Fortschritt
 
-**Letzter Stand:** 2026-06-19 · Branch `main` @ `2ab14e7` · lokal, NICHT gepusht
+**Letzter Stand:** 2026-06-19 · Branch `main` @ `cd19253` · auf `origin/main` gepusht (`github.com/DiggaX/Turnier-App`)
 
 ---
 
