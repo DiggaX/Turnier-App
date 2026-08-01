@@ -285,6 +285,17 @@ export interface Database {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      get_participant_by_qr_token: {
+        Args: { p_qr_token: string };
+        Returns: {
+          id: string;
+          tournament_id: string;
+          display_name: string;
+          qr_token: string;
+          checked_in_at: string | null;
+          has_consent: boolean;
+        }[];
+      };
     };
     Enums: {
       user_role: UserRole;

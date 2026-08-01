@@ -11,75 +11,122 @@ type RawOpenMatch = {
   b: { display_name: string } | null;
 };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type ParticipantRow = {
+  id: string;
+  display_name: string;
+  qr_token: string;
+  checked_in_at: string | null;
+  consents: { id: string }[];
+};
+
 export default async function MePage(props: {
   params: Promise<{ tournamentId: string }>;
+  searchParams: Promise<{ token?: string }>;
 }) {
   const { tournamentId } = await props.params;
+  const { token } = await props.searchParams;
   const supabase = await createClient();
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect(`/t/${tournamentId}/register`);
+  let participant: ParticipantRow | null = null;
+  let viaToken = false;
+
+  if (user) {
+    const { data } = await supabase
+      .from("participants")
+      .select("id, display_name, qr_token, checked_in_at, consents(id)")
+      .eq("tournament_id", tournamentId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    participant = data;
   }
 
-  const { data: participant } = await supabase
-    .from("participants")
-    .select("id, display_name, qr_token, checked_in_at, consents(id)")
-    .eq("tournament_id", tournamentId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  // No owning session (different device, cleared cookies, or never signed in
+  // here) — fall back to the recovery token from a saved/shared link. The
+  // token is the participant's own qr_token, already their bearer credential
+  // for check-in, so resolving them by it here is the same trust model.
+  if (!participant && token && UUID_RE.test(token)) {
+    const { data: row } = await supabase
+      .rpc("get_participant_by_qr_token", { p_qr_token: token })
+      .maybeSingle();
+    if (row && row.tournament_id === tournamentId) {
+      participant = {
+        id: row.id,
+        display_name: row.display_name,
+        qr_token: row.qr_token,
+        checked_in_at: row.checked_in_at,
+        consents: row.has_consent ? [{ id: "via-token" }] : [],
+      };
+      viaToken = true;
+    }
+  }
 
   if (!participant) {
     redirect(`/t/${tournamentId}/register`);
   }
 
   // The participant's current open match in this tournament: both slots filled,
-  // not yet decided, and they are on one of the two sides.
-  const { data: rawMatch } = await supabase
-    .from("matches")
-    .select(
-      "id, participant_a_id, participant_b_id, " +
-        "a:participant_a_id(display_name), b:participant_b_id(display_name)",
-    )
-    .eq("tournament_id", tournamentId)
-    .in("status", ["pending", "live"])
-    .not("participant_a_id", "is", null)
-    .not("participant_b_id", "is", null)
-    .or(
-      `participant_a_id.eq.${participant.id},participant_b_id.eq.${participant.id}`,
-    )
-    .order("round", { ascending: true })
-    .order("slot", { ascending: true })
-    .limit(1)
-    .maybeSingle()
-    .overrideTypes<RawOpenMatch>();
-
+  // not yet decided, and they are on one of the two sides. Skipped in
+  // recovery-link mode — reporting/check-in needs the owning session anyway,
+  // so this view is read-only (status + QR only).
   let currentMatch: CurrentMatch | null = null;
-  if (rawMatch) {
-    const mySide: "a" | "b" =
-      rawMatch.participant_a_id === participant.id ? "a" : "b";
-    const opponentName =
-      (mySide === "a" ? rawMatch.b?.display_name : rawMatch.a?.display_name) ??
-      "Gegner";
+  if (!viaToken) {
+    const { data: rawMatch } = await supabase
+      .from("matches")
+      .select(
+        "id, participant_a_id, participant_b_id, " +
+          "a:participant_a_id(display_name), b:participant_b_id(display_name)",
+      )
+      .eq("tournament_id", tournamentId)
+      .in("status", ["pending", "live"])
+      .not("participant_a_id", "is", null)
+      .not("participant_b_id", "is", null)
+      .or(
+        `participant_a_id.eq.${participant.id},participant_b_id.eq.${participant.id}`,
+      )
+      .order("round", { ascending: true })
+      .order("slot", { ascending: true })
+      .limit(1)
+      .maybeSingle()
+      .overrideTypes<RawOpenMatch>();
 
-    // The participant's own existing report for this match, if any.
-    const { data: myReport } = await supabase
-      .from("match_reports")
-      .select("score_a, score_b")
-      .eq("match_id", rawMatch.id)
-      .eq("reported_by", participant.id)
-      .maybeSingle();
+    if (rawMatch) {
+      const mySide: "a" | "b" =
+        rawMatch.participant_a_id === participant.id ? "a" : "b";
+      const opponentName =
+        (mySide === "a"
+          ? rawMatch.b?.display_name
+          : rawMatch.a?.display_name) ?? "Gegner";
 
-    currentMatch = {
-      matchId: rawMatch.id,
-      opponentName,
-      mySide,
-      myReport: myReport ?? null,
-    };
+      // The participant's own existing report for this match, if any.
+      const { data: myReport } = await supabase
+        .from("match_reports")
+        .select("score_a, score_b")
+        .eq("match_id", rawMatch.id)
+        .eq("reported_by", participant.id)
+        .maybeSingle();
+
+      currentMatch = {
+        matchId: rawMatch.id,
+        opponentName,
+        mySide,
+        myReport: myReport ?? null,
+      };
+    }
   }
 
-  return <MeClient participant={participant} currentMatch={currentMatch} tournamentId={tournamentId} />;
+  return (
+    <MeClient
+      participant={participant}
+      currentMatch={currentMatch}
+      tournamentId={tournamentId}
+      viaToken={viaToken}
+    />
+  );
 }

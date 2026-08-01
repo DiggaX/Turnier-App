@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
 import { QrCode } from "@/components/qr-code";
+import { QrActions } from "@/components/qr-actions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -40,6 +41,13 @@ interface MeClientProps {
   participant: Participant;
   currentMatch: CurrentMatch | null;
   tournamentId: string;
+  /**
+   * True when this view was resolved via a saved/shared recovery link
+   * (`?token=`) instead of the owning browser session. Check-in and match
+   * reporting require the original session, so those actions are hidden —
+   * this is a read-only "here's your status and QR again" view.
+   */
+  viaToken?: boolean;
 }
 
 /** Map a check_in RPC failure to a friendly German message (no raw DB leak). */
@@ -224,7 +232,12 @@ function MatchReportCard({
   );
 }
 
-export function MeClient({ participant, currentMatch, tournamentId }: MeClientProps) {
+export function MeClient({
+  participant,
+  currentMatch,
+  tournamentId,
+  viaToken = false,
+}: MeClientProps) {
   const [supabase] = useState<SupabaseClient<Database>>(() => createClient());
   const [checkedIn, setCheckedIn] = useState(
     participant.checked_in_at !== null,
@@ -274,12 +287,12 @@ export function MeClient({ participant, currentMatch, tournamentId }: MeClientPr
         </div>
 
         {/* current match report */}
-        {currentMatch && (
+        {!viaToken && currentMatch && (
           <MatchReportCard supabase={supabase} match={currentMatch} />
         )}
 
         {/* push opt-in */}
-        <PushOptIn tournamentId={tournamentId} />
+        {!viaToken && <PushOptIn tournamentId={tournamentId} />}
 
         {/* QR card */}
         <div className="rounded-2xl border border-line bg-surface p-6">
@@ -299,8 +312,16 @@ export function MeClient({ participant, currentMatch, tournamentId }: MeClientPr
           </div>
         </div>
 
+        <QrActions tournamentId={tournamentId} qrToken={participant.qr_token} />
+
         {/* check-in action */}
-        {checkedIn ? (
+        {viaToken ? (
+          <p className="text-center text-sm text-fg-muted">
+            Zum Online-Einchecken oder Ergebnisse melden bitte das Gerät
+            nutzen, mit dem du dich angemeldet hast — vor Ort einchecken kann
+            die Orga trotzdem jederzeit über deinen QR-Code.
+          </p>
+        ) : checkedIn ? (
           <div
             className="flex items-center justify-center gap-2 rounded-2xl border border-lime/30 bg-lime/[0.08] px-5 py-4 font-display text-base font-semibold text-lime"
             role="status"

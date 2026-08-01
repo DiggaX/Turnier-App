@@ -16,6 +16,8 @@ import {
   ParticipantShell,
   SectionLabel,
 } from "@/components/brand/participant-shell";
+import { QrCode } from "@/components/qr-code";
+import { QrActions } from "@/components/qr-actions";
 import { ConsentStep } from "./consent-step";
 
 type Step = "form" | "consent" | "done";
@@ -100,6 +102,7 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [participantId, setParticipantId] = useState<string | null>(null);
+  const [qrToken, setQrToken] = useState<string | null>(null);
   const [birthdate, setBirthdate] = useState<string>("");
   const [displayName, setDisplayName] = useState<string>("");
 
@@ -141,7 +144,7 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
           gamertag: values.gamertag?.trim() ? values.gamertag.trim() : null,
           birthdate: values.birthdate,
         })
-        .select("id")
+        .select("id, qr_token")
         .single();
 
       if (pErr || !participant) {
@@ -190,6 +193,7 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
       }
 
       setParticipantId(participant.id);
+      setQrToken(participant.qr_token);
       setBirthdate(values.birthdate);
       setDisplayName(values.displayName);
       setStep("consent");
@@ -207,19 +211,49 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
         heading="Anmeldung & Einwilligung abgeschlossen"
         glow="lime"
       >
-        <div className="rounded-2xl border border-lime/30 bg-lime/[0.06] p-6">
-          <div className="flex items-start gap-3">
-            <span
-              aria-hidden
-              className="flex size-7 shrink-0 items-center justify-center rounded-md bg-lime font-display text-base font-bold text-bg"
-            >
-              ✓
-            </span>
-            <p className="text-sm leading-relaxed text-fg-muted">
-              Vielen Dank, {displayName}! Du bist für{" "}
-              <span className="text-ink">{tournament.name}</span> angemeldet.
-            </p>
+        <div className="flex flex-col gap-4">
+          <div className="rounded-2xl border border-lime/30 bg-lime/[0.06] p-6">
+            <div className="flex items-start gap-3">
+              <span
+                aria-hidden
+                className="flex size-7 shrink-0 items-center justify-center rounded-md bg-lime font-display text-base font-bold text-bg"
+              >
+                ✓
+              </span>
+              <p className="text-sm leading-relaxed text-fg-muted">
+                Vielen Dank, {displayName}! Du bist für{" "}
+                <span className="text-ink">{tournament.name}</span>{" "}
+                angemeldet.
+              </p>
+            </div>
           </div>
+
+          {qrToken && (
+            <>
+              <div className="rounded-2xl border border-line bg-surface p-6">
+                <SectionLabel className="mb-4 text-center">
+                  Dein Check-in-QR
+                </SectionLabel>
+                <div className="flex flex-col items-center gap-3">
+                  <div className="rounded-2xl bg-white p-4">
+                    <QrCode value={qrToken} ariaLabel="Dein Check-in-QR" />
+                  </div>
+                  <p className="text-sm text-fg-muted">
+                    Zeig das der Orga zum Check-in
+                  </p>
+                </div>
+              </div>
+
+              <QrActions tournamentId={tournament.id} qrToken={qrToken} />
+
+              <Button
+                render={<a href={`/t/${tournament.id}/me`} />}
+                className="h-12 font-display text-sm font-bold uppercase tracking-wider"
+              >
+                Zu meinem Status
+              </Button>
+            </>
+          )}
         </div>
       </ParticipantShell>
     );
