@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { ConfirmForm } from "../matches/confirm-form";
+import { ScorekeeperQr } from "@/components/scorekeeper-qr";
 import { createClient } from "@/lib/supabase/server";
 import { requireOrgTournament } from "@/lib/auth/org-tournament";
-import { agreedScore, isPlayable, type Report } from "@/lib/station/station";
+import { isPlayable, scorePrefill, type Report } from "@/lib/station/station";
 
 import { StationBoard } from "./station-board";
 
@@ -14,6 +15,9 @@ type RawMatch = {
   id: string;
   status: string;
   participant_a_id: string | null;
+  live_score_a: number | null;
+  live_score_b: number | null;
+  live_ended_at: string | null;
   participant_b_id: string | null;
   a: { display_name: string } | null;
   b: { display_name: string } | null;
@@ -56,7 +60,7 @@ export default async function StationPage({
   const { data: rawMatches } = await supabase
     .from("matches")
     .select(
-      "id, status, participant_a_id, participant_b_id, " +
+      "id, status, live_score_a, live_score_b, live_ended_at, participant_a_id, participant_b_id, " +
         "a:participant_a_id(display_name), b:participant_b_id(display_name)",
     )
     .eq("tournament_id", id)
@@ -88,6 +92,13 @@ export default async function StationPage({
     }
   }
 
+  const { data: scorekeeperTokenRows } =
+    ids.length > 0
+      ? await supabase.rpc("get_scorekeeper_tokens", { p_match_ids: ids })
+      : { data: [] };
+  const scorekeeperTokenByMatch = new Map(
+    (scorekeeperTokenRows ?? []).map((row) => [row.match_id, row.token]),
+  );
   return (
     <StationBoard tournamentId={id}>
       <div className="mx-auto w-full max-w-[1280px] px-6 pb-20 pt-8 sm:px-10">
@@ -105,7 +116,12 @@ export default async function StationPage({
         ) : (
           <div className="grid gap-5 md:grid-cols-2">
             {playable.map((m) => {
-              const agreed = agreedScore(reportsByMatch.get(m.id) ?? []);
+              const prefill = scorePrefill(reportsByMatch.get(m.id) ?? [], {
+                liveScoreA: m.live_score_a,
+                liveScoreB: m.live_score_b,
+                liveEndedAt: m.live_ended_at,
+              });
+              const scorekeeperToken = scorekeeperTokenByMatch.get(m.id);
               return (
                 <div
                   key={m.id}
@@ -120,12 +136,19 @@ export default async function StationPage({
                       {m.b?.display_name ?? "TBD"}
                     </span>
                   </div>
+                  {scorekeeperToken && (
+                    <ScorekeeperQr
+                      token={scorekeeperToken}
+                      label={"Scorekeeper-QR fuer " + (m.a?.display_name ?? "A") + " gegen " + (m.b?.display_name ?? "B")}
+                    />
+                  )}
                   <ConfirmForm
                     matchId={m.id}
                     aName={m.a?.display_name ?? "A"}
                     bName={m.b?.display_name ?? "B"}
-                    defaultScoreA={agreed?.scoreA ?? null}
-                    defaultScoreB={agreed?.scoreB ?? null}
+                    defaultScoreA={prefill?.scoreA ?? null}
+                    defaultScoreB={prefill?.scoreB ?? null}
+                    suggestionSource={prefill?.source}
                   />
                 </div>
               );

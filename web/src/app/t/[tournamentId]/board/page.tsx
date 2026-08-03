@@ -24,6 +24,9 @@ type RawMatch = {
   participant_b_id: string | null;
   score_a: number | null;
   score_b: number | null;
+  live_score_a: number | null;
+  live_score_b: number | null;
+  live_ended_at: string | null;
   group_no: number | null;
   a: { display_name: string } | null;
   b: { display_name: string } | null;
@@ -53,7 +56,7 @@ export default async function BoardPage(props: {
     .from("matches")
     .select(
       "id, bracket, round, slot, status, winner_id, participant_a_id, participant_b_id, " +
-        "score_a, score_b, group_no, a:participant_a_id(display_name), b:participant_b_id(display_name)",
+        "score_a, score_b, live_score_a, live_score_b, live_ended_at, group_no, a:participant_a_id(display_name), b:participant_b_id(display_name)",
     )
     .eq("tournament_id", tournamentId)
     .order("round", { ascending: true })
@@ -76,6 +79,9 @@ export default async function BoardPage(props: {
     scoreA: m.score_a,
     scoreB: m.score_b,
     groupNo: m.group_no,
+    liveScoreA: m.live_score_a,
+    liveScoreB: m.live_score_b,
+    liveEndedAt: m.live_ended_at,
   }));
 
   // id → display name, harvested from the embedded match sides (covers every

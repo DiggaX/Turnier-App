@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { ScorekeeperQr } from "@/components/scorekeeper-qr";
+import { scorePrefill } from "@/lib/station/station";
 
 import { ConfirmForm } from "./confirm-form";
 
@@ -25,6 +27,10 @@ export type MatchRowView = {
   participantBId: string | null;
   scoreA: number | null;
   scoreB: number | null;
+  liveScoreA: number | null;
+  liveScoreB: number | null;
+  liveEndedAt: string | null;
+  scorekeeperToken: string | null;
   /** Player reports for this match, in match (a/b) terms. */
   reports: ReportView[];
 };
@@ -76,6 +82,11 @@ export function ReportRow({ match }: { match: MatchRowView }) {
     match.participantAId != null && match.participantBId != null;
 
   const agreed = agreedScore(match.reports);
+  const prefill = scorePrefill(match.reports, {
+    liveScoreA: match.liveScoreA,
+    liveScoreB: match.liveScoreB,
+    liveEndedAt: match.liveEndedAt,
+  });
 
   let badge: ReactNode = null;
   if (match.status !== "done") {
@@ -126,6 +137,15 @@ export function ReportRow({ match }: { match: MatchRowView }) {
         </div>
       )}
 
+      {match.scorekeeperToken &&
+        match.status !== "done" &&
+        match.status !== "bye" &&
+        bothSlotsFilled && (
+          <ScorekeeperQr
+            token={match.scorekeeperToken}
+            label={"Scorekeeper-QR fuer " + aLabel + " gegen " + bLabel}
+          />
+        )}
       {match.status === "done" ? (
         <div
           className="rounded-xl border border-lime/30 bg-lime/[0.08] px-4 py-3 font-display text-sm font-semibold text-lime"
@@ -138,8 +158,9 @@ export function ReportRow({ match }: { match: MatchRowView }) {
           matchId={match.id}
           aName={aLabel}
           bName={bLabel}
-          defaultScoreA={agreed?.a ?? null}
-          defaultScoreB={agreed?.b ?? null}
+          defaultScoreA={prefill?.scoreA ?? null}
+          defaultScoreB={prefill?.scoreB ?? null}
+          suggestionSource={prefill?.source}
         />
       ) : (
         <p className="text-sm text-fg-dim">

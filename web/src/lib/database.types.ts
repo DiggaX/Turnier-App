@@ -149,6 +149,7 @@ export interface Database {
           winner_id: string | null; next_match_id: string | null; next_slot: string | null;
           loser_next_match_id: string | null; loser_next_slot: string | null;
           status: MatchStatus; score_a: number | null; score_b: number | null; created_at: string;
+          live_score_a: number | null; live_score_b: number | null; live_started_at: string | null; live_ended_at: string | null; live_updated_at: string | null;
           group_no: number | null;
         };
         Insert: {
@@ -158,6 +159,7 @@ export interface Database {
           winner_id?: string | null; next_match_id?: string | null; next_slot?: string | null;
           loser_next_match_id?: string | null; loser_next_slot?: string | null;
           status?: MatchStatus; score_a?: number | null; score_b?: number | null; created_at?: string;
+          live_score_a?: number | null; live_score_b?: number | null; live_started_at?: string | null; live_ended_at?: string | null; live_updated_at?: string | null;
           group_no?: number | null;
         };
         Update: {
@@ -167,6 +169,7 @@ export interface Database {
           winner_id?: string | null; next_match_id?: string | null; next_slot?: string | null;
           loser_next_match_id?: string | null; loser_next_slot?: string | null;
           status?: MatchStatus; score_a?: number | null; score_b?: number | null; created_at?: string;
+          live_score_a?: number | null; live_score_b?: number | null; live_started_at?: string | null; live_ended_at?: string | null; live_updated_at?: string | null;
           group_no?: number | null;
         };
         Relationships: [
@@ -260,6 +263,43 @@ export interface Database {
       confirm_match: {
         Args: { p_match_id: string; p_score_a: number; p_score_b: number };
         Returns: undefined;
+      };
+      get_scorekeeper_match: {
+        Args: { p_token: string };
+        Returns: {
+          match_id: string;
+          tournament_name: string;
+          participant_a_name: string | null;
+          participant_b_name: string | null;
+          status: MatchStatus;
+          live_score_a: number | null;
+          live_score_b: number | null;
+          live_started_at: string | null;
+          live_ended_at: string | null;
+          live_updated_at: string | null;
+          score_a: number | null;
+          score_b: number | null;
+        }[];
+      };
+      start_live_match: {
+        Args: { p_token: string };
+        Returns: undefined;
+      };
+      update_live_score: {
+        Args: { p_token: string; p_score_a: number; p_score_b: number };
+        Returns: undefined;
+      };
+      finish_live_match: {
+        Args: { p_token: string; p_score_a: number; p_score_b: number };
+        Returns: undefined;
+      };
+      reopen_live_match: {
+        Args: { p_token: string };
+        Returns: undefined;
+      };
+      get_scorekeeper_tokens: {
+        Args: { p_match_ids: string[] };
+        Returns: { match_id: string; token: string }[];
       };
       bootstrap_org: {
         Args: { p_name: string; p_slug: string };

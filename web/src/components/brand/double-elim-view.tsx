@@ -1,6 +1,7 @@
 import type { BracketMatch } from "@/components/brand/bracket-view";
 import { cn } from "@/lib/utils";
 
+import { getDisplayedScore, getMatchDisplayState } from "@/lib/live-match";
 /** A bracket match plus which sub-bracket it belongs to (winner/loser/GF). */
 export type DoubleElimMatch = BracketMatch & {
   bracket: string;
@@ -54,11 +55,28 @@ function MatchCard({ match }: { match: DoubleElimMatch }) {
   const aWin = match.winnerId != null && match.winnerId === match.participantAId;
   const bWin = match.winnerId != null && match.winnerId === match.participantBId;
 
+  const displayState = getMatchDisplayState(match);
+  const score = getDisplayedScore(match);
   return (
-    <div className="w-full overflow-hidden rounded-[10px] border border-line bg-surface">
+    <div className={cn("w-full overflow-hidden rounded-[10px] border bg-surface", displayState === "live" ? "border-live/60" : "border-line")}>
+      {displayState === "live" && (
+        <div className="bg-live/[0.1] py-1 text-center font-display text-[9px] uppercase tracking-[0.2em] text-live">
+          Live
+        </div>
+      )}
+      {displayState === "awaiting_confirmation" && (
+        <div className="bg-cyan/[0.1] py-1 text-center font-display text-[9px] uppercase tracking-[0.14em] text-cyan">
+          Wartet auf Freigabe
+        </div>
+      )}
       {match.status === "bye" && (
         <div className="bg-cyan/[0.1] py-1 text-center font-display text-[9px] uppercase tracking-[0.2em] text-cyan">
           Freilos
+        </div>
+      )}
+      {score && (
+        <div className="border-t border-line/60 py-1.5 text-center font-display text-xs font-semibold tabular-nums text-ink">
+          {score.scoreA}:{score.scoreB}
         </div>
       )}
       <Row name={match.aName} status={match.status} isWinner={aWin} />

@@ -2,6 +2,7 @@ import { StandingsTable } from "@/components/brand/standings-table";
 import type { BracketMatch } from "@/components/brand/bracket-view";
 import type { StandingRow } from "@/lib/standings";
 import { cn } from "@/lib/utils";
+import { getDisplayedScore, getMatchDisplayState } from "@/lib/live-match";
 
 /** A group-stage match enriched with scores. */
 export type GroupMatch = BracketMatch & {
@@ -65,6 +66,7 @@ export function GroupsView({
                   className={cn(
                     "flex items-center gap-3 px-4 py-3",
                     i > 0 && "border-t border-line/60",
+                    getMatchDisplayState(m) === "live" && "bg-live/[0.07]",
                   )}
                 >
                   <span
@@ -82,6 +84,17 @@ export function GroupsView({
                       ? `${m.scoreA ?? "–"}:${m.scoreB ?? "–"}`
                       : "vs"}
                   </span>
+                    {getMatchDisplayState(m) === "live" && getDisplayedScore(m) && (
+                      <span className="ml-1 text-[9px] uppercase tracking-[0.12em] text-live">
+                        Live {getDisplayedScore(m)!.scoreA}:{getDisplayedScore(m)!.scoreB}
+                      </span>
+                    )}
+                    {getMatchDisplayState(m) === "awaiting_confirmation" &&
+                      getDisplayedScore(m) && (
+                        <span className="ml-1 text-[9px] uppercase tracking-[0.08em] text-cyan">
+                          {getDisplayedScore(m)!.scoreA}:{getDisplayedScore(m)!.scoreB} wartet
+                        </span>
+                      )}
                   <span
                     className={cn(
                       "flex-1 truncate font-display text-sm font-semibold",

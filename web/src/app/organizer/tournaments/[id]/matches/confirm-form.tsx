@@ -17,6 +17,7 @@ export type ConfirmFormProps = {
   defaultScoreA?: number | null;
   /** Prefill for score_b (e.g. the agreed score), if any. */
   defaultScoreB?: number | null;
+  suggestionSource?: "player_reports" | "scorekeeper";
 };
 
 /** Map a confirm_match RPC failure to a friendly German message. */
@@ -55,6 +56,7 @@ export function ConfirmForm({
   bName,
   defaultScoreA,
   defaultScoreB,
+  suggestionSource,
 }: ConfirmFormProps) {
   const router = useRouter();
   const [supabase] = useState<SupabaseClient<Database>>(() => createClient());
@@ -139,6 +141,11 @@ export function ConfirmForm({
         </label>
       </div>
 
+      {suggestionSource === "scorekeeper" && (
+        <p className="font-display text-[10px] uppercase tracking-[0.12em] text-cyan">
+          Scorekeeper-Vorschlag - bitte pruefen
+        </p>
+      )}
       <button
         type="button"
         onClick={() => void handleConfirm()}

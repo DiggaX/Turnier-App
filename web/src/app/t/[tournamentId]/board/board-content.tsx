@@ -11,6 +11,7 @@ import type {
 } from "@/lib/database.types";
 import type { StandingRow } from "@/lib/standings";
 import { cn } from "@/lib/utils";
+import { getDisplayedScore, getMatchDisplayState } from "@/lib/live-match";
 
 /** A match enriched with names + scores for the board. */
 export type BoardMatch = BracketMatch & {
@@ -57,21 +58,23 @@ function scoreText(score: number | null): string {
  * not-yet-started). Beamer-readable type.
  */
 function PlayableCard({ match }: { match: BoardMatch }) {
-  const live = match.status === "live";
+  const displayState = getMatchDisplayState(match);
+  const live = displayState === "live";
+  const score = getDisplayedScore(match);
   return (
     <div
       className={cn(
         "grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-2xl border bg-bg/60 px-6 py-6",
-        live ? "border-live/40" : "border-line",
+        live ? "border-live/40" : displayState === "awaiting_confirmation" ? "border-cyan/40" : "border-line",
       )}
     >
       <div className="truncate text-right font-display text-2xl font-semibold text-ink sm:text-3xl">
         {match.aName}
       </div>
       <div className="font-display text-3xl font-bold tabular-nums sm:text-4xl">
-        <span className="text-lime">{scoreText(match.scoreA)}</span>
+        <span className="text-lime">{scoreText(score?.scoreA ?? null)}</span>
         <span className="px-2 text-fg-dim">:</span>
-        <span className="text-ink">{scoreText(match.scoreB)}</span>
+        <span className="text-ink">{scoreText(score?.scoreB ?? null)}</span>
       </div>
       <div className="truncate font-display text-2xl font-semibold text-fg-muted sm:text-3xl">
         {match.bName}
@@ -84,6 +87,10 @@ function PlayableCard({ match }: { match: BoardMatch }) {
               className="inline-block size-1.5 animate-pulse rounded-full bg-live"
             />
             Live
+          </span>
+        ) : displayState === "awaiting_confirmation" ? (
+          <span className="font-display text-[11px] uppercase tracking-[0.16em] text-cyan">
+            Wartet auf Freigabe
           </span>
         ) : (
           <span className="font-display text-[11px] uppercase tracking-[0.2em] text-fg-dim">
@@ -155,15 +162,10 @@ export function BoardContent({
   const isDoubleElim = format === "double_elim";
   const isGroupsPlayoffs = format === "groups_playoffs";
 
-  // For groups_playoffs, the group matches are already shown inside GroupsView.
-  // Only surface playoff matches (groupNo == null) in the banner sections to
-  // avoid every group match appearing twice (banner + GroupsView).
-  const playable = matches.filter(
-    (m) => isPlayable(m) && (!isGroupsPlayoffs || m.groupNo == null),
-  );
-  const decided = matches.filter(
-    (m) => isDecided(m) && (!isGroupsPlayoffs || m.groupNo == null),
-  );
+  const liveMatches = matches.filter((m) => m.status === "live");
+  const playable =
+    liveMatches.length > 0 ? liveMatches : matches.filter(isPlayable);
+  const decided = matches.filter(isDecided);
 
   return (
     <div className="mx-auto max-w-[1280px] px-6 pb-20 pt-8 sm:px-10">
@@ -207,10 +209,10 @@ export function BoardContent({
 
       {/* Jetzt spielbar */}
       <section className="mb-12">
-        <div className={cn(SECTION_LABEL, "mb-4")}>Jetzt spielbar</div>
+        <div className={cn(SECTION_LABEL, "mb-4")}>{liveMatches.length > 0 ? "Laeuft jetzt" : "Bereit zum Start"}</div>
         {playable.length === 0 ? (
           <p className="rounded-2xl border border-line bg-bg/40 px-6 py-8 text-center font-display text-lg text-fg-muted">
-            Keine laufenden Matches
+            Noch kein Match gestartet
           </p>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">

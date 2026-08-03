@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { getDisplayedScore, getMatchDisplayState } from "@/lib/live-match";
 
 /** A match enriched with participant display names for rendering. */
 export type BracketMatch = {
@@ -11,6 +12,11 @@ export type BracketMatch = {
   winnerId: string | null;
   participantAId: string | null;
   participantBId: string | null;
+  scoreA?: number | null;
+  scoreB?: number | null;
+  liveScoreA?: number | null;
+  liveScoreB?: number | null;
+  liveEndedAt?: string | null;
 };
 
 export type BracketViewProps = {
@@ -69,9 +75,21 @@ function Row({
 function Card({ match }: { match: BracketMatch }) {
   const aWin = match.winnerId != null && match.winnerId === match.participantAId;
   const bWin = match.winnerId != null && match.winnerId === match.participantBId;
+  const displayState = getMatchDisplayState(match);
+  const score = getDisplayedScore(match);
 
   return (
-    <div className="w-full overflow-hidden rounded-[10px] border border-line bg-surface">
+    <div className={cn("w-full overflow-hidden rounded-[10px] border bg-surface", displayState === "live" ? "border-live/60" : "border-line")}>
+      {displayState === "live" && (
+        <div className="bg-live/[0.1] py-1 text-center font-display text-[9px] uppercase tracking-[0.2em] text-live">
+          Live
+        </div>
+      )}
+      {displayState === "awaiting_confirmation" && (
+        <div className="bg-cyan/[0.1] py-1 text-center font-display text-[9px] uppercase tracking-[0.14em] text-cyan">
+          Wartet auf Freigabe
+        </div>
+      )}
       {match.status === "bye" && (
         <div className="bg-cyan/[0.1] py-1 text-center font-display text-[9px] uppercase tracking-[0.2em] text-cyan">
           Freilos
@@ -80,6 +98,11 @@ function Card({ match }: { match: BracketMatch }) {
       <Row name={match.aName} status={match.status} isWinner={aWin} />
       <div className="h-px bg-white/[0.06]" />
       <Row name={match.bName} status={match.status} isWinner={bWin} />
+      {score && (
+        <div className="border-t border-line/60 py-1.5 text-center font-display text-xs font-semibold tabular-nums text-ink">
+          {score.scoreA}:{score.scoreB}
+        </div>
+      )}
     </div>
   );
 }

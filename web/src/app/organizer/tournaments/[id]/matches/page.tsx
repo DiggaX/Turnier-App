@@ -29,6 +29,9 @@ type RawMatch = {
   score_a: number | null;
   score_b: number | null;
   a: { display_name: string } | null;
+  live_score_a: number | null;
+  live_score_b: number | null;
+  live_ended_at: string | null;
   b: { display_name: string } | null;
 };
 
@@ -83,7 +86,7 @@ export default async function MatchesPage({
     .from("matches")
     .select(
       "id, round, slot, status, winner_id, participant_a_id, participant_b_id, " +
-        "score_a, score_b, a:participant_a_id(display_name), b:participant_b_id(display_name)",
+        "score_a, score_b, live_score_a, live_score_b, live_ended_at, a:participant_a_id(display_name), b:participant_b_id(display_name)",
     )
     .eq("tournament_id", id)
     .order("round", { ascending: true })
@@ -134,6 +137,15 @@ export default async function MatchesPage({
     reportsByMatch.set(r.match_id, list);
   }
 
+  const { data: scorekeeperTokenRows } =
+    matchIds.length > 0
+      ? await supabase.rpc("get_scorekeeper_tokens", {
+          p_match_ids: matchIds,
+        })
+      : { data: [] };
+  const scorekeeperTokenByMatch = new Map(
+    (scorekeeperTokenRows ?? []).map((row) => [row.match_id, row.token]),
+  );
   const rows: MatchRowView[] = matchRows.map((m) => ({
     id: m.id,
     round: m.round,
@@ -143,6 +155,10 @@ export default async function MatchesPage({
     bName: m.b?.display_name ?? null,
     winnerId: m.winner_id,
     participantAId: m.participant_a_id,
+    liveScoreA: m.live_score_a,
+    liveScoreB: m.live_score_b,
+    liveEndedAt: m.live_ended_at,
+    scorekeeperToken: scorekeeperTokenByMatch.get(m.id) ?? null,
     participantBId: m.participant_b_id,
     scoreA: m.score_a,
     scoreB: m.score_b,

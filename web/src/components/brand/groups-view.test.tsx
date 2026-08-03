@@ -58,6 +58,47 @@ describe("GroupsView", () => {
     expect(screen.getByText("Gruppe B")).toBeInTheDocument();
   });
 
+  it("marks every simultaneous live group match", () => {
+    const matches: GroupMatch[] = [
+      makeMatch({
+        id: "live-1",
+        groupNo: 0,
+        aName: "Alice",
+        bName: "Bob",
+        status: "live",
+        liveScoreA: 1,
+        liveScoreB: 0,
+      }),
+      makeMatch({
+        id: "live-2",
+        groupNo: 0,
+        aName: "Carol",
+        bName: "Dave",
+        status: "live",
+        liveScoreA: 2,
+        liveScoreB: 1,
+      }),
+      makeMatch({
+        id: "live-3",
+        groupNo: 0,
+        aName: "Eve",
+        bName: "Frank",
+        status: "live",
+        liveScoreA: 0,
+        liveScoreB: 0,
+      }),
+    ];
+
+    render(
+      <GroupsView matches={matches} standingsByGroup={NO_STANDINGS} names={{}} />,
+    );
+
+    expect(screen.getAllByText(/^Live [0-9]+:[0-9]+$/)).toHaveLength(3);
+    expect(screen.getByText("Live 1:0")).toBeInTheDocument();
+    expect(screen.getByText("Live 2:1")).toBeInTheDocument();
+    expect(screen.getByText("Live 0:0")).toBeInTheDocument();
+  });
+
   it("shows 'vs' for a pending match", () => {
     const matches: GroupMatch[] = [
       makeMatch({

@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 
 import type { BracketMatch } from "@/components/brand/bracket-view";
 
+import { getDisplayedScore, getMatchDisplayState } from "@/lib/live-match";
 export type RoundRobinViewProps = {
   matches: BracketMatch[];
   className?: string;
@@ -44,13 +45,22 @@ export function RoundRobinView({ matches, className }: RoundRobinViewProps) {
                   className={cn(
                     "flex items-center gap-3 px-4 py-3",
                     i > 0 && "border-t border-line/60",
+                    getMatchDisplayState(m) === "live" && "bg-live/[0.07]",
                   )}
                 >
                   <span className="flex-1 truncate text-right font-display text-sm font-semibold text-ink">
                     {m.aName ?? "TBD"}
                   </span>
-                  <span className="font-display text-[11px] uppercase tracking-[0.12em] text-fg-dim">
-                    vs
+                  <span className="flex flex-col items-center font-display text-[11px] uppercase tracking-[0.12em] text-fg-dim">
+                    {getDisplayedScore(m)
+                      ? getDisplayedScore(m)!.scoreA + ":" + getDisplayedScore(m)!.scoreB
+                      : "vs"}
+                    {getMatchDisplayState(m) === "live" && (
+                      <span className="mt-0.5 text-[9px] text-live">Live</span>
+                    )}
+                    {getMatchDisplayState(m) === "awaiting_confirmation" && (
+                      <span className="mt-0.5 text-[9px] text-cyan">Wartet</span>
+                    )}
                   </span>
                   <span className="flex-1 truncate font-display text-sm font-semibold text-ink">
                     {m.bName ?? "TBD"}

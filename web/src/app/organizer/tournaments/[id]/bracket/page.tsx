@@ -44,6 +44,9 @@ type RawMatch = {
   score_a: number | null;
   score_b: number | null;
   group_no: number | null;
+  live_score_a: number | null;
+  live_score_b: number | null;
+  live_ended_at: string | null;
   a: { display_name: string } | null;
   b: { display_name: string } | null;
 };
@@ -101,7 +104,7 @@ export default async function BracketPage({
     .from("matches")
     .select(
       "id, bracket, round, slot, status, winner_id, participant_a_id, participant_b_id, " +
-        "score_a, score_b, group_no, a:participant_a_id(display_name), b:participant_b_id(display_name)",
+        "score_a, score_b, live_score_a, live_score_b, live_ended_at, group_no, a:participant_a_id(display_name), b:participant_b_id(display_name)",
     )
     .eq("tournament_id", id)
     .order("round", { ascending: true })
@@ -119,6 +122,11 @@ export default async function BracketPage({
     participantBId: m.participant_b_id,
     aName: m.a?.display_name ?? null,
     bName: m.b?.display_name ?? null,
+    scoreA: m.score_a,
+    scoreB: m.score_b,
+    liveScoreA: m.live_score_a,
+    liveScoreB: m.live_score_b,
+    liveEndedAt: m.live_ended_at,
   }));
 
   // Swiss-specific derived data (computed regardless of format; no-ops when empty).
@@ -132,6 +140,9 @@ export default async function BracketPage({
     participantAId: m.participant_a_id,
     participantBId: m.participant_b_id,
     aName: m.a?.display_name ?? null,
+    liveScoreA: m.live_score_a,
+    liveScoreB: m.live_score_b,
+    liveEndedAt: m.live_ended_at,
     bName: m.b?.display_name ?? null,
     scoreA: m.score_a,
     scoreB: m.score_b,
@@ -183,6 +194,9 @@ export default async function BracketPage({
       participantBId: m.participant_b_id,
       aName: m.a?.display_name ?? null,
       bName: m.b?.display_name ?? null,
+      liveScoreA: m.live_score_a,
+      liveScoreB: m.live_score_b,
+      liveEndedAt: m.live_ended_at,
       groupNo: m.group_no,
       scoreA: m.score_a,
       scoreB: m.score_b,
