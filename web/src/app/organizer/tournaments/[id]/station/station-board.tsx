@@ -27,6 +27,7 @@ export function StationBoard({ tournamentId, children }: StationBoardProps) {
 
     const supabase = createClient();
     const channel = supabase.channel(`station-${tournamentId}`);
+    const refreshInterval = window.setInterval(() => router.refresh(), 5_000);
     try {
       channel
         .on(
@@ -44,6 +45,7 @@ export function StationBoard({ tournamentId, children }: StationBoardProps) {
       // Realtime not enabled — station still renders server data.
     }
     return () => {
+      window.clearInterval(refreshInterval);
       startedRef.current = false;
       supabase.removeChannel(channel);
     };

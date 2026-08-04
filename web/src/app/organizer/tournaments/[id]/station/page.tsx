@@ -3,8 +3,10 @@ import { redirect } from "next/navigation";
 
 import { ConfirmForm } from "../matches/confirm-form";
 import { ScorekeeperQr } from "@/components/scorekeeper-qr";
+import type { MatchStatus } from "@/lib/database.types";
 import { createClient } from "@/lib/supabase/server";
 import { requireOrgTournament } from "@/lib/auth/org-tournament";
+import { getDisplayedScore, getMatchDisplayState } from "@/lib/live-match";
 import { isPlayable, scorePrefill, type Report } from "@/lib/station/station";
 
 import { StationBoard } from "./station-board";
@@ -13,7 +15,7 @@ export const metadata: Metadata = { title: "Station — Turnier-App" };
 
 type RawMatch = {
   id: string;
-  status: string;
+  status: MatchStatus;
   participant_a_id: string | null;
   live_score_a: number | null;
   live_score_b: number | null;
@@ -121,6 +123,18 @@ export default async function StationPage({
                 liveScoreB: m.live_score_b,
                 liveEndedAt: m.live_ended_at,
               });
+              const liveState = getMatchDisplayState({
+                status: m.status,
+                liveScoreA: m.live_score_a,
+                liveScoreB: m.live_score_b,
+                liveEndedAt: m.live_ended_at,
+              });
+              const liveScore = getDisplayedScore({
+                status: m.status,
+                liveScoreA: m.live_score_a,
+                liveScoreB: m.live_score_b,
+                liveEndedAt: m.live_ended_at,
+              });
               const scorekeeperToken = scorekeeperTokenByMatch.get(m.id);
               return (
                 <div
@@ -136,6 +150,19 @@ export default async function StationPage({
                       {m.b?.display_name ?? "TBD"}
                     </span>
                   </div>
+                  {liveScore && (
+                    <div
+                      aria-live="polite"
+                      className="flex items-center justify-between rounded-[8px] border border-live/40 bg-live/[0.08] px-4 py-3"
+                    >
+                      <span className="font-display text-[11px] uppercase tracking-[0.14em] text-live">
+                        {liveState === "live" ? "Live-Stand" : "Scorekeeper-Endstand"}
+                      </span>
+                      <span className="font-display text-xl font-bold tabular-nums text-ink">
+                        {liveScore.scoreA}:{liveScore.scoreB}
+                      </span>
+                    </div>
+                  )}
                   {scorekeeperToken && (
                     <ScorekeeperQr
                       token={scorekeeperToken}
@@ -143,6 +170,7 @@ export default async function StationPage({
                     />
                   )}
                   <ConfirmForm
+                    key={`${m.id}:${m.live_ended_at ?? ""}:${prefill?.source ?? "none"}:${prefill?.scoreA ?? ""}:${prefill?.scoreB ?? ""}`}
                     matchId={m.id}
                     aName={m.a?.display_name ?? "A"}
                     bName={m.b?.display_name ?? "B"}
