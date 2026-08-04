@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Projector } from "lucide-react";
 
 import {
   BracketView,
@@ -23,6 +25,7 @@ import { swissRoundCount } from "@/lib/swiss/pairing";
 import { swissStandings } from "@/lib/swiss/standings";
 
 import { AdvanceRoundButton } from "./advance-round-button";
+import { BracketLiveShell } from "./bracket-live-shell";
 import { GenerateButton } from "./generate-button";
 import { GeneratePlayoffsButton } from "./generate-playoffs-button";
 import { SeedingClient } from "./seeding-client";
@@ -280,8 +283,9 @@ export default async function BracketPage({
 
           <TournamentTabs tournamentId={id} />
 
-          {!hasMatches ? (
-            <div className="flex flex-col gap-8">
+          <BracketLiveShell tournamentId={id}>
+            {!hasMatches ? (
+              <div className="flex flex-col gap-8">
               <section className="flex flex-col gap-4">
                 <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
                   Seeding
@@ -312,13 +316,24 @@ export default async function BracketPage({
                   <GenerateButton tournamentId={id} />
                 </section>
               )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-8">
+              </div>
+            ) : (
+              <div className="flex flex-col gap-8">
               <section className="flex flex-col gap-4">
-                <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
-                  Spielplan
-                </h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+                    Spielplan
+                  </h2>
+                  <Link
+                    href={`/t/${id}/board`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 rounded-[8px] border border-cyan/40 bg-cyan/[0.06] px-3 py-2 font-display text-xs font-semibold uppercase tracking-[0.1em] text-cyan transition-colors hover:bg-cyan/15"
+                  >
+                    <Projector className="size-4" aria-hidden="true" />
+                    Beamermodus
+                  </Link>
+                </div>
                 {tournament.format === "groups_playoffs" ? (
                   <div className="flex flex-col gap-8">
                     <GroupsView
@@ -374,8 +389,9 @@ export default async function BracketPage({
                 </h2>
                 <GenerateButton tournamentId={id} regenerate />
               </section>
-            </div>
-          )}
+              </div>
+            )}
+          </BracketLiveShell>
         </div>
       </main>
     </>
