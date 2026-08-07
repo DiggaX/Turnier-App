@@ -359,7 +359,10 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
   }, []);
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
+    // min-w-0: the video carries an intrinsic width, and a grid item defaults to
+    // min-width:auto, so without this the card refuses to shrink below the
+    // camera's own resolution and pushes the phone layout wider than the screen.
+    <div className="flex min-w-0 flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
       <div>
         <div className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
           QR-Scanner

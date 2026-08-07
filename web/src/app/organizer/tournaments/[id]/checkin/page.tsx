@@ -115,7 +115,7 @@ export default async function CheckinPage({
           <div className="grid gap-6 md:grid-cols-2">
             <ScannerClient tournamentId={id} />
 
-            <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
+            <div className="flex min-w-0 flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
               <div>
                 <div className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
                   Stations-QR

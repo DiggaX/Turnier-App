@@ -179,3 +179,36 @@
     @apply font-sans;
   }
 }
+/*
+ * Touch sizing.
+ *
+ * The organizer area is largely used on a phone — check-in at the door, scores
+ * at the table — but every control was laid out for a mouse: measured on a
+ * 375px viewport, all ten tap targets on a page came in under 44px, and the
+ * select elements rendered at 12px, which makes iOS zoom the page in as soon as
+ * one is tapped and leaves it zoomed.
+ *
+ * Applied by pointer type rather than width, so a small desktop window keeps
+ * its compact layout and only actual touch devices get the bigger targets.
+ */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    /* Anything under 16px triggers iOS's zoom-on-focus. */
+    font-size: 16px;
+  }
+
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea,
+  button,
+  [role="button"] {
+    min-height: 2.75rem;
+  }
+
+  /* Sliders are dragged, not tapped — give the thumb room. */
+  input[type="range"] {
+    height: 2.75rem;
+  }
+}
