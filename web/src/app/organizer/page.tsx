@@ -26,7 +26,11 @@ function asStatus(status: string): TournamentStatus {
     : "draft";
 }
 
-export default async function OrganizerPage() {
+export default async function OrganizerPage(props: {
+  searchParams: Promise<{ archiv?: string }>;
+}) {
+  const { archiv } = await props.searchParams;
+  const showArchive = archiv === "1";
   const supabase = await createClient();
 
   const {
@@ -51,13 +55,26 @@ export default async function OrganizerPage() {
 
   // Spec: when org_id is null, render the empty state at the application layer.
   let tournaments: { id: string; name: string; status: string }[] = [];
+  let archivedCount = 0;
   if (profile.org_id) {
-    const { data } = await supabase
+    const listQuery = supabase
       .from("tournaments")
       .select("id, name, status")
       .eq("org_id", profile.org_id)
       .order("created_at", { ascending: false });
+
+    const [{ data }, { count }] = await Promise.all([
+      showArchive
+        ? listQuery.not("archived_at", "is", null)
+        : listQuery.is("archived_at", null),
+      supabase
+        .from("tournaments")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", profile.org_id)
+        .not("archived_at", "is", null),
+    ]);
     tournaments = data ?? [];
+    archivedCount = count ?? 0;
   }
 
   const isAdmin = profile.role === "admin";
@@ -79,7 +96,7 @@ export default async function OrganizerPage() {
                 Eingeloggt als Organizer
               </div>
               <h1 className="font-display text-2xl font-bold uppercase leading-[1.05] tracking-tight text-ink sm:text-3xl">
-                Turniere
+                {showArchive ? "Archiv" : "Turniere"}
               </h1>
             </div>
             <Link
@@ -92,7 +109,9 @@ export default async function OrganizerPage() {
 
           {!tournaments || tournaments.length === 0 ? (
             <p className="text-sm text-fg-muted">
-              Es sind noch keine Turniere vorhanden.
+              {showArchive
+                ? "Das Archiv ist leer."
+                : "Es sind noch keine Turniere vorhanden."}
             </p>
           ) : (
             <ul className="flex flex-col gap-3">
@@ -118,6 +137,17 @@ export default async function OrganizerPage() {
                 );
               })}
             </ul>
+          )}
+
+          {(showArchive || archivedCount > 0) && (
+            <Link
+              href={showArchive ? "/organizer" : "/organizer?archiv=1"}
+              className="mt-7 inline-block font-display text-xs uppercase tracking-[0.12em] text-fg-muted transition-colors hover:text-ink"
+            >
+              {showArchive
+                ? "← Zurück zu den Turnieren"
+                : `Archiv ansehen (${archivedCount}) →`}
+            </Link>
           )}
         </div>
       </main>

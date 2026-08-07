@@ -475,12 +475,14 @@ describe("deleteTournament", () => {
     const { deleteTournament } = await import("./actions");
     const result = await deleteTournament("t-1");
     expect(result).toEqual({
-      error: "Laufende oder beendete Turniere können nicht gelöscht werden.",
+      error:
+        "Ein laufendes Turnier kann nicht gelöscht werden. Beende es zuerst oder archiviere es.",
     });
   });
 
-  // (4) Finished tournament cannot be deleted
-  it("rejects deletion of a finished tournament", async () => {
+  // (4) A finished tournament IS deletable — refusing it left every past
+  // tournament stuck in the organizer list with no way to remove it.
+  it("deletes a finished tournament and returns ok:true", async () => {
     setupStaff((table: string) => {
       if (table === "tournaments") {
         return {
@@ -496,9 +498,7 @@ describe("deleteTournament", () => {
     });
     const { deleteTournament } = await import("./actions");
     const result = await deleteTournament("t-1");
-    expect(result).toEqual({
-      error: "Laufende oder beendete Turniere können nicht gelöscht werden.",
-    });
+    expect(result).toEqual({ ok: true });
   });
 
   // (5) Draft tournament is deleted and returns { ok: true }
@@ -563,5 +563,97 @@ describe("deleteTournament", () => {
     const { deleteTournament } = await import("./actions");
     const result = await deleteTournament("t-1");
     expect(result).toEqual({ error: "Turnier konnte nicht gelöscht werden." });
+  });
+});
+
+// ── setTournamentArchived ─────────────────────────────────────────────────────
+
+describe("setTournamentArchived", () => {
+  /** Mock the status lookup plus the update, capturing what was written. */
+  function setupTournament(
+    status: string,
+    updateResult: { error: unknown } = { error: null },
+  ) {
+    const captured: { payload?: Record<string, unknown> } = {};
+    setupStaff((table: string) => {
+      if (table !== "tournaments") return {};
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () => Promise.resolve({ data: { status }, error: null }),
+          }),
+        }),
+        update: (payload: Record<string, unknown>) => {
+          captured.payload = payload;
+          return { eq: () => Promise.resolve(updateResult) };
+        },
+      };
+    });
+    return captured;
+  }
+
+  beforeEach(() => {
+    mockRedirect.mockReset();
+  });
+
+  it("propagates requireStaff auth error", async () => {
+    requireStaffResult = { error: "Nicht angemeldet." };
+    const { setTournamentArchived } = await import("./actions");
+    expect(await setTournamentArchived("t-1", true)).toEqual({
+      error: "Nicht angemeldet.",
+    });
+  });
+
+  it("errors when the tournament is missing or RLS hides it", async () => {
+    setupStaff((table: string) => {
+      if (table !== "tournaments") return {};
+      return {
+        select: () => ({
+          eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
+        }),
+      };
+    });
+    const { setTournamentArchived } = await import("./actions");
+    expect(await setTournamentArchived("t-1", true)).toEqual({
+      error: "Turnier nicht gefunden oder keine Berechtigung.",
+    });
+  });
+
+  it("archives a finished tournament by stamping archived_at", async () => {
+    const captured = setupTournament("finished");
+    const { setTournamentArchived } = await import("./actions");
+    expect(await setTournamentArchived("t-1", true)).toEqual({ ok: true });
+    expect(Object.keys(captured.payload!)).toEqual(["archived_at"]);
+    expect(typeof captured.payload!.archived_at).toBe("string");
+  });
+
+  it("restores by clearing archived_at", async () => {
+    const captured = setupTournament("finished");
+    const { setTournamentArchived } = await import("./actions");
+    expect(await setTournamentArchived("t-1", false)).toEqual({ ok: true });
+    expect(captured.payload).toEqual({ archived_at: null });
+  });
+
+  it("refuses to archive a tournament that is in play", async () => {
+    setupTournament("running");
+    const { setTournamentArchived } = await import("./actions");
+    expect(await setTournamentArchived("t-1", true)).toEqual({
+      error: "Ein laufendes Turnier kann nicht archiviert werden.",
+    });
+  });
+
+  it("still restores a running tournament — only archiving is guarded", async () => {
+    const captured = setupTournament("running");
+    const { setTournamentArchived } = await import("./actions");
+    expect(await setTournamentArchived("t-1", false)).toEqual({ ok: true });
+    expect(captured.payload).toEqual({ archived_at: null });
+  });
+
+  it("returns a friendly error when the update fails", async () => {
+    setupTournament("finished", { error: { code: "08006", message: "fail" } });
+    const { setTournamentArchived } = await import("./actions");
+    expect(await setTournamentArchived("t-1", true)).toEqual({
+      error: "Turnier konnte nicht archiviert werden.",
+    });
   });
 });

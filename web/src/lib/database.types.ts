@@ -48,19 +48,19 @@ export interface Database {
           id: string; name: string; game_id: string; format: TournamentFormat;
           mode: TournamentMode; status: TournamentStatus; starts_at: string | null;
           created_by: string | null; created_at: string; team_size: number;
-          org_id: string;
+          org_id: string; archived_at: string | null;
         };
         Insert: {
           id?: string; name: string; game_id: string; format: TournamentFormat;
           mode?: TournamentMode; status?: TournamentStatus; starts_at?: string | null;
           created_by?: string | null; created_at?: string; team_size?: number;
-          org_id: string;
+          org_id: string; archived_at?: string | null;
         };
         Update: {
           id?: string; name?: string; game_id?: string; format?: TournamentFormat;
           mode?: TournamentMode; status?: TournamentStatus; starts_at?: string | null;
           created_by?: string | null; created_at?: string; team_size?: number;
-          org_id?: string;
+          org_id?: string; archived_at?: string | null;
         };
         Relationships: [
           { foreignKeyName: "tournaments_game_id_fkey"; columns: ["game_id"]; referencedRelation: "games"; referencedColumns: ["id"] },

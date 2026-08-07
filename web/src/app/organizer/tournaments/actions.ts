@@ -162,6 +162,50 @@ export async function advanceStatus(
   return { ok: true };
 }
 
+/**
+ * Hide a tournament from the organizer list and the public org page, or bring it
+ * back. Nothing is removed — deep links to /t/<id> and its board keep resolving,
+ * so shared links and printed QR codes survive.
+ */
+export async function setTournamentArchived(
+  id: string,
+  archived: boolean,
+): Promise<ActionResult> {
+  const guard = await requireStaff();
+  if ("error" in guard) return guard;
+  const { supabase } = guard;
+
+  const { data: t } = await supabase
+    .from("tournaments")
+    .select("status")
+    .eq("id", id)
+    .maybeSingle();
+  if (!t) {
+    return { error: "Turnier nicht gefunden oder keine Berechtigung." };
+  }
+  // Archiving a tournament in play would drop it off the boards people are
+  // watching mid-event. Restoring is always fine.
+  if (archived && t.status === "running") {
+    return { error: "Ein laufendes Turnier kann nicht archiviert werden." };
+  }
+
+  const { error } = await supabase
+    .from("tournaments")
+    .update({ archived_at: archived ? new Date().toISOString() : null })
+    .eq("id", id);
+  if (error) {
+    return {
+      error: friendlyDbError(
+        error,
+        archived
+          ? "Turnier konnte nicht archiviert werden."
+          : "Turnier konnte nicht wiederhergestellt werden.",
+      ),
+    };
+  }
+  return { ok: true };
+}
+
 /** Delete a tournament (cascades matches/participants via FKs). */
 export async function deleteTournament(id: string): Promise<ActionResult> {
   const guard = await requireStaff();
@@ -176,8 +220,15 @@ export async function deleteTournament(id: string): Promise<ActionResult> {
   if (!t) {
     return { error: "Turnier nicht gefunden oder keine Berechtigung." };
   }
-  if (t.status === "running" || t.status === "finished") {
-    return { error: "Laufende oder beendete Turniere können nicht gelöscht werden." };
+  // Only a tournament in play is protected: deleting mid-event would pull the
+  // bracket out from under everyone holding a link. A finished one is the
+  // organizer's to remove — archiving is the non-destructive alternative, and
+  // refusing both left every finished tournament in the list forever.
+  if (t.status === "running") {
+    return {
+      error:
+        "Ein laufendes Turnier kann nicht gelöscht werden. Beende es zuerst oder archiviere es.",
+    };
   }
 
   const { error } = await supabase.from("tournaments").delete().eq("id", id);

@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 
 import type { TournamentStatus } from "@/lib/database.types";
 import { nextStatus } from "@/lib/tournament/lifecycle";
-import { advanceStatus, deleteTournament } from "../actions";
+import { advanceStatus, deleteTournament, setTournamentArchived } from "../actions";
 
 const NEXT_LABEL: Record<string, string> = {
   registration: "Anmeldung öffnen",
@@ -15,14 +15,25 @@ const NEXT_LABEL: Record<string, string> = {
 export function LifecycleControls({
   tournamentId,
   status,
+  isArchived = false,
 }: {
   tournamentId: string;
   status: TournamentStatus;
+  isArchived?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const target = nextStatus(status);
+
+  function toggleArchive() {
+    setError(null);
+    startTransition(async () => {
+      const res = await setTournamentArchived(tournamentId, !isArchived);
+      if ("error" in res) setError(res.error);
+      else router.refresh();
+    });
+  }
 
   function advance() {
     setError(null);
@@ -65,6 +76,16 @@ export function LifecycleControls({
           Zum Starten: Bracket im Tab &bdquo;Bracket&ldquo; generieren.
         </span>
       )}
+      {status !== "running" && (
+        <button
+          type="button"
+          onClick={toggleArchive}
+          disabled={pending}
+          className="rounded-[10px] border border-line px-5 py-2.5 font-display text-xs font-bold uppercase tracking-wider text-fg-muted transition-colors hover:border-white/20 hover:text-ink disabled:opacity-50"
+        >
+          {isArchived ? "Wiederherstellen" : "Archivieren"}
+        </button>
+      )}
       <button
         type="button"
         onClick={remove}
@@ -73,6 +94,11 @@ export function LifecycleControls({
       >
         Löschen
       </button>
+      {isArchived && (
+        <span className="font-display text-xs uppercase tracking-[0.12em] text-fg-dim">
+          Archiviert — nicht in den Listen, Links bleiben gültig.
+        </span>
+      )}
       {error && <p className="w-full text-sm text-live">{error}</p>}
     </div>
   );

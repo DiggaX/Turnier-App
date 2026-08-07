@@ -45,12 +45,13 @@ export default async function TournamentOverviewPage({
     starts_at: string | null;
     game_id: string;
     org_id: string;
+    archived_at: string | null;
     games: { name: string } | { name: string }[] | null;
   }>(
     supabase,
     id,
     profile.org_id as string | null,
-    "id, name, format, mode, status, team_size, starts_at, game_id, org_id, games(name)",
+    "id, name, format, mode, status, team_size, starts_at, game_id, org_id, archived_at, games(name)",
   );
 
   const [{ count: pCount }, { count: mCount }, { data: games }] = await Promise.all([
@@ -95,6 +96,7 @@ export default async function TournamentOverviewPage({
           <LifecycleControls
             tournamentId={id}
             status={tournament.status}
+            isArchived={tournament.archived_at !== null}
           />
 
           <section className="mt-8">

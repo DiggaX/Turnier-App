@@ -61,6 +61,8 @@ export default async function OrgPage({
       "id, name, format, mode, status, starts_at, team_size, games(name), participants(id)",
     )
     .eq("org_id", org.id)
+    // Archived tournaments stay reachable at /t/<id> but drop off this listing.
+    .is("archived_at", null)
     .order("starts_at", { ascending: true, nullsFirst: false });
 
   const tournaments = (data ?? [])
