@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { SiteNav } from "@/components/brand/site-nav";
 import { StatusBadge } from "@/components/brand/status-badge";
+import { formatDateTime } from "@/lib/format-date";
 import { createPublicClient } from "@/lib/supabase/public";
 import { formatLabel, modeLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -17,16 +18,9 @@ const PHASES: TournamentStatus[] = [
   "finished",
 ];
 
-/** Format a start timestamp in German, or "offen" when no date is set. */
+/** Format a start timestamp in German local time, or "offen" when unset. */
 function startLabel(startsAt: string | null): string {
-  if (!startsAt) return "offen";
-  return new Date(startsAt).toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return startsAt ? formatDateTime(startsAt) : "offen";
 }
 
 export default async function TournamentDetailPage(props: {

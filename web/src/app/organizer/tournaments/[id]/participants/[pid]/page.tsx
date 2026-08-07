@@ -6,6 +6,7 @@ import { TournamentTabs } from "@/components/brand/tournament-tabs";
 import { QrCode } from "@/components/qr-code";
 import { createClient } from "@/lib/supabase/server";
 import { requireOrgTournament } from "@/lib/auth/org-tournament";
+import { formatBirthdate } from "@/lib/format-date";
 
 import { ParticipantDetailClient } from "./participant-detail-client";
 import { TYPE_LABELS } from "../participant-types";
@@ -102,11 +103,7 @@ export default async function ParticipantDetailPage({
                 </dt>
                 <dd className="text-fg-muted">
                   {participant.birthdate
-                    ? new Date(participant.birthdate + "T12:00:00").toLocaleDateString("de-DE", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })
+                    ? formatBirthdate(participant.birthdate)
                     : "—"}
                 </dd>
 

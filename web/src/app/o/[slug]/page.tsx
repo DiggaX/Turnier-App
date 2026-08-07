@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { SiteNav } from "@/components/brand/site-nav";
 import { TournamentCard } from "@/components/brand/tournament-card";
+import { formatDateTime } from "@/lib/format-date";
 import { createPublicClient } from "@/lib/supabase/public";
 import { formatLabel } from "@/lib/labels";
 import type { TournamentStatus } from "@/lib/database.types";
@@ -26,17 +27,9 @@ const TAG_COLOR_BY_STATUS: Record<
   finished: "muted",
 };
 
-/** Format the time line: format label · localized start date (German). */
+/** Format the time line: format label · start date in German local time. */
 function metaLine(format: string, startsAt: string | null): string {
-  if (!startsAt) return format;
-  const when = new Date(startsAt).toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `${format} · ${when}`;
+  return startsAt ? `${format} · ${formatDateTime(startsAt)}` : format;
 }
 
 export default async function OrgPage({

@@ -9,6 +9,7 @@ import { teamLabel, canEditStructure } from "@/lib/tournament/lifecycle";
 import { createClient } from "@/lib/supabase/server";
 import { requireOrgTournament } from "@/lib/auth/org-tournament";
 import { type TournamentFormat, type TournamentMode, type TournamentStatus } from "@/lib/database.types";
+import { formatDateTime } from "@/lib/format-date";
 
 import { EditTournamentForm } from "./edit-tournament-form";
 import { LifecycleControls } from "./lifecycle-controls";
@@ -87,7 +88,7 @@ export default async function TournamentOverviewPage({
             <span className="text-sm text-fg-muted">{teamLabel(tournament.team_size)}</span>
             {tournament.starts_at && (
               <span className="text-sm text-fg-muted">
-                {new Date(tournament.starts_at).toLocaleString("de-DE")}
+                {formatDateTime(tournament.starts_at)}
               </span>
             )}
             <span className="text-sm text-fg-muted">{pCount ?? 0} Teilnehmer</span>

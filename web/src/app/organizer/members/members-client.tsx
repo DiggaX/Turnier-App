@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatDate } from "@/lib/format-date";
 import { buildInviteUrl, isInviteUsable } from "@/lib/org/invite";
 
 import { createInvite, removeMember, revokeInvite, setMemberRole } from "./actions";
@@ -215,7 +216,7 @@ function InviteRow({ invite, origin }: { invite: Invite; origin: string }) {
           )}
         </div>
         <span className="font-display text-[10px] text-fg-dim">
-          Ablauf: {new Date(invite.expires_at).toLocaleDateString("de-DE")}
+          Ablauf: {formatDate(invite.expires_at)}
         </span>
       </div>
       {usable && (

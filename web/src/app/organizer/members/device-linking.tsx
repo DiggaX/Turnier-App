@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { QrCode } from "@/components/qr-code";
 import { Button } from "@/components/ui/button";
 import { deviceLabel } from "@/lib/auth/device-label";
+import { formatShortDateTime } from "@/lib/format-date";
 
 import { createPairing, revokeSession } from "./device-actions";
 
@@ -18,20 +19,6 @@ export type SessionRow = {
   paired: boolean;
   is_current: boolean;
 };
-
-function formatWhen(value: string | null): string {
-  if (!value) return "—";
-  // my_sessions returns last_seen_at without a zone; it is UTC.
-  const iso = value.includes("T") || value.endsWith("Z") ? value : `${value}Z`;
-  const d = new Date(iso.replace(" ", "T"));
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function Countdown({ until, onDone }: { until: number; onDone: () => void }) {
   const [left, setLeft] = useState(() => until - Date.now());
@@ -163,7 +150,8 @@ export function DeviceLinking({
                 </div>
                 <div className="text-xs text-fg-muted">
                   {s.paired ? "per QR verbunden · " : ""}
-                  zuletzt aktiv {formatWhen(s.last_seen_at ?? s.created_at)}
+                  zuletzt aktiv{" "}
+                  {formatShortDateTime(s.last_seen_at ?? s.created_at)}
                 </div>
               </div>
               <button
