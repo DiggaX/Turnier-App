@@ -33,18 +33,17 @@ vi.mock("@/lib/supabase/server", () => ({
     }),
 }));
 
-// ── Mock @supabase/supabase-js (admin client for orphan cleanup) ──────────────
+// ── Mock the shared admin client (used for orphan cleanup) ───────────────────
 
 const mockDeleteUser = vi.fn();
+/** Stands in for a missing SUPABASE_SERVICE_ROLE_KEY, where the factory returns null. */
+let adminAvailable = true;
 
-vi.mock("@supabase/supabase-js", () => ({
-  createClient: () => ({
-    auth: {
-      admin: {
-        deleteUser: (id: string) => mockDeleteUser(id),
-      },
-    },
-  }),
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () =>
+    adminAvailable
+      ? { auth: { admin: { deleteUser: (id: string) => mockDeleteUser(id) } } }
+      : null,
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -141,6 +140,21 @@ describe("signUpCreateOrg", () => {
     });
     // The orphaned auth user must be deleted
     expect(mockDeleteUser).toHaveBeenCalledWith("uid-1");
+  });
+
+  it("still reports the failure when no service-role key is configured", async () => {
+    // Cleanup is best-effort: without the key there is no admin client, and the
+    // user must still be told the signup failed rather than hitting a crash.
+    mockDeleteUser.mockClear();
+    adminAvailable = false;
+    mockRpc = vi.fn().mockResolvedValue({ error: { code: "23505", message: "x" } });
+    const { signUpCreateOrg } = await import("./actions");
+    const result = await signUpCreateOrg({}, validOrgForm);
+    adminAvailable = true;
+    expect(result).toEqual({
+      error: "Organisation konnte nicht angelegt werden. Bitte versuche es erneut.",
+    });
+    expect(mockDeleteUser).not.toHaveBeenCalled();
   });
 
   it("calls redirect('/organizer') on success", async () => {

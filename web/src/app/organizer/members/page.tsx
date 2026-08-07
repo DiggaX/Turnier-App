@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { createClient } from "@/lib/supabase/server";
 
+import { DeviceLinking, type SessionRow } from "./device-linking";
 import { MembersClient } from "./members-client";
 import { OrgSettings } from "./org-settings";
 
@@ -39,6 +40,8 @@ export default async function MembersPage() {
     .select("name, slug")
     .eq("id", profile.org_id)
     .maybeSingle();
+
+  const { data: sessions } = await supabase.rpc("my_sessions");
 
   const { data: members } = await supabase
     .from("profiles")
@@ -75,6 +78,10 @@ export default async function MembersPage() {
             Organisation
           </h1>
           {org && <OrgSettings name={org.name} slug={org.slug} />}
+          <DeviceLinking
+            sessions={(sessions ?? []) as SessionRow[]}
+            origin={origin}
+          />
           <div className="mb-4 font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
             Mitglieder
           </div>

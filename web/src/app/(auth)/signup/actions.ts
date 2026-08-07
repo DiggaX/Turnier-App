@@ -1,25 +1,12 @@
 "use server";
 
-import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { orgSlug } from "@/lib/org/slug";
 
 export type SignupState = { error?: string };
-
-/**
- * Creates a minimal Supabase admin client using the service-role key.
- * Used only for cleanup (deleteUser) after a failed RPC, to avoid orphaned
- * auth users. The service-role key must be set as SUPABASE_SERVICE_ROLE_KEY.
- */
-function createAdminClient() {
-  return createSupabaseAdmin(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
-}
 
 /** Successful signUp result. */
 type SignUpOk = { ok: true; userId: string };
@@ -60,6 +47,7 @@ async function signUp(email: string, password: string): Promise<SignUpOk | SignU
 async function cleanupOrphanedUser(userId: string): Promise<void> {
   try {
     const admin = createAdminClient();
+    if (!admin) return;
     await admin.auth.admin.deleteUser(userId);
   } catch {
     // Cleanup is best-effort; a failed delete leaves a harmless orphaned auth

@@ -7,6 +7,17 @@ export const metadata: Metadata = {
   title: "Anmelden — Turnier-App",
 };
 
+/** Reasons another route bounced the visitor here, keyed by ?error=. */
+const LOGIN_ERRORS: Record<string, string> = {
+  auth: "Der Anmeldelink ist ungültig oder abgelaufen. Fordere unten einen neuen an — und öffne ihn im selben Browser, in dem du ihn anforderst.",
+  noaccess:
+    "Anmeldung hat geklappt, aber dieses Konto gehört zu keiner Organisation. Lass dich von deinem Admin einladen oder registriere unten eine neue Firma.",
+  pairing:
+    "Dieser QR-Code ist abgelaufen oder wurde schon benutzt. Lass am angemeldeten Gerät einen neuen erzeugen.",
+  config:
+    "Die Geräte-Kopplung ist auf diesem Server nicht konfiguriert. Melde dich unten normal an.",
+};
+
 export default async function LoginPage(props: {
   searchParams: Promise<{ error?: string }>;
 }) {
@@ -33,14 +44,12 @@ export default async function LoginPage(props: {
         </div>
 
         <div className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-6 sm:p-8">
-          {(error === "auth" || error === "noaccess") && (
+          {LOGIN_ERRORS[error ?? ""] && (
             <p
               role="alert"
               className="rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive"
             >
-              {error === "auth"
-                ? "Der Anmeldelink ist ungültig oder abgelaufen. Fordere unten einen neuen an — und öffne ihn im selben Browser, in dem du ihn anforderst."
-                : "Anmeldung hat geklappt, aber dieses Konto gehört zu keiner Organisation. Lass dich von deinem Admin einladen oder registriere unten eine neue Firma."}
+              {LOGIN_ERRORS[error ?? ""]}
             </p>
           )}
 

@@ -37,6 +37,24 @@ export interface Database {
           { foreignKeyName: "profiles_org_id_fkey"; columns: ["org_id"]; referencedRelation: "organizations"; referencedColumns: ["id"] }
         ];
       };
+      device_pairings: {
+        Row: {
+          id: string; token_hash: string; user_id: string; org_id: string;
+          created_at: string; expires_at: string; claimed_at: string | null;
+          claimed_user_agent: string | null; session_id: string | null;
+        };
+        Insert: {
+          id?: string; token_hash: string; user_id: string; org_id: string;
+          created_at?: string; expires_at: string; claimed_at?: string | null;
+          claimed_user_agent?: string | null; session_id?: string | null;
+        };
+        Update: {
+          id?: string; token_hash?: string; user_id?: string; org_id?: string;
+          created_at?: string; expires_at?: string; claimed_at?: string | null;
+          claimed_user_agent?: string | null; session_id?: string | null;
+        };
+        Relationships: [];
+      };
       games: {
         Row: { id: string; name: string; team_size: number; created_at: string };
         Insert: { id?: string; name: string; team_size?: number; created_at?: string };
@@ -252,6 +270,21 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      my_sessions: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          created_at: string;
+          last_seen_at: string | null;
+          user_agent: string | null;
+          paired: boolean;
+          is_current: boolean;
+        }[];
+      };
+      revoke_session: {
+        Args: { p_session_id: string };
+        Returns: undefined;
+      };
       check_in: {
         Args: { p_participant_id: string; p_method: CheckinMethod };
         Returns: undefined;
