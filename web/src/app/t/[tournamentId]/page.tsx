@@ -33,7 +33,7 @@ export default async function TournamentDetailPage(props: {
   params: Promise<{ tournamentId: string }>;
 }) {
   const { tournamentId } = await props.params;
-  const supabase = createPublicClient();
+  const supabase = await createPublicClient();
 
   const { data: tournament } = await supabase
     .from("tournaments")

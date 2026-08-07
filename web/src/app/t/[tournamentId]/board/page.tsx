@@ -39,7 +39,7 @@ export default async function BoardPage(props: {
 
   // Public board — anon client, NO auth guard. Tournament + matches are
   // public-read via RLS, so the beamer view works without a login.
-  const supabase = createPublicClient();
+  const supabase = await createPublicClient();
 
   const { data: tournament } = await supabase
     .from("tournaments")

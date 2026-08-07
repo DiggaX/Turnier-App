@@ -4,7 +4,7 @@ import { SiteNav } from "@/components/brand/site-nav";
 import { createPublicClient } from "@/lib/supabase/public";
 
 export default async function Home() {
-  const supabase = createPublicClient();
+  const supabase = await createPublicClient();
   const { data } = await supabase
     .from("organizations")
     .select("name, slug")

@@ -25,7 +25,7 @@ export default async function ScorekeeperPage({
   const { token } = await params;
   if (!UUID.test(token)) notFound();
 
-  const supabase = createPublicClient();
+  const supabase = await createPublicClient();
   const { data } = await supabase.rpc("get_scorekeeper_match", {
     p_token: token,
   });

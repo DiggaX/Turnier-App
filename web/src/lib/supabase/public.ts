@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { connection } from "next/server";
 
 import type { Database } from "@/lib/database.types";
 
@@ -17,7 +18,11 @@ import type { Database } from "@/lib/database.types";
  * logged-in session. Use the session client (`@/lib/supabase/server`) only on
  * pages that need the viewer's identity (`/me`, organizer area).
  */
-export function createPublicClient() {
+export async function createPublicClient() {
+  // Public pages render live tournament data. Without a request-time API in the
+  // tree, Next would freeze them into the build-time prerender — prod then
+  // shows organizations/tournaments from whenever the last deploy ran.
+  await connection();
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

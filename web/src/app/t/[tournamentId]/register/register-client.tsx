@@ -248,6 +248,7 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
 
               <Button
                 render={<a href={`/t/${tournament.id}/me`} />}
+                nativeButton={false}
                 className="h-12 font-display text-sm font-bold uppercase tracking-wider"
               >
                 Zu meinem Status

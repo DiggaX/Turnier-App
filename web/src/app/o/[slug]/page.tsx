@@ -45,7 +45,7 @@ export default async function OrgPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const supabase = createPublicClient();
+  const supabase = await createPublicClient();
 
   const { data: org } = await supabase
     .from("organizations")
