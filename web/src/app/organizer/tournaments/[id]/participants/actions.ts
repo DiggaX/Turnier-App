@@ -23,6 +23,24 @@ export async function updateParticipant(
   return { ok: true };
 }
 
+/**
+ * Undo a check-in. Someone gets scanned by mistake, or a scan station is being
+ * tested — without this the only way back was editing the row by hand, since
+ * the check_in RPC is one-way.
+ */
+export async function resetCheckIn(id: string, tournamentId: string): Promise<ActionResult> {
+  const guard = await requireStaff();
+  if ("error" in guard) return guard;
+  const { error, count } = await guard.supabase
+    .from("participants")
+    .update({ checked_in_at: null }, { count: "exact" })
+    .eq("id", id)
+    .eq("tournament_id", tournamentId);
+  if (error) return { error: friendlyDbError(error, "Anwesenheit konnte nicht zurückgesetzt werden.") };
+  if ((count ?? 0) === 0) return { error: "Teilnehmer wurde nicht gefunden." };
+  return { ok: true };
+}
+
 export async function removeParticipant(id: string, tournamentId: string): Promise<ActionResult> {
   const guard = await requireStaff();
   if ("error" in guard) return guard;

@@ -16,6 +16,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { requireOrgTournament } from "@/lib/auth/org-tournament";
 
+import { AttendanceRow } from "./attendance-row";
 import { ScannerClient } from "./scanner-client";
 
 export const metadata: Metadata = {
@@ -71,7 +72,7 @@ export default async function CheckinPage({
 
   const { data: participants } = await supabase
     .from("participants")
-    .select("display_name, checked_in_at")
+    .select("id, display_name, checked_in_at")
     .eq("tournament_id", id);
 
   // Sort present participants first, then by name.
@@ -156,27 +157,20 @@ export default async function CheckinPage({
                       <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
                         Status
                       </TableHead>
+                      <TableHead className="text-right font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                        Aktion
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rows.map((p) => (
-                      <TableRow
-                        key={`${p.display_name}-${p.checked_in_at ?? ""}`}
-                        className="border-line/60 hover:bg-white/[0.02]"
-                      >
-                        <TableCell className="font-display font-semibold text-ink">
-                          {p.display_name}
-                        </TableCell>
-                        <TableCell>
-                          {p.checked_in_at ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-md bg-lime/15 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-lime">
-                              Anwesend
-                            </span>
-                          ) : (
-                            <span className="text-fg-dim">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
+                      <AttendanceRow
+                        key={p.id}
+                        participantId={p.id}
+                        tournamentId={id}
+                        displayName={p.display_name}
+                        checkedInAt={p.checked_in_at}
+                      />
                     ))}
                   </TableBody>
                 </Table>

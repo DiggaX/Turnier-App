@@ -84,8 +84,9 @@ const CAMERA_KEY = "turnierapp.checkin.cameraId";
 // The library ships an equivalent `useDevices`, but importing it would pull the
 // whole scanner package into the server bundle and defeat the ssr:false above,
 // so this stays hand-rolled.
-function useCameras() {
+function useCameras(): [MediaDeviceInfo[], () => void] {
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -104,20 +105,38 @@ function useCameras() {
 
     void read();
     navigator.mediaDevices.addEventListener?.("devicechange", read);
-    // Labels are empty strings until the Scanner's own getUserMedia grants
-    // permission. `devicechange` fires on that in Chrome, but not everywhere, so
-    // read once more after it has had a moment to start.
-    // ponytail: fixed re-read; swap for permissions.query().onchange if it proves flaky
-    const settle = setTimeout(() => void read(), 2500);
+
+    // Android hands out the full camera list only once the page holds camera
+    // permission, and answering that prompt takes as long as the person takes.
+    // A single delayed re-read raced them and left a scan handset showing one
+    // camera forever, with no way to reach its dedicated scan lens.
+    let permission: PermissionStatus | null = null;
+    void navigator.permissions
+      ?.query({ name: "camera" as PermissionName })
+      .then((status) => {
+        if (cancelled) return;
+        permission = status;
+        status.addEventListener("change", read);
+      })
+      .catch(() => {
+        // Firefox rejects the camera descriptor; the retries below cover it.
+      });
+
+    // Backstop for browsers with neither signal, spread out far enough to
+    // outlast a permission dialog.
+    const retries = [1500, 4000, 8000, 15000].map((ms) =>
+      setTimeout(() => void read(), ms),
+    );
 
     return () => {
       cancelled = true;
-      clearTimeout(settle);
+      retries.forEach(clearTimeout);
+      permission?.removeEventListener("change", read);
       navigator.mediaDevices.removeEventListener?.("devicechange", read);
     };
-  }, []);
+  }, [reloads]);
 
-  return cameras;
+  return [cameras, () => setReloads((n) => n + 1)];
 }
 
 // Don't re-fire on the same QR while it stays in frame: ignore a token we just
@@ -129,7 +148,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
   const [supabase] = useState<SupabaseClient<Database>>(() => createClient());
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
-  const cameras = useCameras();
+  const [cameras, reloadCameras] = useCameras();
   const [deviceId, setDeviceId] = useState<string>("");
   const [cameraError, setCameraError] = useState<string | null>(null);
   // Bumping this remounts the Scanner, which is how a retry restarts the camera.
@@ -254,19 +273,22 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         />
       </div>
 
-      {cameras.length > 1 && (
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="camera-pick"
-            className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim"
-          >
-            Kamera
-          </label>
+      {/* Always rendered, never gated on the list already being complete: on a
+          scan handset the extra lenses appear only after the permission prompt
+          is answered, and hiding the control until then is what stranded one. */}
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="camera-pick"
+          className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim"
+        >
+          Kamera
+        </label>
+        <div className="flex gap-2">
           <select
             id="camera-pick"
             value={deviceId}
             onChange={(e) => pickCamera(e.target.value)}
-            className="rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg-muted focus:outline-none focus:ring-1 focus:ring-ring"
+            className="min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg-muted focus:outline-none focus:ring-1 focus:ring-ring"
           >
             <option value="">Automatisch (Rückkamera)</option>
             {cameras.map((cam, i) => (
@@ -275,12 +297,20 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
               </option>
             ))}
           </select>
-          <p className="text-xs text-fg-muted">
-            Scannt eine Linse schlecht aus der Nähe, nimm eine andere. Die Wahl
-            bleibt auf diesem Gerät gespeichert.
-          </p>
+          <button
+            type="button"
+            onClick={reloadCameras}
+            className="shrink-0 rounded-lg border border-line px-3 py-2 font-display text-[10px] font-bold uppercase tracking-wider text-fg-muted transition-colors hover:text-ink"
+          >
+            Neu suchen
+          </button>
         </div>
-      )}
+        <p className="text-xs text-fg-muted">
+          {cameras.length > 1
+            ? "Scannt eine Linse schlecht aus der Nähe, nimm eine andere. Die Wahl bleibt auf diesem Gerät gespeichert."
+            : "Erst nach erlaubtem Kamerazugriff zeigt das Gerät alle Linsen. Fehlt eine, tippe auf „Neu suchen“."}
+        </p>
+      </div>
 
       {cameraError && (
         <div className="flex flex-col gap-2 rounded-xl border border-live/40 bg-live/10 p-3">
