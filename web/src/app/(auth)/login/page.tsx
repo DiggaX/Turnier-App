@@ -7,7 +7,11 @@ export const metadata: Metadata = {
   title: "Anmelden — Turnier-App",
 };
 
-export default function LoginPage() {
+export default async function LoginPage(props: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await props.searchParams;
+
   return (
     <main className="relative flex flex-1 items-center justify-center overflow-hidden px-5 py-12 sm:py-16">
       {/* ambient glow */}
@@ -29,6 +33,16 @@ export default function LoginPage() {
         </div>
 
         <div className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-6 sm:p-8">
+          {error === "auth" && (
+            <p
+              role="alert"
+              className="rounded-xl border border-destructive/35 bg-destructive/[0.08] px-4 py-3 text-sm text-destructive"
+            >
+              Der Anmeldelink ist ungültig oder abgelaufen. Fordere unten einen
+              neuen an — und öffne ihn im selben Browser.
+            </p>
+          )}
+
           <PasswordForm />
 
           <div className="flex items-center gap-3">
