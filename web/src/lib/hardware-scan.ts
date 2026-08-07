@@ -115,18 +115,34 @@ export function extractScan(value: string): string | null {
   return text.length >= MIN_SCAN_LENGTH ? text : null;
 }
 
+/** The <input> types a person actually types characters into. */
+const TEXT_INPUT_TYPES = new Set([
+  "text",
+  "search",
+  "email",
+  "url",
+  "password",
+  "number",
+  "tel",
+]);
+
 /**
  * Whether a key event came from somewhere the person is deliberately typing.
  * DataWedge injects into whatever has focus, so a scan aimed at a form field
  * should stay in that field rather than also firing a check-in.
+ *
+ * Which is why this has to be narrow. "Any INPUT or SELECT" also covered the
+ * camera picker and the zoom slider — and on Android a <select> keeps focus
+ * after it closes, so changing camera once muted scanning for the rest of the
+ * session, with nothing on screen to say so.
  */
 export function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  return (
-    tag === "INPUT" ||
-    tag === "TEXTAREA" ||
-    tag === "SELECT" ||
-    target.isContentEditable
-  );
+  // Our own capture field: a scan landing there is the whole point of it.
+  if (target.hasAttribute("data-scan-capture")) return false;
+  if (target.tagName === "TEXTAREA" || target.isContentEditable) return true;
+  if (target.tagName === "INPUT") {
+    return TEXT_INPUT_TYPES.has((target as HTMLInputElement).type);
+  }
+  return false;
 }

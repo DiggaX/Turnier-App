@@ -11,6 +11,7 @@ import { describe, it, expect } from "vitest";
 import {
   emptyScanBuffer,
   extractScan,
+  isTypingTarget,
   MAX_KEY_GAP_MS,
   MIN_SCAN_LENGTH,
   pushScanKey,
@@ -210,5 +211,65 @@ describe("extractScan", () => {
 
   it("ignores an empty field", () => {
     expect(extractScan("")).toBeNull();
+  });
+});
+
+/**
+ * Which targets a scan belongs to rather than to the check-in. DataWedge fires
+ * into whatever holds focus, so this is the switch that mutes the keydown
+ * channel — and answering "any INPUT or SELECT" muted it for good: on Android
+ * the camera picker keeps focus after it closes, so the first camera change
+ * ended scanning for the rest of the session, and the zoom slider did the same.
+ */
+describe("isTypingTarget", () => {
+  /** Typeless on purpose when no type is given — that input reports "text". */
+  function input(type: string) {
+    const el = document.createElement("input");
+    if (type) el.type = type;
+    return el;
+  }
+
+  it("counts the fields a person types into", () => {
+    const typed = ["text", "search", "email", "url", "password", "number", "tel"];
+    for (const type of ["", ...typed]) {
+      expect(isTypingTarget(input(type))).toBe(true);
+    }
+  });
+
+  it("counts a textarea", () => {
+    expect(isTypingTarget(document.createElement("textarea"))).toBe(true);
+  });
+
+  it("counts a contenteditable element", () => {
+    const el = document.createElement("div");
+    // jsdom carries the attribute but never computes isContentEditable, so the
+    // property has to be stood up by hand here. The real one is a browser's.
+    Object.defineProperty(el, "isContentEditable", { value: true });
+    expect(isTypingTarget(el)).toBe(true);
+  });
+
+  it("leaves the camera picker alone", () => {
+    expect(isTypingTarget(document.createElement("select"))).toBe(false);
+  });
+
+  it("leaves inputs nobody types into alone", () => {
+    for (const type of ["range", "checkbox", "radio"]) {
+      expect(isTypingTarget(input(type))).toBe(false);
+    }
+  });
+
+  it("leaves a button alone", () => {
+    expect(isTypingTarget(document.createElement("button"))).toBe(false);
+  });
+
+  it("never counts our own capture field", () => {
+    // It is a text input, and it is exactly where a scan is meant to land.
+    const el = input("text");
+    el.setAttribute("data-scan-capture", "");
+    expect(isTypingTarget(el)).toBe(false);
+  });
+
+  it("ignores a target that is not an element", () => {
+    expect(isTypingTarget(null)).toBe(false);
   });
 });

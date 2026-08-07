@@ -142,6 +142,13 @@ export function useHardwareScan(
       // A scan aimed at a form field belongs to that field.
       if (swallowed) return;
 
+      // Any Enter closing a burst is the scanner's terminator, whether or not
+      // the burst turns out long enough to keep — and left to its default it
+      // clicks whatever button has focus, which on this page means "Zurücksetzen"
+      // and a confirm dialog mid-scan. A lone Enter keeps its default: that one
+      // is a person navigating by keyboard.
+      if (e.key === "Enter" && bufRef.current.text) e.preventDefault();
+
       const step = pushScanKey(bufRef.current, e.key, at);
       bufRef.current = step.buf;
 
@@ -154,8 +161,6 @@ export function useHardwareScan(
       }
 
       if (step.scanned) {
-        // Enter would otherwise submit whatever is around it.
-        e.preventDefault();
         const { text, durationMs } = step.scanned;
         logScan({ text, channel: "tasten", outcome: "ok", durationMs });
         onToken(text);

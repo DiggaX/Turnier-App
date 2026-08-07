@@ -380,7 +380,13 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
           <select
             id="camera-pick"
             value={deviceId}
-            onChange={(e) => pickCamera(e.target.value)}
+            // Hand focus back afterwards: Android leaves it on the select once
+            // the sheet closes, and a scanner fires into whatever holds focus.
+            // Dropping it to body lets the capture field claim it again.
+            onChange={(e) => {
+              pickCamera(e.target.value);
+              e.currentTarget.blur();
+            }}
             className="min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg-muted focus:outline-none focus:ring-1 focus:ring-ring"
           >
             <option value="">Automatisch (Rückkamera)</option>
