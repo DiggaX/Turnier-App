@@ -44,7 +44,9 @@ export default async function OrganizerPage() {
     .maybeSingle();
 
   if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
-    redirect("/login");
+    // Signed in, but this account belongs to no organisation. Bouncing silently
+    // is indistinguishable from a failed login — say why.
+    redirect("/login?error=noaccess");
   }
 
   // Spec: when org_id is null, render the empty state at the application layer.

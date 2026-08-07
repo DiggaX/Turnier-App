@@ -59,11 +59,19 @@ export async function signInMagicLink(
     email,
     options: {
       emailRedirectTo: `${origin}/auth/confirm`,
+      // This login is staff-only — new organisations come through /signup, which
+      // also creates the profile + org. Left on the default, an unknown address
+      // silently gets an auth user with no profile, and that account then logs in
+      // fine but bounces straight back out of /organizer with nothing to show.
+      shouldCreateUser: false,
     },
   });
 
   if (error) {
-    return { error: "Magic Link konnte nicht gesendet werden. Bitte erneut versuchen." };
+    return {
+      error:
+        "Magic Link konnte nicht gesendet werden. Gibt es für diese E-Mail schon ein Konto?",
+    };
   }
 
   return { magicLinkSent: true };
