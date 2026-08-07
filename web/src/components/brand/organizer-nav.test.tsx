@@ -1,6 +1,6 @@
 /**
  * Smoke tests for OrganizerNav — verifies the isAdmin conditional that gates
- * the admin-only "Mitglieder" nav link (security-adjacent UI disclosure).
+ * the admin-only "Organisation" nav link (security-adjacent UI disclosure).
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -13,15 +13,15 @@ vi.mock("@/app/(auth)/login/actions", () => ({
 }));
 
 describe("OrganizerNav", () => {
-  it("does NOT render the Mitglieder link when isAdmin is omitted", () => {
+  it("does NOT render the Organisation link when isAdmin is omitted", () => {
     render(<OrganizerNav />);
-    expect(screen.queryByRole("link", { name: "Mitglieder" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Organisation" })).toBeNull();
   });
 
-  it("renders the Mitglieder link when isAdmin={true}", () => {
+  it("renders the Organisation link when isAdmin={true}", () => {
     render(<OrganizerNav isAdmin={true} />);
     expect(
-      screen.getByRole("link", { name: "Mitglieder" }),
+      screen.getByRole("link", { name: "Organisation" }),
     ).toBeInTheDocument();
   });
 });

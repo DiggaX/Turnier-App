@@ -253,3 +253,81 @@ describe("removeMember", () => {
     expect(result).toEqual({ error: "Mitglied konnte nicht entfernt werden." });
   });
 });
+
+// ── renameOrg ─────────────────────────────────────────────────────────────────
+
+describe("renameOrg", () => {
+  /** Capture what update() was called with, scoped to which org. */
+  function setupOrgUpdate(updateResult: { error: unknown } = { error: null }) {
+    const captured: { payload?: unknown; orgId?: unknown } = {};
+    setupAdmin((table: string) => {
+      if (table !== "organizations") return {};
+      return {
+        update: (payload: unknown) => {
+          captured.payload = payload;
+          return {
+            eq: (_col: string, value: unknown) => {
+              captured.orgId = value;
+              return Promise.resolve(updateResult);
+            },
+          };
+        },
+      };
+    });
+    return captured;
+  }
+
+  it("propagates requireAdmin auth error", async () => {
+    requireAdminResult = { error: "Diese Aktion ist nicht erlaubt." };
+    const { renameOrg } = await import("./actions");
+    expect(await renameOrg("Neuer Name")).toEqual({
+      error: "Diese Aktion ist nicht erlaubt.",
+    });
+  });
+
+  it("trims the name and scopes the update to the caller's org", async () => {
+    const captured = setupOrgUpdate();
+    const { renameOrg } = await import("./actions");
+    expect(await renameOrg("  TSF Fehmarn  ")).toEqual({ ok: true });
+    expect(captured.payload).toEqual({ name: "TSF Fehmarn" });
+    expect(captured.orgId).toBe("org-1");
+  });
+
+  it("never touches the slug, so public /o/<slug> links keep working", async () => {
+    const captured = setupOrgUpdate();
+    const { renameOrg } = await import("./actions");
+    await renameOrg("Ganz anderer Name");
+    expect(Object.keys(captured.payload as object)).toEqual(["name"]);
+  });
+
+  it("rejects a blank name", async () => {
+    setupOrgUpdate();
+    const { renameOrg } = await import("./actions");
+    expect(await renameOrg("   ")).toEqual({ error: "Name erforderlich." });
+  });
+
+  it("rejects a name over 80 characters", async () => {
+    setupOrgUpdate();
+    const { renameOrg } = await import("./actions");
+    expect(await renameOrg("x".repeat(81))).toEqual({
+      error: "Name ist zu lang (max. 80 Zeichen).",
+    });
+  });
+
+  it("returns the fallback message when the update fails", async () => {
+    setupOrgUpdate({ error: { code: "08006", message: "connection failure" } });
+    const { renameOrg } = await import("./actions");
+    const result = await renameOrg("Neuer Name");
+    expect(result).toEqual({
+      error: "Name konnte nicht geändert werden (nur Admin).",
+    });
+  });
+
+  it("maps an RLS rejection to the shared not-allowed message", async () => {
+    setupOrgUpdate({ error: { code: "42501", message: "permission denied" } });
+    const { renameOrg } = await import("./actions");
+    expect(await renameOrg("Neuer Name")).toEqual({
+      error: "Diese Aktion ist nicht erlaubt.",
+    });
+  });
+});

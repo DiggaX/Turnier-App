@@ -10,7 +10,7 @@ export type OrganizerNavProps = {
 
 /**
  * Top bar for the organizer/staff area. Brand wordmark ("TURNIER-APP · ORGA"),
- * a "Turniere" link back to the dashboard, an optional admin-only "Mitglieder"
+ * a "Turniere" link back to the dashboard, an optional admin-only "Organisation"
  * link, and a sign-out button wired to the existing `signOut` server action.
  * Sticky, dark, lime-accented — mirrors the public <SiteNav> styling for the
  * staff surface.
@@ -52,7 +52,7 @@ export function OrganizerNav({ className, isAdmin }: OrganizerNavProps) {
               href="/organizer/members"
               className="rounded-lg px-3 py-2 text-sm font-medium text-fg-muted transition-colors hover:text-ink"
             >
-              Mitglieder
+              Organisation
             </Link>
           )}
           <form action={signOut}>

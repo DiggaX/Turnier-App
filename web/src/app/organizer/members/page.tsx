@@ -6,8 +6,9 @@ import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { createClient } from "@/lib/supabase/server";
 
 import { MembersClient } from "./members-client";
+import { OrgSettings } from "./org-settings";
 
-export const metadata: Metadata = { title: "Mitglieder — Turnier-App" };
+export const metadata: Metadata = { title: "Organisation — Turnier-App" };
 
 export default async function MembersPage() {
   const supabase = await createClient();
@@ -32,6 +33,12 @@ export default async function MembersPage() {
   if (!profile.org_id) {
     redirect("/organizer");
   }
+
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("name, slug")
+    .eq("id", profile.org_id)
+    .maybeSingle();
 
   const { data: members } = await supabase
     .from("profiles")
@@ -65,8 +72,12 @@ export default async function MembersPage() {
         />
         <div className="relative mx-auto w-full max-w-3xl px-5 pb-20 pt-10 sm:px-8 sm:pt-12">
           <h1 className="mb-7 font-display text-2xl font-bold uppercase leading-[1.05] tracking-tight text-ink sm:text-3xl">
-            Mitglieder
+            Organisation
           </h1>
+          {org && <OrgSettings name={org.name} slug={org.slug} />}
+          <div className="mb-4 font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+            Mitglieder
+          </div>
           <MembersClient
             members={members ?? []}
             invites={invites ?? []}

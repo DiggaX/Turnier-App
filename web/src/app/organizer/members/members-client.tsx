@@ -69,6 +69,12 @@ function MemberRow({
     });
   }
 
+  // The role picker only carries organizer/referee, so an admin row would render
+  // as "organizer" (a select falls back to its first option when the value has no
+  // match) and offer controls that would demote or drop a fellow admin. Show the
+  // role as plain text instead, the same way the current user's own row does.
+  const locked = isSelf || member.role === "admin";
+
   return (
     <TableRow className="border-line/60 hover:bg-white/[0.02]">
       <TableCell>
@@ -82,7 +88,7 @@ function MemberRow({
         )}
       </TableCell>
       <TableCell>
-        {isSelf ? (
+        {locked ? (
           <span className="font-display text-[11px] uppercase tracking-[0.12em] text-fg-muted">
             {member.role}
           </span>
@@ -100,7 +106,7 @@ function MemberRow({
         )}
       </TableCell>
       <TableCell>
-        {!isSelf && (
+        {!locked && (
           <button
             type="button"
             onClick={handleRemove}
