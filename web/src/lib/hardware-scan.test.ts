@@ -1,6 +1,10 @@
 /**
- * The risk here is a false positive: this listens on the whole document, so
- * ordinary typing must never accumulate into a check-in.
+ * What makes a burst a scan is Enter plus MIN_SCAN_LENGTH — not how fast it
+ * was typed. Telling a machine apart from a person by timing sounded right and
+ * was the bug: DataWedge's own recommended key delay looked human, so every
+ * scan was dropped. The gap only separates one burst from the next now, and
+ * text nobody scanned is caught downstream, where an unknown code is a lookup
+ * that fails rather than a keystroke that vanishes.
  */
 import { describe, it, expect } from "vitest";
 
@@ -39,6 +43,14 @@ describe("pushScanKey", () => {
     expect(scanned?.text).toBe(TOKEN);
   });
 
+  it("emits one paced by DataWedge's key event delay", () => {
+    // The regression this whole fix started from: Zebra recommends a Key Event
+    // Delay of at least 50ms for Chrome, and real profiles sit around 100 — so
+    // the scanner's own recommended setting fell outside the old 60ms gap and
+    // every single scan was dropped a character at a time.
+    expect(burst(TOKEN, { gapMs: 100 }).scanned?.text).toBe(TOKEN);
+  });
+
   it("reports how long the burst took, so the UI can show it", () => {
     const { scanned } = burst("ABCDEFGH", { gapMs: 4 });
     expect(scanned?.durationMs).toBeGreaterThan(0);
@@ -50,10 +62,14 @@ describe("pushScanKey", () => {
     expect(buf).toEqual(emptyScanBuffer);
   });
 
-  it("never accumulates human typing into a scan", () => {
-    // A person managing a brisk 150ms per key still exceeds the gap.
-    const { scanned } = burst("hallo welt", { gapMs: 150 });
-    expect(scanned).toBeUndefined();
+  it("emits hand-typed text too, once Enter closes it", () => {
+    // Deliberate: the gate is Enter plus MIN_SCAN_LENGTH, not typing speed.
+    // Safe because a participant token is a 36-character UUID — anything a
+    // person types reaches the same lookup and comes back "QR nicht erkannt",
+    // which is also what makes the diagnostics panel testable by hand.
+    expect(burst("hallo welt!", { gapMs: 150 }).scanned?.text).toBe(
+      "hallo welt!",
+    );
   });
 
   it("restarts the burst after a pause instead of splicing it", () => {

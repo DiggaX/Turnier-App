@@ -9,8 +9,17 @@
  * other, a person cannot.
  */
 
-/** Longest pause between characters still counted as one machine-fed burst. */
-export const MAX_KEY_GAP_MS = 60;
+/**
+ * Longest pause between characters still counted as one burst.
+ *
+ * Not a speed test any more: a scan is accepted because Enter closed it and it
+ * reached MIN_SCAN_LENGTH, and this only separates one burst from the next. It
+ * used to be 60ms, which collided head-on with DataWedge's Key Event Delay —
+ * Zebra recommends at least 50ms for Chrome, so the scanner's own recommended
+ * setting had every scan thrown away a character at a time. 500ms clears that
+ * with room to spare.
+ */
+export const MAX_KEY_GAP_MS = 500;
 
 /**
  * Shortest accepted scan. Participant tokens are UUIDs, but keeping this low
