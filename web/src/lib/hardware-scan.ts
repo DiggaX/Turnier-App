@@ -27,10 +27,19 @@ export interface ScanBuffer {
 
 export const emptyScanBuffer: ScanBuffer = { text: "", lastAt: 0, startedAt: 0 };
 
+/** Why a burst was thrown away — shown in the diagnostics panel, nowhere else. */
+export type ScanRejectReason = "too-short" | "no-enter";
+
 export interface ScanStep {
   buf: ScanBuffer;
   /** Set once Enter closes a burst that is long enough to be a real code. */
   scanned?: { text: string; durationMs: number };
+  /**
+   * Set when characters were discarded. Diagnostics only — a rejected burst
+   * never becomes a check-in. Without this, a scanner that arrives in the wrong
+   * shape looks exactly like one that never arrived at all.
+   */
+  rejected?: { text: string; reason: ScanRejectReason };
 }
 
 /**
@@ -53,7 +62,13 @@ export function pushScanKey(
       };
     }
     // Too short to be a scan — an Enter from a person, so drop what we had.
-    return { buf: emptyScanBuffer };
+    // An Enter on an empty buffer is just someone pressing Enter: not an event.
+    return buf.text === ""
+      ? { buf: emptyScanBuffer }
+      : {
+          buf: emptyScanBuffer,
+          rejected: { text: buf.text, reason: "too-short" },
+        };
   }
 
   // Only printable single characters carry barcode data.
@@ -62,10 +77,18 @@ export function pushScanKey(
   // A gap this long means a human, not an injected burst: start over so their
   // keystrokes never accumulate into a phantom scan.
   const continues = buf.text !== "" && at - buf.lastAt <= maxGapMs;
+  if (continues) {
+    return {
+      buf: { text: buf.text + key, lastAt: at, startedAt: buf.startedAt },
+    };
+  }
   return {
-    buf: continues
-      ? { text: buf.text + key, lastAt: at, startedAt: buf.startedAt }
-      : { text: key, lastAt: at, startedAt: at },
+    buf: { text: key, lastAt: at, startedAt: at },
+    // Whatever was in the buffer never got its Enter. Say so rather than
+    // overwriting it in silence.
+    ...(buf.text !== "" && {
+      rejected: { text: buf.text, reason: "no-enter" as const },
+    }),
   };
 }
 

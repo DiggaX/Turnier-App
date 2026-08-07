@@ -18,15 +18,16 @@ function burst(text: string, opts: { gapMs?: number; enter?: boolean } = {}) {
   let buf: ScanBuffer = emptyScanBuffer;
   let at = 1000;
   let scanned;
+  let rejected;
   for (const ch of text) {
     at += gap;
-    ({ buf, scanned } = pushScanKey(buf, ch, at));
+    ({ buf, scanned, rejected } = pushScanKey(buf, ch, at));
   }
   if (opts.enter !== false) {
     at += gap;
-    ({ buf, scanned } = pushScanKey(buf, "Enter", at));
+    ({ buf, scanned, rejected } = pushScanKey(buf, "Enter", at));
   }
-  return { buf, scanned };
+  return { buf, scanned, rejected };
 }
 
 const TOKEN = "75f01f1c-863c-4ff0-be2a-f43c19c7830a";
@@ -100,5 +101,58 @@ describe("pushScanKey", () => {
     ({ buf: other } = pushScanKey(other, "A", 1000));
     ({ buf: other } = pushScanKey(other, "B", 1001 + MAX_KEY_GAP_MS));
     expect(other.text).toBe("B");
+  });
+});
+
+/**
+ * Dropping a burst silently is what made the scanner impossible to diagnose on
+ * the device: nothing arrived, and nothing said why. These reasons are for the
+ * diagnostics panel only — a rejected burst never becomes a check-in.
+ */
+describe("pushScanKey rejections", () => {
+  it("names a burst that Enter closed while it was too short", () => {
+    const short = "a".repeat(MIN_SCAN_LENGTH - 1);
+    let buf: ScanBuffer = emptyScanBuffer;
+    let at = 1000;
+    for (const ch of short) {
+      at += 5;
+      ({ buf } = pushScanKey(buf, ch, at));
+    }
+    const step = pushScanKey(buf, "Enter", at + 5);
+
+    expect(step.rejected).toEqual({ text: short, reason: "too-short" });
+    expect(step.buf).toEqual(emptyScanBuffer);
+  });
+
+  it("stays quiet on a lone Enter — a person pressing Enter is not an event", () => {
+    const step = pushScanKey(emptyScanBuffer, "Enter", 1000);
+    expect(step.rejected).toBeUndefined();
+    expect(step.scanned).toBeUndefined();
+  });
+
+  it("hands back the abandoned text when a new burst starts without Enter", () => {
+    let buf: ScanBuffer = emptyScanBuffer;
+    ({ buf } = pushScanKey(buf, "A", 1000));
+    ({ buf } = pushScanKey(buf, "B", 1005));
+    const step = pushScanKey(buf, "C", 5000);
+
+    expect(step.rejected).toEqual({ text: "AB", reason: "no-enter" });
+    expect(step.buf.text).toBe("C");
+  });
+
+  it("says nothing while a burst is still running", () => {
+    let buf: ScanBuffer = emptyScanBuffer;
+    ({ buf } = pushScanKey(buf, "A", 1000));
+    expect(pushScanKey(buf, "B", 1005).rejected).toBeUndefined();
+  });
+
+  it("says nothing about the first key of a burst", () => {
+    expect(pushScanKey(emptyScanBuffer, "A", 1000).rejected).toBeUndefined();
+  });
+
+  it("does not flag an accepted scan", () => {
+    const { scanned, rejected } = burst(TOKEN);
+    expect(scanned?.text).toBe(TOKEN);
+    expect(rejected).toBeUndefined();
   });
 });

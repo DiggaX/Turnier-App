@@ -12,13 +12,11 @@ import type {
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
 import { formatShortDateTime } from "@/lib/format-date";
-import {
-  emptyScanBuffer,
-  isTypingTarget,
-  pushScanKey,
-  type ScanBuffer,
-} from "@/lib/hardware-scan";
 import { playScanSound } from "@/lib/scan-feedback";
+
+import { ScanDiagnostics } from "./scan-diagnostics";
+import { useCameras } from "./use-cameras";
+import { useHardwareScan } from "./use-hardware-scan";
 
 // The camera scanner touches `navigator.mediaDevices`, which doesn't exist
 // during SSR/build. Loading it with ssr:false keeps the page build-safe and
@@ -112,69 +110,6 @@ function setTrackZoom(track: MediaStreamTrack | undefined, value: number) {
     .catch(() => undefined);
 }
 
-// Phones used as ticket scanners expose several rear lenses, and the browser's
-// default pick is often the ultra-wide, which cannot focus on a QR held close.
-// Laptops with a second USB webcam have the same problem in reverse. So the desk
-// gets to choose, and the choice sticks.
-//
-// The library ships an equivalent `useDevices`, but importing it would pull the
-// whole scanner package into the server bundle and defeat the ssr:false above,
-// so this stays hand-rolled.
-function useCameras(): [MediaDeviceInfo[], () => void] {
-  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
-  const [reloads, setReloads] = useState(0);
-
-  useEffect(() => {
-    if (!navigator.mediaDevices?.enumerateDevices) return;
-
-    let cancelled = false;
-    const read = async () => {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        if (!cancelled) {
-          setCameras(devices.filter((d) => d.kind === "videoinput"));
-        }
-      } catch {
-        // Best-effort — the scanner still runs on the browser's default camera.
-      }
-    };
-
-    void read();
-    navigator.mediaDevices.addEventListener?.("devicechange", read);
-
-    // Android hands out the full camera list only once the page holds camera
-    // permission, and answering that prompt takes as long as the person takes.
-    // A single delayed re-read raced them and left a scan handset showing one
-    // camera forever, with no way to reach its dedicated scan lens.
-    let permission: PermissionStatus | null = null;
-    void navigator.permissions
-      ?.query({ name: "camera" as PermissionName })
-      .then((status) => {
-        if (cancelled) return;
-        permission = status;
-        status.addEventListener("change", read);
-      })
-      .catch(() => {
-        // Firefox rejects the camera descriptor; the retries below cover it.
-      });
-
-    // Backstop for browsers with neither signal, spread out far enough to
-    // outlast a permission dialog.
-    const retries = [1500, 4000, 8000, 15000].map((ms) =>
-      setTimeout(() => void read(), ms),
-    );
-
-    return () => {
-      cancelled = true;
-      retries.forEach(clearTimeout);
-      permission?.removeEventListener("change", read);
-      navigator.mediaDevices.removeEventListener?.("devicechange", read);
-    };
-  }, [reloads]);
-
-  return [cameras, () => setReloads((n) => n + 1)];
-}
-
 // Don't re-fire on the same QR while it stays in frame: ignore a token we just
 // processed for this window.
 const DEBOUNCE_MS = 2500;
@@ -199,11 +134,6 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
 
   const [rescanning, setRescanning] = useState(false);
   const [rescanNote, setRescanNote] = useState<string | null>(null);
-  // What the hardware engine actually delivered, so an unexpected format can be
-  // read off the device instead of guessed at.
-  const [hardwareLog, setHardwareLog] = useState<
-    { text: string; durationMs: number; at: number }[]
-  >([]);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   /**
@@ -371,32 +301,11 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
   }, []);
 
   // A handheld like the Zebra TC26 scans with a laser imager, not a camera —
-  // its engine never shows up in getUserMedia. Zebra's DataWedge service
-  // replays the scan as keystrokes ending with Enter, so listen on the document
-  // and let the buffer sort machine bursts from someone typing.
-  const bufRef = useRef<ScanBuffer>(emptyScanBuffer);
-
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      // A scan aimed at a form field belongs to that field.
-      if (isTypingTarget(e.target)) return;
-
-      const step = pushScanKey(bufRef.current, e.key, e.timeStamp || Date.now());
-      bufRef.current = step.buf;
-      if (!step.scanned) return;
-
-      // Enter would otherwise submit whatever is around it.
-      e.preventDefault();
-      const { text, durationMs } = step.scanned;
-      setHardwareLog((log) =>
-        [{ text, durationMs, at: Date.now() }, ...log].slice(0, 5),
-      );
-      void handleToken(text);
-    }
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [handleToken]);
+  // its engine never shows up in getUserMedia. DataWedge replays the scan as
+  // keystrokes ending with Enter, which the hook reads off the document.
+  const { rawKeys, scans } = useHardwareScan(handleToken, {
+    rawLogEnabled: showDiagnostics,
+  });
 
   return (
     // min-w-0: the video carries an intrinsic width, and a grid item defaults to
@@ -551,40 +460,11 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
           className="font-display text-[10px] uppercase tracking-wider text-fg-dim transition-colors hover:text-fg-muted"
         >
           {showDiagnostics ? "Diagnose ausblenden" : "Scanner-Diagnose"}
-          {hardwareLog.length > 0 && ` (${hardwareLog.length})`}
+          {scans.length > 0 && ` (${scans.length})`}
         </button>
 
         {showDiagnostics && (
-          <div className="mt-2 flex flex-col gap-2 text-xs text-fg-muted">
-            <p>
-              Handscanner (z.&nbsp;B. Zebra TC26) liefern über DataWedge
-              Tastatureingaben, keine Kamerabilder. Hier steht, was ankommt.
-            </p>
-            {hardwareLog.length === 0 ? (
-              <p className="text-fg-dim">
-                Noch nichts empfangen. Drück die Scan-Taste am Gerät. Kommt
-                nichts an, in DataWedge unter Profile0 die Keystroke-Ausgabe mit
-                „Send Characters as Events“ und „Send ENTER key“ aktivieren.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {hardwareLog.map((entry) => (
-                  <li
-                    key={entry.at}
-                    className="rounded-lg border border-line bg-bg/40 px-2.5 py-1.5"
-                  >
-                    <code className="block break-all font-mono text-[11px] text-ink">
-                      {entry.text}
-                    </code>
-                    <span className="text-[10px] text-fg-dim">
-                      {entry.text.length} Zeichen · {Math.round(entry.durationMs)}
-                      &nbsp;ms · {formatShortDateTime(new Date(entry.at))}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <ScanDiagnostics scans={scans} rawKeys={rawKeys} />
         )}
       </div>
     </div>
