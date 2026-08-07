@@ -12,6 +12,12 @@ import type {
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
 import { formatShortDateTime } from "@/lib/format-date";
+import {
+  emptyScanBuffer,
+  isTypingTarget,
+  pushScanKey,
+  type ScanBuffer,
+} from "@/lib/hardware-scan";
 import { playScanSound } from "@/lib/scan-feedback";
 
 // The camera scanner touches `navigator.mediaDevices`, which doesn't exist
@@ -193,6 +199,12 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
 
   const [rescanning, setRescanning] = useState(false);
   const [rescanNote, setRescanNote] = useState<string | null>(null);
+  // What the hardware engine actually delivered, so an unexpected format can be
+  // read off the device instead of guessed at.
+  const [hardwareLog, setHardwareLog] = useState<
+    { text: string; durationMs: number; at: number }[]
+  >([]);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   /**
    * Re-read the camera list. Plain enumeration was not enough: a device that
@@ -358,6 +370,34 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
     setCameraError(cameraErrorMessage(error.kind));
   }, []);
 
+  // A handheld like the Zebra TC26 scans with a laser imager, not a camera —
+  // its engine never shows up in getUserMedia. Zebra's DataWedge service
+  // replays the scan as keystrokes ending with Enter, so listen on the document
+  // and let the buffer sort machine bursts from someone typing.
+  const bufRef = useRef<ScanBuffer>(emptyScanBuffer);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      // A scan aimed at a form field belongs to that field.
+      if (isTypingTarget(e.target)) return;
+
+      const step = pushScanKey(bufRef.current, e.key, e.timeStamp || Date.now());
+      bufRef.current = step.buf;
+      if (!step.scanned) return;
+
+      // Enter would otherwise submit whatever is around it.
+      e.preventDefault();
+      const { text, durationMs } = step.scanned;
+      setHardwareLog((log) =>
+        [{ text, durationMs, at: Date.now() }, ...log].slice(0, 5),
+      );
+      void handleToken(text);
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [handleToken]);
+
   return (
     // min-w-0: the video carries an intrinsic width, and a grid item defaults to
     // min-width:auto, so without this the card refuses to shrink below the
@@ -501,6 +541,50 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         )}
         {status.kind === "error" && (
           <span className="text-live">Check-in fehlgeschlagen</span>
+        )}
+      </div>
+
+      <div className="border-t border-line/60 pt-3">
+        <button
+          type="button"
+          onClick={() => setShowDiagnostics((v) => !v)}
+          className="font-display text-[10px] uppercase tracking-wider text-fg-dim transition-colors hover:text-fg-muted"
+        >
+          {showDiagnostics ? "Diagnose ausblenden" : "Scanner-Diagnose"}
+          {hardwareLog.length > 0 && ` (${hardwareLog.length})`}
+        </button>
+
+        {showDiagnostics && (
+          <div className="mt-2 flex flex-col gap-2 text-xs text-fg-muted">
+            <p>
+              Handscanner (z.&nbsp;B. Zebra TC26) liefern über DataWedge
+              Tastatureingaben, keine Kamerabilder. Hier steht, was ankommt.
+            </p>
+            {hardwareLog.length === 0 ? (
+              <p className="text-fg-dim">
+                Noch nichts empfangen. Drück die Scan-Taste am Gerät. Kommt
+                nichts an, in DataWedge unter Profile0 die Keystroke-Ausgabe mit
+                „Send Characters as Events“ und „Send ENTER key“ aktivieren.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {hardwareLog.map((entry) => (
+                  <li
+                    key={entry.at}
+                    className="rounded-lg border border-line bg-bg/40 px-2.5 py-1.5"
+                  >
+                    <code className="block break-all font-mono text-[11px] text-ink">
+                      {entry.text}
+                    </code>
+                    <span className="text-[10px] text-fg-dim">
+                      {entry.text.length} Zeichen · {Math.round(entry.durationMs)}
+                      &nbsp;ms · {formatShortDateTime(new Date(entry.at))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </div>
     </div>
