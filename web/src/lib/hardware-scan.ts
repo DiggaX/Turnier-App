@@ -93,6 +93,20 @@ export function pushScanKey(
 }
 
 /**
+ * Read a code out of a capture field's value.
+ *
+ * Android delivers an injected scan through the IME: the characters never
+ * arrive as individual key events, they land in whatever field has focus as
+ * finished text. So the whole burst shows up in one value — with its
+ * terminating newline, and with a second scan behind it whenever the field was
+ * not drained fast enough. Take the first line, nothing else.
+ */
+export function extractScan(value: string): string | null {
+  const text = value.split(/[\r\n]/)[0].trim();
+  return text.length >= MIN_SCAN_LENGTH ? text : null;
+}
+
+/**
  * Whether a key event came from somewhere the person is deliberately typing.
  * DataWedge injects into whatever has focus, so a scan aimed at a form field
  * should stay in that field rather than also firing a check-in.

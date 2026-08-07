@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 
 import {
   emptyScanBuffer,
+  extractScan,
   MAX_KEY_GAP_MS,
   MIN_SCAN_LENGTH,
   pushScanKey,
@@ -154,5 +155,44 @@ describe("pushScanKey rejections", () => {
     const { scanned, rejected } = burst(TOKEN);
     expect(scanned?.text).toBe(TOKEN);
     expect(rejected).toBeUndefined();
+  });
+});
+
+/**
+ * The second channel. Android hands an injected scan to the page through the
+ * IME, where it arrives as text in a focused field instead of as single keys —
+ * so all we get to look at is the field's value, terminator and all.
+ */
+describe("extractScan", () => {
+  it("reads a token straight out of the field", () => {
+    expect(extractScan(TOKEN)).toBe(TOKEN);
+  });
+
+  it("drops the newline the scanner appends", () => {
+    expect(extractScan(`${TOKEN}\n`)).toBe(TOKEN);
+  });
+
+  it("trims padding around the code", () => {
+    expect(extractScan(`  ${TOKEN}  `)).toBe(TOKEN);
+  });
+
+  it("takes the first line when a second scan lands before the field was drained", () => {
+    expect(extractScan(`${TOKEN}\n8f2b1d40-0000-4000-8000-000000000000`)).toBe(
+      TOKEN,
+    );
+  });
+
+  it("splits on a carriage return too — some scanners terminate with one", () => {
+    expect(extractScan(`${TOKEN}\r8f2b1d40-0000-4000-8000-000000000000`)).toBe(
+      TOKEN,
+    );
+  });
+
+  it("ignores a field too short to hold a code", () => {
+    expect(extractScan("a".repeat(MIN_SCAN_LENGTH - 1))).toBeNull();
+  });
+
+  it("ignores an empty field", () => {
+    expect(extractScan("")).toBeNull();
   });
 });

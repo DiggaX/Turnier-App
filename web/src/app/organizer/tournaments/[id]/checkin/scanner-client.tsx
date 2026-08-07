@@ -303,7 +303,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
   // A handheld like the Zebra TC26 scans with a laser imager, not a camera —
   // its engine never shows up in getUserMedia. DataWedge replays the scan as
   // keystrokes ending with Enter, which the hook reads off the document.
-  const { rawKeys, scans } = useHardwareScan(handleToken, {
+  const { captureRef, rawKeys, scans } = useHardwareScan(handleToken, {
     rawLogEnabled: showDiagnostics,
   });
 
@@ -312,6 +312,25 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
     // min-width:auto, so without this the card refuses to shrink below the
     // camera's own resolution and pushes the phone layout wider than the screen.
     <div className="flex min-w-0 flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
+      {/* Android hands an injected scan to the page through the IME, which
+          needs somewhere to put it: with no focused field the text is dropped
+          before any key event exists. So this field stays mounted and the hook
+          keeps it focused. sr-only rather than display:none — a hidden element
+          cannot take focus — and inputMode="none" keeps the soft keyboard down. */}
+      <input
+        ref={captureRef}
+        type="text"
+        inputMode="none"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        tabIndex={-1}
+        aria-hidden="true"
+        data-scan-capture=""
+        className="sr-only"
+      />
+
       <div>
         <div className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
           QR-Scanner

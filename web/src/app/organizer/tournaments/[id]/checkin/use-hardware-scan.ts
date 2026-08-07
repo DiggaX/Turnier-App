@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import {
   emptyScanBuffer,
+  extractScan,
   isTypingTarget,
   MAX_KEY_GAP_MS,
   pushScanKey,
@@ -81,17 +88,23 @@ export function useHardwareScan(
   // `Date.now()` as a key then collapses them into one row.
   const idRef = useRef(0);
 
+  // Both channels write into the same two logs, so these sit above the effects
+  // instead of inside either one. Stable identities: the effects keep them
+  // across renders and must not be torn down for it.
+  const logScan = useCallback(
+    (entry: Omit<ScanLogEntry, "id" | "at">) => {
+      const row = { ...entry, id: ++idRef.current, at: Date.now() };
+      setScans((log) => [row, ...log].slice(0, SCAN_LOG_CAP));
+    },
+    [],
+  );
+
+  const logRawKey = useCallback((entry: Omit<RawKeyEntry, "id" | "at">) => {
+    const row = { ...entry, id: ++idRef.current, at: Date.now() };
+    setRawKeys((log) => [row, ...log].slice(0, RAW_LOG_CAP));
+  }, []);
+
   useEffect(() => {
-    const nextId = () => ++idRef.current;
-
-    const logScan = (entry: Omit<ScanLogEntry, "id" | "at">) =>
-      setScans((log) =>
-        [{ ...entry, id: nextId(), at: Date.now() }, ...log].slice(
-          0,
-          SCAN_LOG_CAP,
-        ),
-      );
-
     let flushTimer: ReturnType<typeof setTimeout> | undefined;
 
     // A burst whose Enter never comes would sit in the buffer until the next
@@ -115,15 +128,14 @@ export function useHardwareScan(
       // focused field, or arrives as "Unidentified" through Android's IME
       // path, is otherwise indistinguishable from nothing arriving at all.
       if (rawEnabledRef.current) {
-        const entry: RawKeyEntry = {
-          id: nextId(),
+        logRawKey({
           label: e.key === " " ? "␣" : e.key,
-          gapMs: lastKeyAtRef.current ? Math.round(at - lastKeyAtRef.current) : 0,
+          gapMs: lastKeyAtRef.current
+            ? Math.round(at - lastKeyAtRef.current)
+            : 0,
           target: describeTarget(e.target),
           swallowed,
-          at: Date.now(),
-        };
-        setRawKeys((log) => [entry, ...log].slice(0, RAW_LOG_CAP));
+        });
       }
       lastKeyAtRef.current = at;
 
@@ -160,7 +172,102 @@ export function useHardwareScan(
       clearTimeout(flushTimer);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [onToken]);
+  }, [onToken, logScan, logRawKey]);
+
+  // The second channel, and on Android the one that carries the scan at all:
+  // there the injected characters go through the IME, which commits them as
+  // finished text into the focused field. No field, no text — the page never
+  // sees a key event worth the name. So we hold a field focused and read it.
+  useEffect(() => {
+    const input = captureRef.current;
+    if (!input) return;
+
+    let commitTimer: ReturnType<typeof setTimeout> | undefined;
+    let refocusTimer: ReturnType<typeof setTimeout> | undefined;
+    // How much of the field we have already logged, so each event reports what
+    // this event brought rather than the running total.
+    let logged = 0;
+
+    const commit = () => {
+      clearTimeout(commitTimer);
+      const raw = input.value;
+      input.value = "";
+      logged = 0;
+
+      const text = extractScan(raw);
+      if (text) {
+        logScan({ text, channel: "text", outcome: "ok" });
+        onToken(text);
+      } else if (raw.trim()) {
+        logScan({ text: raw.trim(), channel: "text", outcome: "too-short" });
+      }
+    };
+
+    const onInput = (e: Event) => {
+      const at = e.timeStamp || performance.now();
+      if (rawEnabledRef.current) {
+        logRawKey({
+          label: `+${input.value.length - logged} Zeichen`,
+          gapMs: lastKeyAtRef.current
+            ? Math.round(at - lastKeyAtRef.current)
+            : 0,
+          target: "Scan-Feld",
+          swallowed: false,
+        });
+      }
+      lastKeyAtRef.current = at;
+      logged = input.value.length;
+
+      // A terminator already in the value means the burst is complete.
+      if (/[\r\n]/.test(input.value)) return commit();
+
+      // Otherwise wait out the gap: an IME commit can arrive in several events,
+      // and some profiles send no ENTER at all.
+      clearTimeout(commitTimer);
+      commitTimer = setTimeout(commit, MAX_KEY_GAP_MS);
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Enter") return;
+      // Enter inside a field submits whatever surrounds it.
+      e.preventDefault();
+      commit();
+    };
+
+    // Never take focus away from someone. Only claim it when it is nowhere —
+    // if they are in the camera picker or a text field, their next keystroke
+    // belongs there.
+    const claimFocus = () => {
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      input.focus({ preventScroll: true });
+    };
+
+    // focusout fires before the next element has focus, so ask a tick later.
+    const onFocusOut = () => {
+      clearTimeout(refocusTimer);
+      refocusTimer = setTimeout(claimFocus, 0);
+    };
+
+    // Coming back from a locked screen or another tab leaves focus nowhere.
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") claimFocus();
+    };
+
+    claimFocus();
+    input.addEventListener("keydown", onKeyDown);
+    input.addEventListener("input", onInput);
+    document.addEventListener("focusout", onFocusOut);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearTimeout(commitTimer);
+      clearTimeout(refocusTimer);
+      input.removeEventListener("keydown", onKeyDown);
+      input.removeEventListener("input", onInput);
+      document.removeEventListener("focusout", onFocusOut);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [onToken, logScan, logRawKey]);
 
   return { captureRef, rawKeys, scans };
 }
