@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { IScannerError, ScannerErrorKind } from "@yudiel/react-qr-scanner";
 
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
@@ -37,6 +38,88 @@ function isConsentError(error: unknown): boolean {
   return message.toLowerCase().includes("consent");
 }
 
+/**
+ * Turn a camera failure into something the person at the check-in desk can act
+ * on. Without this the scanner just sits there showing its frame overlay and
+ * never starts, which is indistinguishable from a broken page.
+ */
+export function cameraErrorMessage(kind: ScannerErrorKind): string {
+  switch (kind) {
+    case "permission-denied":
+      return "Kamerazugriff ist blockiert. Erlaube ihn über das Symbol links in der Adressleiste und lade die Seite neu.";
+    case "no-camera":
+      return "Es wurde keine Kamera gefunden. Schließe eine an oder nutze die Anwesenheitsliste unten.";
+    case "in-use":
+      return "Die Kamera wird gerade von einem anderen Programm benutzt. Schließe es und starte den Scanner neu.";
+    case "overconstrained":
+      return "Diese Kamera steht nicht zur Verfügung. Wähle unten eine andere aus.";
+    case "insecure-context":
+      return "Die Kamera funktioniert nur über HTTPS.";
+    case "unsupported":
+      return "Dieser Browser unterstützt keinen Kamerazugriff. Nimm Chrome, Edge oder Safari.";
+    case "aborted":
+      return "Die Kamera hat zu lange zum Starten gebraucht. Starte den Scanner neu oder wähle eine andere Kamera.";
+    default:
+      return "Die Kamera konnte nicht gestartet werden. Starte den Scanner neu oder wähle eine andere Kamera.";
+  }
+}
+
+/**
+ * Label for a camera in the picker. Browsers hide device labels until camera
+ * permission has been granted once, so fall back to a position instead of
+ * rendering blank entries.
+ */
+export function cameraLabel(device: MediaDeviceInfo, index: number): string {
+  return device.label.trim() || `Kamera ${index + 1}`;
+}
+
+/** Remembers the picked camera per browser, so a scan station keeps its lens. */
+const CAMERA_KEY = "turnierapp.checkin.cameraId";
+
+// Phones used as ticket scanners expose several rear lenses, and the browser's
+// default pick is often the ultra-wide, which cannot focus on a QR held close.
+// Laptops with a second USB webcam have the same problem in reverse. So the desk
+// gets to choose, and the choice sticks.
+//
+// The library ships an equivalent `useDevices`, but importing it would pull the
+// whole scanner package into the server bundle and defeat the ssr:false above,
+// so this stays hand-rolled.
+function useCameras() {
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+
+  useEffect(() => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+
+    let cancelled = false;
+    const read = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        if (!cancelled) {
+          setCameras(devices.filter((d) => d.kind === "videoinput"));
+        }
+      } catch {
+        // Best-effort — the scanner still runs on the browser's default camera.
+      }
+    };
+
+    void read();
+    navigator.mediaDevices.addEventListener?.("devicechange", read);
+    // Labels are empty strings until the Scanner's own getUserMedia grants
+    // permission. `devicechange` fires on that in Chrome, but not everywhere, so
+    // read once more after it has had a moment to start.
+    // ponytail: fixed re-read; swap for permissions.query().onchange if it proves flaky
+    const settle = setTimeout(() => void read(), 2500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(settle);
+      navigator.mediaDevices.removeEventListener?.("devicechange", read);
+    };
+  }, []);
+
+  return cameras;
+}
+
 // Don't re-fire on the same QR while it stays in frame: ignore a token we just
 // processed for this window.
 const DEBOUNCE_MS = 2500;
@@ -45,6 +128,27 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
   void tournamentId; // staff RLS already scopes participants; token lookup is global by qr_token
   const [supabase] = useState<SupabaseClient<Database>>(() => createClient());
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+
+  const cameras = useCameras();
+  const [deviceId, setDeviceId] = useState<string>("");
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  // Bumping this remounts the Scanner, which is how a retry restarts the camera.
+  const [attempt, setAttempt] = useState(0);
+
+  // Restore the previously picked camera once the device list is known.
+  useEffect(() => {
+    if (deviceId || cameras.length === 0) return;
+    const saved = localStorage.getItem(CAMERA_KEY);
+    if (saved && cameras.some((c) => c.deviceId === saved)) setDeviceId(saved);
+  }, [cameras, deviceId]);
+
+  function pickCamera(id: string) {
+    setDeviceId(id);
+    setCameraError(null);
+    if (id) localStorage.setItem(CAMERA_KEY, id);
+    else localStorage.removeItem(CAMERA_KEY);
+    setAttempt((n) => n + 1);
+  }
 
   // Token we are currently/last processing + when, so the same QR held in
   // frame doesn't spam the RPC.
@@ -110,6 +214,10 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
     [handleToken],
   );
 
+  const onError = useCallback((error: IScannerError) => {
+    setCameraError(cameraErrorMessage(error.kind));
+  }, []);
+
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
       <div>
@@ -126,14 +234,71 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         data-testid="qr-scanner"
       >
         <Scanner
+          key={`${deviceId}-${attempt}`}
           onScan={onScan}
+          onError={onError}
           scanDelay={500}
-          constraints={{ facingMode: "environment" }}
+          // An explicit pick wins; otherwise ask for a rear camera and let the
+          // browser fall back to whatever it has (a laptop only has a front one).
+          constraints={
+            deviceId
+              ? { deviceId: { exact: deviceId } }
+              : { facingMode: "environment" }
+          }
+          // The 3s default trips USB webcams and multi-lens phones that are
+          // still warming up, and a timeout leaves a dead frame behind.
+          startTimeoutMs={8000}
           // Re-scan even the same QR so a debounced token can fire again;
           // our own debounce above governs the RPC rate.
           allowMultiple
         />
       </div>
+
+      {cameras.length > 1 && (
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="camera-pick"
+            className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim"
+          >
+            Kamera
+          </label>
+          <select
+            id="camera-pick"
+            value={deviceId}
+            onChange={(e) => pickCamera(e.target.value)}
+            className="rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg-muted focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">Automatisch (Rückkamera)</option>
+            {cameras.map((cam, i) => (
+              <option key={cam.deviceId} value={cam.deviceId}>
+                {cameraLabel(cam, i)}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-fg-muted">
+            Scannt eine Linse schlecht aus der Nähe, nimm eine andere. Die Wahl
+            bleibt auf diesem Gerät gespeichert.
+          </p>
+        </div>
+      )}
+
+      {cameraError && (
+        <div className="flex flex-col gap-2 rounded-xl border border-live/40 bg-live/10 p-3">
+          <p className="text-sm text-live" role="alert">
+            {cameraError}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setCameraError(null);
+              setAttempt((n) => n + 1);
+            }}
+            className="w-fit rounded-[8px] border border-line px-3 py-1.5 font-display text-[10px] font-bold uppercase tracking-wider text-fg-muted transition-colors hover:text-ink"
+          >
+            Scanner neu starten
+          </button>
+        </div>
+      )}
 
       <div aria-live="polite" className="min-h-6 text-center text-sm">
         {status.kind === "idle" && (
