@@ -41,6 +41,38 @@ export async function resetCheckIn(id: string, tournamentId: string): Promise<Ac
   return { ok: true };
 }
 
+/**
+ * Check someone in from the attendance list. At the door a QR code can be
+ * torn, smudged, or on a phone that is dead — with nothing left to scan, staff
+ * needs a way in by hand. Counterpart to resetCheckIn.
+ */
+export async function manualCheckIn(id: string, tournamentId: string): Promise<ActionResult> {
+  const guard = await requireStaff();
+  if ("error" in guard) return guard;
+  // Confirm the participant belongs to this tournament first, so a stale row
+  // gets a clean message instead of the RPC's. Authorization stays with the
+  // RPC, which re-checks staff-of-org and consent.
+  const { data: participant } = await guard.supabase
+    .from("participants")
+    .select("id")
+    .eq("id", id)
+    .eq("tournament_id", tournamentId)
+    .maybeSingle();
+  if (!participant) return { error: "Teilnehmer wurde nicht gefunden." };
+
+  const { error } = await guard.supabase.rpc("check_in", {
+    p_participant_id: id,
+    p_method: "manual",
+  });
+  if (error) {
+    if (error.message.toLowerCase().includes("consent")) {
+      return { error: "Einwilligung fehlt — Check-in nicht möglich." };
+    }
+    return { error: friendlyDbError(error, "Check-in fehlgeschlagen.") };
+  }
+  return { ok: true };
+}
+
 export async function removeParticipant(id: string, tournamentId: string): Promise<ActionResult> {
   const guard = await requireStaff();
   if ("error" in guard) return guard;

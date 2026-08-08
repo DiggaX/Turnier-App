@@ -6,7 +6,7 @@ import { useState, useTransition } from "react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { formatShortDateTime } from "@/lib/format-date";
 
-import { resetCheckIn } from "../participants/actions";
+import { manualCheckIn, resetCheckIn } from "../participants/actions";
 
 export function AttendanceRow({
   participantId,
@@ -33,6 +33,16 @@ export function AttendanceRow({
     });
   }
 
+  // No confirm dialog here: an accidental check-in is undone with „Zurücksetzen".
+  function checkIn() {
+    setError(null);
+    startTransition(async () => {
+      const res = await manualCheckIn(participantId, tournamentId);
+      if ("error" in res) setError(res.error);
+      else router.refresh();
+    });
+  }
+
   return (
     <TableRow className="border-line/60 hover:bg-white/[0.02]">
       <TableCell className="font-display font-semibold text-ink">
@@ -54,7 +64,7 @@ export function AttendanceRow({
         {error && <p className="mt-1 text-xs text-live">{error}</p>}
       </TableCell>
       <TableCell className="text-right">
-        {checkedInAt && (
+        {checkedInAt ? (
           <button
             type="button"
             onClick={reset}
@@ -62,6 +72,15 @@ export function AttendanceRow({
             className="rounded-[8px] border border-line px-3 py-1.5 font-display text-[10px] font-bold uppercase tracking-wider text-fg-muted transition-colors hover:text-ink disabled:opacity-50"
           >
             Zurücksetzen
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={checkIn}
+            disabled={pending}
+            className="rounded-[8px] border border-lime/40 px-3 py-1.5 font-display text-[10px] font-bold uppercase tracking-wider text-lime transition-colors hover:bg-lime/10 hover:text-lime disabled:opacity-50"
+          >
+            Einchecken
           </button>
         )}
       </TableCell>

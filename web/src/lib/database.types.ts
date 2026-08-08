@@ -23,6 +23,7 @@ export type CheckinMethod =
   | "qr_scan"
   | "camera_scan"
   | "hardware_scan"
+  | "manual"
   | "station"
   | "online";
 export type MatchStatus = "pending" | "live" | "done" | "bye";
