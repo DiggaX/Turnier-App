@@ -42,8 +42,11 @@ Apply `supabase/migrations/20260618090000_checkin.sql` (SQL Editor → Run). It 
 signature), and the `check_in(participant_id, method)` RPC. No new Auth/Storage toggles
 needed (anonymous auth + the `consent-signatures` bucket already exist).
 
-Three check-in methods: organizer camera scan (`qr_scan`), station-QR self-scan
-(`station`), online button (`online`). The organizer scan and station pages live under
+Check-in methods: organizer camera scan (`camera_scan`), handheld barcode engine
+(`hardware_scan`), station-QR self-scan (`station`), online button (`online`).
+Both scan methods require staff of the participant's org; `station`/`online` require
+the participant themselves. Rows written before the two readers were told apart carry
+the retired value `qr_scan`. The organizer scan and station pages live under
 `/organizer/tournaments/[id]/checkin` and `/t/[id]/checkin-station`; participants see
 their personal QR + online button at `/t/[id]/me`.
 

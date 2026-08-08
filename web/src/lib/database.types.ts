@@ -17,7 +17,14 @@ export type TournamentMode = "lan" | "online" | "hybrid";
 export type TournamentStatus = "draft" | "registration" | "running" | "finished";
 export type ParticipantType = "solo" | "team";
 export type ConsentGrantor = "self" | "guardian";
-export type CheckinMethod = "qr_scan" | "station" | "online";
+// "qr_scan" is the historical value both readers wrote before they were told
+// apart; rows from that era keep it.
+export type CheckinMethod =
+  | "qr_scan"
+  | "camera_scan"
+  | "hardware_scan"
+  | "station"
+  | "online";
 export type MatchStatus = "pending" | "live" | "done" | "bye";
 
 export interface Database {

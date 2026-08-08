@@ -1,6 +1,6 @@
 # Turnier-App — Übergabe an den nächsten Agent
 
-**Stand:** 2026-08-07 · Branch `main` @ `c1e7b95` · **auf `origin/main` gepusht** (`github.com/DiggaX/Turnier-App`) · live unter https://turnier-app-opal.vercel.app
+**Stand:** 2026-08-08 · Branch `main` @ `95627b9` · **auf `origin/main` gepusht** (`github.com/DiggaX/Turnier-App`) · live unter https://turnier-app-opal.vercel.app
 
 Lies zuerst diese Datei, dann `CLAUDE.md` (Regeln) und die Auto-Memory unter
 `C:\Users\Rene\.claude\projects\C--Users-Rene-Turnierapp\memory\` (MEMORY.md + die verlinkten Dateien).
@@ -14,7 +14,7 @@ Ein **Multi-Tenant-Esports-Turnier-SaaS**. Firmen (Organisationen) registrieren 
 - **Frontend/Backend:** Next.js **16.2.9** (App Router) im Unterordner **`web/`**. Vercel Root Directory = `web`. ⚠️ Next 16 hat Breaking Changes ggü. Trainingsdaten: async `params`/`searchParams`/`cookies()`/`headers()`, Middleware heißt `proxy.ts`, Turbopack-Build. **Vor Next-Code: `web/node_modules/next/dist/docs/` lesen** (steht auch in `web/AGENTS.md`).
 - **DB/Auth:** Supabase (Postgres + RLS + Anonymous Auth + Storage + Realtime). Projekt-Ref **`zqhdbygopftretjtlods`**.
 - **UI:** Tailwind v4 + shadcn/ui (button/badge/card/checkbox/input/label/table — **kein Select**, nutze native `<select>`). Dark-Esports-Design: BG `#07090c`, surface `#10141c`, lime `#c5f72e`, cyan `#1fd1e3`, live-red `#ff3b5c`; Fonts Space Grotesk (variabel) + Chakra Petch.
-- **Forms:** react-hook-form + zod. **Tests:** Vitest (**298** Unit-Tests grün) + Playwright (e2e geschrieben, s.u.).
+- **Forms:** react-hook-form + zod. **Tests:** Vitest (**320** Unit-Tests grün) + Playwright (e2e geschrieben, s.u.).
 
 ## 3. Deploy & DB — WIE (wichtig!)
 - **Deploy: manuell per Vercel CLI** vom Repo-Root: `vercel deploy --prod --yes` (eingeloggt als `moellersrene-3676`, Root Directory = `web`). Kein Auto-Deploy bei Push. **GitHub-Push ist OK und erwünscht** (Account nicht mit Vercel verbunden). ⚠️ **Brain (Obsidian `Zweites-Gehiern`) NIE pushen** — nur lokales Git, kein Remote.
@@ -44,6 +44,15 @@ Plan-für-Plan: **brainstorming → writing-plans → Ausführung**. Ausführung
 - **Anwesenheit zurücksetzbar** in der Check-in-Liste (`resetCheckIn`).
 - **Mobil nutzbar:** Organizer-Nav klappt zusammen, Touch-Größen, kein Querscroll mehr.
 
+### Neu am 2026-08-08
+**Handscanner läuft jetzt wirklich** (am Zebra TC26 verifiziert: Check-in um 07:10 in `check_ins`). Vier Ursachen steckten übereinander, alle vier gefixt:
+1. **IME-Kanal** (`use-hardware-scan.ts`, 2. Effect): Android-Chrome liefert DataWedge-Tasten über den IME-Pfad als `key="Unidentified"` (keyCode 229) — pro Taste ist da nichts zu holen, und ohne fokussiertes Feld kommt der Text gar nicht an. Deshalb hält die Seite ein unsichtbares `<input data-scan-capture>` (`sr-only`, `inputMode="none"`) fokussiert und liest den Scan aus dessen `input`-Events. Der Keydown-Weg bleibt als zweiter Kanal.
+2. **Tasten-Abstand 60 ms → 500 ms** (`MAX_KEY_GAP_MS`): Zebras eigene KB empfiehlt für Chrome-Web-Apps Key Event Delay ≥50 ms — das killte jeden Scan deterministisch. Erkennung läuft jetzt über Enter-Abschluss + `MIN_SCAN_LENGTH`, nicht über Timing.
+3. **`isTypingTarget`** matchte jedes INPUT/SELECT, also auch Kamera-Auswahl und Zoom-Slider. Auf Android bleibt der Fokus nach dem Antippen dort → jeder Scan stumm geschluckt. Jetzt zählen nur echte Texteingaben (TEXTAREA, contentEditable, Text-artige Input-Typen); das Capture-Feld ist explizit ausgenommen.
+4. **Diagnose zeigt jetzt Rohdaten** (`scan-diagnostics.tsx`): jede ankommende Taste mit Abstand + Ziel-Element, plus verworfene Bursts mit Grund. Vorher wurden nur voll akzeptierte Scans geloggt — das Panel war von Hand nicht testbar und schob jeden Fehler auf DataWedge. **Smoke-Test:** `123456` + Enter tippen muss einen Eintrag erzeugen.
+
+**Kanal wird mitgeschrieben:** `checkin_method` hat neu `camera_scan` + `hardware_scan`; `qr_scan` bleibt als Altwert stehen. Der `check_in`-Guard ist dabei umgedreht worden — Selbstbedienung (`station`/`online`) ist jetzt die **Allowlist**, alles andere verlangt Staff der Org. Vorher war `qr_scan` als einziger Staff-Pfad ausgezeichnet, wodurch jede später ergänzte Methode automatisch zur Self-Check-in-Methode geworden wäre. Fällt jetzt zu.
+
 **Aktueller Datenstand:** DB wurde am 2026-08-07 komplett geleert und neu befüllt. Org **„Abenteuerinsel Fehmarn"** (slug bleibt `testverein-fehmarn`). Admins: `organizer@test.de` / `test1234` (nur Passwort-Login) und `rene.moellers@gmx.de` (Magic Link). Turniere: „Misson: Next Level EA Sports 2026" (Anmeldung offen), „Misson: Next Level Rocket League 2026" (Entwurf), „Sommer Cup 2026" (archiviert).
 
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
@@ -56,11 +65,13 @@ Plan-für-Plan: **brainstorming → writing-plans → Ausführung**. Ausführung
 - **Magic Link legt keine Konten an** (`shouldCreateUser: false`) — sonst entstehen Waisen-Accounts ohne Profil, die sich einloggen und kommentarlos aus `/organizer` fliegen.
 - **Geräte-Kopplung:** Tabelle `device_pairings` hat **RLS an und absichtlich KEINE Policies** → nur per Service-Role erreichbar. Token: 32 Byte, 2 Min, nur sha256 gespeichert, Einlösung per **einem** bedingten UPDATE (select-dann-update ließe zwei Scans durch). Braucht `SUPABASE_SERVICE_ROLE_KEY` (siehe §3).
 - ⚠️ **`auth.sessions.user_agent` ist bei serverseitigem Auth immer `"node"`**, die IP die des Servers. Als Gerätename unbrauchbar — der echte User-Agent wird bei der Kopplung selbst mitgeschrieben und über `session_id` (aus dem JWT-Claim) an die Session gehängt.
-- **Handscanner ≠ Kamera:** Das Zebra TC26 scannt mit einem SE4100-Laser-Imager, der **nie** in `getUserMedia` auftaucht. Zebras DataWedge liefert Scans als Tastatureingaben mit Enter → `web/src/lib/hardware-scan.ts` trennt Maschinen-Bursts (≤60 ms zwischen Zeichen) von Tippen. DataWedge-Einstellung: Profile0 → Barcode Input + Keystroke Output + „Send Characters as Events" + „Send ENTER key".
+- **Handscanner ≠ Kamera, und er hat ZWEI Empfangswege:** Das Zebra TC26 scannt mit einem SE4100-Laser-Imager, der **nie** in `getUserMedia` auftaucht. DataWedge spielt den Scan als Tastatureingaben ein — auf Android aber oft über den IME-Pfad, wo jede Taste als `key="Unidentified"` ankommt und ohne fokussiertes Feld gar nichts ankommt. Deshalb: `use-hardware-scan.ts` hört auf `document`-`keydown` **und** hält ein unsichtbares Capture-Feld fokussiert (`data-scan-capture`), dessen `input`-Events den IME-Fall abdecken. Doppelte Log-Zeilen („tasten" + „text") bei einem Scan sind normal — `handleToken` dedupliziert über `DEBOUNCE_MS`. ⚠️ **Keine Timing-Heuristik unter ~500 ms bauen**: DataWedges empfohlener Key Event Delay liegt bei 50–100 ms, ein 60-ms-Fenster unterdrückt jeden Scan. DataWedge-Einstellung: Profile0 → Barcode Input + Keystroke Output + „Send Characters as Events" + „Send ENTER key", Profil muss `com.android.chrome` zugeordnet sein.
+- ⚠️ **`isTypingTarget` niemals wieder auf „jedes INPUT/SELECT" ausweiten.** Ein fokussierter Kamera-Selector oder Zoom-Slider schluckte damit jeden Scan spurlos — und genau das tut die Bedienung („Linse wählen, dann scannen"). Nur echte Texteingaben zählen.
 - **Touch-Größen** liegen zentral in `globals.css` unter `@media (pointer: coarse)` — nicht in Einzelkomponenten duplizieren.
 - **Generatoren** sind pure TS (TDD): `web/src/lib/bracket/*`, `swiss/*`, `groups/*`. Swiss/Gruppen werden runde-für-runde fortgeschrieben.
 
 ## 7. OFFEN / To-do (für dich)
+0. ⚠️ **Deploy steht aus.** `20260808060000_checkin_scan_channel.sql` ist am 2026-08-08 angewandt und die Guards sind bewiesen (Fremder + `hardware_scan`/`camera_scan` → blockiert, Fremder + `online` → blockiert, Staff der Org + `hardware_scan` → erlaubt; Testschreibvorgänge per Sentinel-Exception zurückgerollt, keine Spuren in `check_ins`). Die DB akzeptiert die neuen Werte also bereits, der **Live-Client sendet aber noch `qr_scan`** — der Kanal landet erst nach `vercel deploy --prod --yes` in der Tabelle. Cross-Org-Staff ließ sich nicht empirisch prüfen (es existiert nur eine Org); der Pfad läuft unverändert über `is_staff_of_participant_org`.
 1. **e2e nie ausgeführt:** ~20 Specs in `web/e2e/*.spec.ts` sind geschrieben, aber nur build+unit-grün. Brauchen lokalen Dev-Server + Test-Creds (`E2E_ORG_EMAIL`/`E2E_ORG_PASSWORD`). ⚠️ Nach dem DB-Wipe zeigen sie ggf. auf nicht mehr existierende Fixtures. Kein aktives e2e-Sicherheitsnetz.
 2. **Cross-Device-Magic-Link** offen (Template-Umstellung, siehe §6) — User weiß Bescheid, hat sich noch nicht entschieden.
 3. **36 verwaiste Storage-Objekte** aus der Zeit vor dem Wipe. Per SQL nicht löschbar (Supabase blockt), nur über Dashboard/Storage-API.
@@ -73,14 +84,15 @@ Plan-für-Plan: **brainstorming → writing-plans → Ausführung**. Ausführung
 ## 8. Datei-Landkarte
 - `web/src/app/` — Routen. Öffentlich: `page.tsx`, `o/[slug]/`, `t/[tournamentId]/{,register,me,board,checkin-station}`. Auth: `(auth)/login`, `(auth)/signup`, `auth/confirm/route.ts`, `link/[token]/route.ts` (Geräte-Kopplung). Organizer: `organizer/`, `games`, `members` (Org-Name + Geräte + Mitglieder), `tournaments/[id]/{,bracket,matches,participants,checkin,station}`. Scorekeeper: `score/[token]/`.
 - `web/src/lib/` — `bracket/`, `swiss/`, `groups/`, `standings.ts`, `tournament/lifecycle.ts`, `org/`, `auth/{staff,org-tournament,device-pairing,device-label}.ts`, `supabase/{server,client,public,admin}.ts`, `format-date.ts`, `hardware-scan.ts`, `scan-feedback.ts`, `push/`, `station/`, `db-errors.ts`, `database.types.ts`.
-- `supabase/migrations/` — alle live angewandt. Neu: `20260807170000_tournament_archive.sql`, `20260807200000_device_pairing.sql`.
+- Check-in-Scanner (`web/src/app/organizer/tournaments/[id]/checkin/`): `scanner-client.tsx` (Kamera, Status, Check-in-RPC), `use-hardware-scan.ts` (beide Handscanner-Kanäle + die zwei Diagnose-Logs), `scan-diagnostics.tsx` (Panel), `use-cameras.ts` (Linsen-Liste), `attendance-row.tsx`. Pure Logik: `web/src/lib/hardware-scan.ts`.
+- `supabase/migrations/` — alle live angewandt. Neu: `20260807170000_tournament_archive.sql`, `20260807200000_device_pairing.sql`, `20260808060000_checkin_scan_channel.sql`.
 - `docs/superpowers/{specs,plans}/` — Designs + Pläne. `docs/DEPLOY.md` — Deploy/Setup-Notizen.
 - Brain (Obsidian, NICHT im Repo): `C:\Users\Rene\Documents\Zweites-Gehirn\02 Projekte\Turnier-App\`.
 
 ## 9. Erste Schritte für dich
 1. `git -C C:\Users\Rene\Turnierapp log --oneline -10`, `git status`.
 2. db2-Verbindung testen: `mcp__supabase-db2__list_tables` (~15 Tabellen erwartet). Bei „Unauthorized" → User muss `SUPABASE_ACCESS_TOKEN_DB2` setzen + Claude Code neu starten.
-3. `cd web && npm run build && npm test` (**298** grün erwartet).
+3. `cd web && npm run build && npm test` (**320** grün erwartet).
 4. Mit dem User klären, was ansteht. Vor Feature-Bau: **brainstorming-Skill**.
 
 ## 10. Was in dieser Session teuer war (Zeit sparen)
@@ -90,5 +102,7 @@ Fünf Bugs waren **unsichtbar statt laut** — die Symptome zeigten nie auf die 
 - „Button tut nichts" → Hydration-Abbruch wegen Zeitzone (§6).
 - „Scanner geht nicht" → `onError` fehlte, jeder Kamerafehler wurde stumm verschluckt.
 - „Kamera findet die Scan-Linse nicht" → es war nie eine Kamera, sondern ein Laser-Imager (§6).
+
+Am 2026-08-08 kam derselbe Fehlertyp nochmal, eine Ebene tiefer: Das Diagnose-Panel behauptete „Hier steht, was ankommt", loggte aber nur voll akzeptierte Scans. Damit war „gar nichts kommt an" (DataWedge falsch konfiguriert) nicht von „kommt an, wir filtern es weg" (unser Bug) zu unterscheiden — und der Empty-State schob es immer auf DataWedge. **Ein Diagnose-Werkzeug, das durch dieselben Filter schaut wie der Produktivpfad, diagnostiziert nichts.** Roh loggen, vor jeder Filterung.
 
 **Muster:** Wenn der User sagt „passiert nichts", zuerst prüfen, ob ein Fehlerpfad überhaupt **angezeigt** wird. Und: lokal-läuft-aber-prod-nicht war zweimal ein Zeitzonen- bzw. Umgebungsunterschied, nicht der Code.

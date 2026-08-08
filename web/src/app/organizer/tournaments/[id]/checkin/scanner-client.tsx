@@ -10,7 +10,7 @@ import type {
 } from "@yudiel/react-qr-scanner";
 
 import { createClient } from "@/lib/supabase/client";
-import type { Database } from "@/lib/database.types";
+import type { CheckinMethod, Database } from "@/lib/database.types";
 import { formatShortDateTime } from "@/lib/format-date";
 import { playScanSound } from "@/lib/scan-feedback";
 
@@ -222,7 +222,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
   const busyRef = useRef(false);
 
   const handleToken = useCallback(
-    async (token: string) => {
+    async (token: string, method: CheckinMethod) => {
       const now = Date.now();
       if (busyRef.current) return;
       if (
@@ -263,7 +263,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
 
         const { error: rpcErr } = await supabase.rpc("check_in", {
           p_participant_id: participant.id,
-          p_method: "qr_scan",
+          p_method: method,
         });
 
         if (rpcErr) {
@@ -291,7 +291,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
   const onScan = useCallback(
     (codes: { rawValue: string }[]) => {
       const value = codes[0]?.rawValue?.trim();
-      if (value) void handleToken(value);
+      if (value) void handleToken(value, "camera_scan");
     },
     [handleToken],
   );
@@ -300,10 +300,18 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
     setCameraError(cameraErrorMessage(error.kind));
   }, []);
 
+  // Which reader admitted someone is worth keeping: when a door station
+  // misbehaves mid-event, check_ins can then say whether the camera or the
+  // handheld produced the check-ins around it.
+  const onHardwareToken = useCallback(
+    (token: string) => void handleToken(token, "hardware_scan"),
+    [handleToken],
+  );
+
   // A handheld like the Zebra TC26 scans with a laser imager, not a camera —
   // its engine never shows up in getUserMedia. DataWedge replays the scan as
   // keystrokes ending with Enter, which the hook reads off the document.
-  const { captureRef, rawKeys, scans } = useHardwareScan(handleToken, {
+  const { captureRef, rawKeys, scans } = useHardwareScan(onHardwareToken, {
     rawLogEnabled: showDiagnostics,
   });
 
