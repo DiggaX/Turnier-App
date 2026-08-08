@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Barcode, Camera, ScanLine, Settings } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Barcode, Camera, Settings } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -122,6 +123,7 @@ const DEBOUNCE_MS = 2500;
 
 export function ScannerClient({ tournamentId }: ScannerClientProps) {
   void tournamentId; // staff RLS already scopes participants; token lookup is global by qr_token
+  const router = useRouter();
   const [supabase] = useState<SupabaseClient<Database>>(() => createClient());
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   // Bumped with every scan outcome so the result card restarts its timer even
@@ -308,6 +310,13 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
 
         showStatus({ kind: "success", name: participant.display_name });
         playScanSound("success");
+        // The attendance list and the "x von y anwesend" count are server-
+        // rendered on this same page, so a scan used to leave them stale until
+        // someone reloaded. Only the success path changes data — an already-
+        // present scan short-circuits before the RPC, and a failure wrote
+        // nothing. Re-rendering the server components leaves this client's
+        // state (mode, camera stream, result card) untouched.
+        router.refresh();
       } catch (e) {
         showStatus(isConsentError(e) ? { kind: "consent" } : { kind: "error" });
         playScanSound("reject");
@@ -315,7 +324,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         busyRef.current = false;
       }
     },
-    [supabase, showStatus],
+    [supabase, showStatus, router],
   );
 
   const onScan = useCallback(
@@ -417,9 +426,20 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
 
       {mode === "camera" ? (
         <div
-          className="mx-auto w-full max-w-sm overflow-hidden rounded-xl border border-line bg-surface-2"
+          className="relative mx-auto w-full max-w-sm overflow-hidden rounded-xl border border-line bg-surface-2"
           data-testid="qr-scanner"
         >
+          {/* Over the picture, not under it: the eye is on the viewfinder while
+              scanning, so that is where the verdict has to appear. It clears
+              itself when the countdown ends. */}
+          <div className="pointer-events-none absolute inset-x-2 top-2 z-10">
+            <ScanResultCard
+              status={status}
+              nonce={statusNonce}
+              onExpire={() => setStatus({ kind: "idle" })}
+              variant="overlay"
+            />
+          </div>
           <Scanner
             key={`${deviceId}-${attempt}`}
             ref={scannerRef}
@@ -442,17 +462,14 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
           />
         </div>
       ) : (
-        <div className="mx-auto flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border border-line bg-surface-2 px-6 py-14 text-center">
-          <div className="animate-pulse">
-            <ScanLine className="size-16 text-fg-dim" />
-          </div>
-          <div className="font-display text-lg font-bold text-ink">
-            Handscanner bereit
-          </div>
-          <p className="text-sm text-fg-muted">
-            Scans landen automatisch hier — die Kamera ist aus.
-          </p>
-        </div>
+        // No viewfinder to stand in for, and no placeholder either: with the
+        // camera off the result is the only thing worth screen space, so it
+        // takes the top spot instead of sitting below an empty box.
+        <ScanResultCard
+          status={status}
+          nonce={statusNonce}
+          onExpire={() => setStatus({ kind: "idle" })}
+        />
       )}
 
       {mode === "camera" && cameraError && (
@@ -472,12 +489,6 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
           </button>
         </div>
       )}
-
-      <ScanResultCard
-        status={status}
-        nonce={statusNonce}
-        onExpire={() => setStatus({ kind: "idle" })}
-      />
 
       {showSettings && (
         <div className="flex flex-col gap-4 rounded-xl border border-line/60 bg-surface-2/60 p-4">

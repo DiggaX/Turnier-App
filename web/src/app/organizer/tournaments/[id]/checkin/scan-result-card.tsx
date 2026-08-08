@@ -111,6 +111,7 @@ export function ScanResultCard({
   nonce,
   onExpire,
   durationMs = 4000,
+  variant = "inline",
 }: {
   status: ScanStatus;
   /** increments on every scan; restarts countdown + animation */
@@ -118,6 +119,13 @@ export function ScanResultCard({
   /** called once when the countdown elapses; parent resets to idle */
   onExpire: () => void;
   durationMs?: number;
+  /**
+   * "inline" sits in the page flow and shows a visible idle line. "overlay"
+   * floats over the live camera image: idle renders nothing visible (the video
+   * itself says "ready"), and a result gets an opaque backing so it stays
+   * readable over whatever the camera shows.
+   */
+  variant?: "inline" | "overlay";
 }): React.JSX.Element {
   useEffect(() => {
     if (status.kind === "idle") return;
@@ -128,16 +136,33 @@ export function ScanResultCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nonce, status.kind, durationMs]);
 
+  const overlay = variant === "overlay";
+
   return (
+    // Mounted even while idle and even as an overlay: an aria-live region that
+    // appears together with its first message is announced inconsistently.
     <div
       aria-live="polite"
       role="status"
-      className="flex min-h-[7rem] flex-col justify-center"
+      className={
+        overlay ? "" : "flex min-h-[7rem] flex-col justify-center"
+      }
     >
       {status.kind === "idle" ? (
-        <p className="text-center text-sm text-fg-muted">Bereit zum Scannen…</p>
+        overlay ? (
+          <span className="sr-only">Bereit zum Scannen</span>
+        ) : (
+          <p className="text-center text-sm text-fg-muted">
+            Bereit zum Scannen…
+          </p>
+        )
       ) : (
-        <ResultCard status={status} nonce={nonce} durationMs={durationMs} />
+        <ResultCard
+          status={status}
+          nonce={nonce}
+          durationMs={durationMs}
+          overlay={overlay}
+        />
       )}
     </div>
   );
@@ -147,16 +172,18 @@ function ResultCard({
   status,
   nonce,
   durationMs,
+  overlay,
 }: {
   status: Exclude<ScanStatus, { kind: "idle" }>;
   nonce: number;
   durationMs: number;
+  overlay: boolean;
 }): React.JSX.Element {
   const { tone, headline, detail } = resultContent(status);
   const cls = TONE[tone];
   const Icon = ICON[status.kind];
 
-  return (
+  const card = (
     <div className={`rounded-xl border p-5 text-center ${cls.card}`}>
       <Icon className={`mx-auto size-10 ${cls.icon}`} aria-hidden="true" />
       <p className="mt-3 font-display text-xl font-bold text-ink">{headline}</p>
@@ -168,5 +195,15 @@ function ResultCard({
         style={{ animation: `scan-countdown ${durationMs}ms linear forwards` }}
       />
     </div>
+  );
+
+  if (!overlay) return card;
+
+  // The tone fill is translucent, so over a live camera image the video shows
+  // through and eats the text. A solid layer underneath fixes that — as its own
+  // element, because two competing background utilities on one node are decided
+  // by stylesheet order, not by the order they are written in the class string.
+  return (
+    <div className="rounded-xl bg-surface shadow-lg">{card}</div>
   );
 }
