@@ -1,6 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { Barcode, Camera, ScanLine, Settings } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
@@ -11,10 +13,10 @@ import type {
 
 import { createClient } from "@/lib/supabase/client";
 import type { CheckinMethod, Database } from "@/lib/database.types";
-import { formatShortDateTime } from "@/lib/format-date";
 import { playScanSound } from "@/lib/scan-feedback";
 
 import { ScanDiagnostics } from "./scan-diagnostics";
+import { ScanResultCard, type ScanStatus } from "./scan-result-card";
 import { useCameras } from "./use-cameras";
 import { useHardwareScan } from "./use-hardware-scan";
 
@@ -30,13 +32,7 @@ interface ScannerClientProps {
   tournamentId: string;
 }
 
-type Status =
-  | { kind: "idle" }
-  | { kind: "success"; name: string }
-  | { kind: "already"; name: string; since: string }
-  | { kind: "unknown" }
-  | { kind: "consent" }
-  | { kind: "error" };
+type Status = ScanStatus;
 
 /** Map a check_in RPC failure to a friendly German message (no raw DB leak). */
 function isConsentError(error: unknown): boolean {
@@ -87,6 +83,16 @@ export function cameraLabel(device: MediaDeviceInfo, index: number): string {
 /** Remembers the picked camera per browser, so a scan station keeps its lens. */
 const CAMERA_KEY = "turnierapp.checkin.cameraId";
 
+/** A door station keeps the reader it was set up with across reloads. */
+const MODE_KEY = "turnierapp.checkin.scanMode";
+
+type ScanMode = "camera" | "hardware";
+
+const MODES: { id: ScanMode; label: string; Icon: LucideIcon }[] = [
+  { id: "camera", label: "Kamera", Icon: Camera },
+  { id: "hardware", label: "Handscanner", Icon: Barcode },
+];
+
 /**
  * `zoom` is missing from the DOM typings — it is widely implemented but not in
  * the standard track constraints, and it is the whole point on a handset whose
@@ -118,6 +124,14 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
   void tournamentId; // staff RLS already scopes participants; token lookup is global by qr_token
   const [supabase] = useState<SupabaseClient<Database>>(() => createClient());
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  // Bumped with every scan outcome so the result card restarts its timer even
+  // when two scans in a row produce the same status.
+  const [statusNonce, setStatusNonce] = useState(0);
+
+  const showStatus = useCallback((next: Status) => {
+    setStatus(next);
+    setStatusNonce((n) => n + 1);
+  }, []);
 
   const [cameras, reloadCameras] = useCameras();
   const [deviceId, setDeviceId] = useState<string>("");
@@ -132,6 +146,19 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
     if (saved && cameras.some((c) => c.deviceId === saved)) setDeviceId(saved);
   }, [cameras, deviceId]);
 
+  // Hardware mode keeps the camera off entirely, so it must not be guessed
+  // during render — read it after mount like the camera pick above.
+  const [mode, setMode] = useState<ScanMode>("camera");
+  useEffect(() => {
+    if (localStorage.getItem(MODE_KEY) === "hardware") setMode("hardware");
+  }, []);
+
+  function pickMode(next: ScanMode) {
+    setMode(next);
+    localStorage.setItem(MODE_KEY, next);
+  }
+
+  const [showSettings, setShowSettings] = useState(false);
   const [rescanning, setRescanning] = useState(false);
   const [rescanNote, setRescanNote] = useState<string | null>(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -208,7 +235,10 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
       cancelled = true;
       clearInterval(poll);
     };
-  }, [deviceId, attempt]);
+    // `mode` re-arms the poll: coming back from hardware mode mounts a fresh
+    // Scanner, and without a re-run a telephoto lens stays zoomed in with no
+    // slider to wind it back.
+  }, [deviceId, attempt, mode]);
 
   function applyZoom(value: number) {
     setZoom((z) => (z ? { ...z, value } : z));
@@ -243,7 +273,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
           .maybeSingle();
 
         if (lookupErr || !participant) {
-          setStatus({ kind: "unknown" });
+          showStatus({ kind: "unknown" });
           playScanSound("reject");
           return;
         }
@@ -252,7 +282,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         // first one. At a door that matters: someone passing their code back
         // over the barrier should not read as a fresh admission.
         if (participant.checked_in_at) {
-          setStatus({
+          showStatus({
             kind: "already",
             name: participant.display_name,
             since: participant.checked_in_at,
@@ -269,23 +299,23 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         if (rpcErr) {
           // The already-checked-in case is handled above, so a failure here is a
           // real one — most importantly missing consent.
-          setStatus(
+          showStatus(
             isConsentError(rpcErr) ? { kind: "consent" } : { kind: "error" },
           );
           playScanSound("reject");
           return;
         }
 
-        setStatus({ kind: "success", name: participant.display_name });
+        showStatus({ kind: "success", name: participant.display_name });
         playScanSound("success");
       } catch (e) {
-        setStatus(isConsentError(e) ? { kind: "consent" } : { kind: "error" });
+        showStatus(isConsentError(e) ? { kind: "consent" } : { kind: "error" });
         playScanSound("reject");
       } finally {
         busyRef.current = false;
       }
     },
-    [supabase],
+    [supabase, showStatus],
   );
 
   const onScan = useCallback(
@@ -339,110 +369,93 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         className="sr-only"
       />
 
-      <div>
-        <div className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
-          QR-Scanner
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+            QR-Scanner
+          </div>
+          <p className="mt-1 text-sm text-fg-muted">
+            {mode === "camera"
+              ? "Richte die Kamera auf den persönlichen QR-Code des Teilnehmers."
+              : "Scanne den persönlichen QR-Code mit dem Handscanner."}
+          </p>
         </div>
-        <p className="mt-1 text-sm text-fg-muted">
-          Richte die Kamera auf den persönlichen QR-Code des Teilnehmers.
-        </p>
-      </div>
-
-      <div
-        className="mx-auto w-full max-w-sm overflow-hidden rounded-xl border border-line bg-surface-2"
-        data-testid="qr-scanner"
-      >
-        <Scanner
-          key={`${deviceId}-${attempt}`}
-          ref={scannerRef}
-          onScan={onScan}
-          onError={onError}
-          scanDelay={500}
-          // An explicit pick wins; otherwise ask for a rear camera and let the
-          // browser fall back to whatever it has (a laptop only has a front one).
-          constraints={
-            deviceId
-              ? { deviceId: { exact: deviceId } }
-              : { facingMode: "environment" }
-          }
-          // The 3s default trips USB webcams and multi-lens phones that are
-          // still warming up, and a timeout leaves a dead frame behind.
-          startTimeoutMs={8000}
-          // Re-scan even the same QR so a debounced token can fire again;
-          // our own debounce above governs the RPC rate.
-          allowMultiple
-        />
-      </div>
-
-      {/* Always rendered, never gated on the list already being complete: on a
-          scan handset the extra lenses appear only after the permission prompt
-          is answered, and hiding the control until then is what stranded one. */}
-      <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor="camera-pick"
-          className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim"
+        <button
+          type="button"
+          onClick={() => setShowSettings((v) => !v)}
+          aria-expanded={showSettings}
+          aria-label="Scanner-Einstellungen"
+          className="shrink-0 rounded-lg p-2 text-fg-dim transition-colors hover:text-fg-muted"
         >
-          Kamera
-        </label>
-        <div className="flex gap-2">
-          <select
-            id="camera-pick"
-            value={deviceId}
-            // Hand focus back afterwards: Android leaves it on the select once
-            // the sheet closes, and a scanner fires into whatever holds focus.
-            // Dropping it to body lets the capture field claim it again.
-            onChange={(e) => {
-              pickCamera(e.target.value);
+          <Settings className="size-4" />
+        </button>
+      </div>
+
+      {/* Hand focus back after switching: Android leaves it on the button, and
+          a scanner fires into whatever holds focus. Dropping it to body lets
+          the capture field claim it again. */}
+      <div className="inline-flex self-start gap-1 rounded-lg border border-line bg-surface-2 p-1">
+        {MODES.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={(e) => {
+              pickMode(id);
               e.currentTarget.blur();
             }}
-            className="min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg-muted focus:outline-none focus:ring-1 focus:ring-ring"
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-display text-[11px] uppercase tracking-wider transition-colors ${
+              mode === id
+                ? "bg-lime/15 text-lime"
+                : "text-fg-muted hover:text-ink"
+            }`}
           >
-            <option value="">Automatisch (Rückkamera)</option>
-            {cameras.map((cam, i) => (
-              <option key={cam.deviceId} value={cam.deviceId}>
-                {cameraLabel(cam, i)}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => void rescanCameras()}
-            disabled={rescanning}
-            className="shrink-0 rounded-lg border border-line px-3 py-2 font-display text-[10px] font-bold uppercase tracking-wider text-fg-muted transition-colors hover:text-ink disabled:opacity-50"
-          >
-            {rescanning ? "Sucht…" : "Neu suchen"}
+            <Icon className="size-4" />
+            {label}
           </button>
-        </div>
-        <p className="text-xs text-fg-muted">
-          {rescanNote ??
-            (cameras.length > 1
-              ? "Scannt eine Linse schlecht aus der Nähe, nimm eine andere. Die Wahl bleibt auf diesem Gerät gespeichert."
-              : "Erst nach erlaubtem Kamerazugriff zeigt das Gerät alle Linsen. Fehlt eine, tippe auf „Neu suchen“.")}
-        </p>
+        ))}
       </div>
 
-      {zoom && (
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="camera-zoom"
-            className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim"
-          >
-            Zoom · {zoom.value.toFixed(1)}×
-          </label>
-          <input
-            id="camera-zoom"
-            type="range"
-            min={zoom.min}
-            max={zoom.max}
-            step={zoom.step}
-            value={zoom.value}
-            onChange={(e) => applyZoom(Number(e.target.value))}
-            className="w-full accent-lime"
+      {mode === "camera" ? (
+        <div
+          className="mx-auto w-full max-w-sm overflow-hidden rounded-xl border border-line bg-surface-2"
+          data-testid="qr-scanner"
+        >
+          <Scanner
+            key={`${deviceId}-${attempt}`}
+            ref={scannerRef}
+            onScan={onScan}
+            onError={onError}
+            scanDelay={500}
+            // An explicit pick wins; otherwise ask for a rear camera and let the
+            // browser fall back to whatever it has (a laptop only has a front one).
+            constraints={
+              deviceId
+                ? { deviceId: { exact: deviceId } }
+                : { facingMode: "environment" }
+            }
+            // The 3s default trips USB webcams and multi-lens phones that are
+            // still warming up, and a timeout leaves a dead frame behind.
+            startTimeoutMs={8000}
+            // Re-scan even the same QR so a debounced token can fire again;
+            // our own debounce above governs the RPC rate.
+            allowMultiple
           />
+        </div>
+      ) : (
+        <div className="mx-auto flex w-full max-w-sm flex-col items-center gap-3 rounded-xl border border-line bg-surface-2 px-6 py-14 text-center">
+          <div className="animate-pulse">
+            <ScanLine className="size-16 text-fg-dim" />
+          </div>
+          <div className="font-display text-lg font-bold text-ink">
+            Handscanner bereit
+          </div>
+          <p className="text-sm text-fg-muted">
+            Scans landen automatisch hier — die Kamera ist aus.
+          </p>
         </div>
       )}
 
-      {cameraError && (
+      {mode === "camera" && cameraError && (
         <div className="flex flex-col gap-2 rounded-xl border border-live/40 bg-live/10 p-3">
           <p className="text-sm text-live" role="alert">
             {cameraError}
@@ -460,46 +473,100 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         </div>
       )}
 
-      <div aria-live="polite" className="min-h-6 text-center text-sm">
-        {status.kind === "idle" && (
-          <span className="text-fg-muted">Bereit zum Scannen…</span>
-        )}
-        {status.kind === "success" && (
-          <span className="font-display font-medium text-lime">
-            ✅ {status.name} eingecheckt
-          </span>
-        )}
-        {status.kind === "already" && (
-          <span className="font-display font-medium text-warn">
-            ⚠ {status.name} war schon anwesend (seit{" "}
-            {formatShortDateTime(status.since)})
-          </span>
-        )}
-        {status.kind === "unknown" && (
-          <span className="text-live">QR nicht erkannt</span>
-        )}
-        {status.kind === "consent" && (
-          <span className="text-live">Einwilligung fehlt</span>
-        )}
-        {status.kind === "error" && (
-          <span className="text-live">Check-in fehlgeschlagen</span>
-        )}
-      </div>
+      <ScanResultCard
+        status={status}
+        nonce={statusNonce}
+        onExpire={() => setStatus({ kind: "idle" })}
+      />
 
-      <div className="border-t border-line/60 pt-3">
-        <button
-          type="button"
-          onClick={() => setShowDiagnostics((v) => !v)}
-          className="font-display text-[10px] uppercase tracking-wider text-fg-dim transition-colors hover:text-fg-muted"
-        >
-          {showDiagnostics ? "Diagnose ausblenden" : "Scanner-Diagnose"}
-          {scans.length > 0 && ` (${scans.length})`}
-        </button>
+      {showSettings && (
+        <div className="flex flex-col gap-4 rounded-xl border border-line/60 bg-surface-2/60 p-4">
+          {/* Always rendered, never gated on the list already being complete: on a
+              scan handset the extra lenses appear only after the permission prompt
+              is answered, and hiding the control until then is what stranded one. */}
+          {mode === "camera" && (
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="camera-pick"
+                className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim"
+              >
+                Kamera
+              </label>
+              <div className="flex gap-2">
+                <select
+                  id="camera-pick"
+                  value={deviceId}
+                  // Hand focus back afterwards: Android leaves it on the select once
+                  // the sheet closes, and a scanner fires into whatever holds focus.
+                  // Dropping it to body lets the capture field claim it again.
+                  onChange={(e) => {
+                    pickCamera(e.target.value);
+                    e.currentTarget.blur();
+                  }}
+                  className="min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 py-2 text-sm text-fg-muted focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">Automatisch (Rückkamera)</option>
+                  {cameras.map((cam, i) => (
+                    <option key={cam.deviceId} value={cam.deviceId}>
+                      {cameraLabel(cam, i)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void rescanCameras()}
+                  disabled={rescanning}
+                  className="shrink-0 rounded-lg border border-line px-3 py-2 font-display text-[10px] font-bold uppercase tracking-wider text-fg-muted transition-colors hover:text-ink disabled:opacity-50"
+                >
+                  {rescanning ? "Sucht…" : "Neu suchen"}
+                </button>
+              </div>
+              <p className="text-xs text-fg-muted">
+                {rescanNote ??
+                  (cameras.length > 1
+                    ? "Scannt eine Linse schlecht aus der Nähe, nimm eine andere. Die Wahl bleibt auf diesem Gerät gespeichert."
+                    : "Erst nach erlaubtem Kamerazugriff zeigt das Gerät alle Linsen. Fehlt eine, tippe auf „Neu suchen“.")}
+              </p>
+            </div>
+          )}
 
-        {showDiagnostics && (
-          <ScanDiagnostics scans={scans} rawKeys={rawKeys} />
-        )}
-      </div>
+          {mode === "camera" && zoom && (
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="camera-zoom"
+                className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim"
+              >
+                Zoom · {zoom.value.toFixed(1)}×
+              </label>
+              <input
+                id="camera-zoom"
+                type="range"
+                min={zoom.min}
+                max={zoom.max}
+                step={zoom.step}
+                value={zoom.value}
+                onChange={(e) => applyZoom(Number(e.target.value))}
+                className="w-full accent-lime"
+              />
+            </div>
+          )}
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowDiagnostics((v) => !v)}
+              className="font-display text-[10px] uppercase tracking-wider text-fg-dim transition-colors hover:text-fg-muted"
+            >
+              {showDiagnostics ? "Diagnose ausblenden" : "Scanner-Diagnose"}
+              {scans.length > 0 && ` (${scans.length})`}
+            </button>
+
+            {showDiagnostics && (
+              <ScanDiagnostics scans={scans} rawKeys={rawKeys} />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

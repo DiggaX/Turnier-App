@@ -166,6 +166,16 @@
   }
 }
 
+/* Drains the bar under a check-in scan result while it is on screen. */
+@keyframes scan-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

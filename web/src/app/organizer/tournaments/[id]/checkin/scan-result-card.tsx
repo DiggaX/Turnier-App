@@ -1,0 +1,172 @@
+"use client";
+
+import type * as React from "react";
+import { useEffect } from "react";
+import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+import { formatShortDateTime } from "@/lib/format-date";
+
+export type ScanStatus =
+  | { kind: "idle" }
+  | { kind: "success"; name: string }
+  | { kind: "already"; name: string; since: string }
+  | { kind: "unknown" }
+  | { kind: "consent" }
+  | { kind: "error" };
+
+export type ResultTone = "lime" | "warn" | "live";
+
+/**
+ * What a scan outcome says on screen. Pure, and exported so the wording can be
+ * pinned by tests without rendering — these strings are read at a busy door and
+ * must not drift.
+ *
+ * Never called with kind "idle": there is nothing to report yet.
+ */
+export function resultContent(status: Exclude<ScanStatus, { kind: "idle" }>): {
+  tone: ResultTone;
+  headline: string;
+  detail: string;
+} {
+  switch (status.kind) {
+    case "success":
+      return { tone: "lime", headline: status.name, detail: "Eingecheckt" };
+    case "already":
+      return {
+        tone: "warn",
+        headline: status.name,
+        // Never toLocaleString here: server and browser disagree on the zone and
+        // React aborts hydration on the mismatch (see lib/format-date).
+        detail: `Schon anwesend — seit ${formatShortDateTime(status.since)}`,
+      };
+    case "unknown":
+      return {
+        tone: "live",
+        headline: "QR nicht erkannt",
+        detail: "Der Code gehört zu keinem Teilnehmer.",
+      };
+    case "consent":
+      return {
+        tone: "live",
+        headline: "Einwilligung fehlt",
+        detail: "Check-in erst nach vorliegender Einwilligung.",
+      };
+    case "error":
+      return {
+        tone: "live",
+        headline: "Check-in fehlgeschlagen",
+        detail: "Bitte nochmal versuchen.",
+      };
+  }
+}
+
+/** Spelled out in full — Tailwind cannot see a `bg-${tone}` built at runtime. */
+const TONE: Record<
+  ResultTone,
+  { card: string; icon: string; detail: string; bar: string }
+> = {
+  lime: {
+    card: "border-lime/40 bg-lime/10",
+    icon: "text-lime",
+    detail: "text-lime",
+    bar: "bg-lime",
+  },
+  warn: {
+    card: "border-warn/40 bg-warn/10",
+    icon: "text-warn",
+    // Only "already" is amber, and its detail is a timestamp: it reads better
+    // muted than shouted, with the border and icon carrying the warning.
+    detail: "text-fg-muted",
+    bar: "bg-warn",
+  },
+  live: {
+    card: "border-live/40 bg-live/10",
+    icon: "text-live",
+    detail: "text-live",
+    bar: "bg-live",
+  },
+};
+
+const ICON: Record<
+  Exclude<ScanStatus, { kind: "idle" }>["kind"],
+  LucideIcon
+> = {
+  success: CheckCircle2,
+  already: AlertTriangle,
+  unknown: XCircle,
+  consent: XCircle,
+  error: XCircle,
+};
+
+/**
+ * The result of the last scan, shown until a countdown runs out.
+ *
+ * `nonce` increments on every scan so two identical outcomes in a row still
+ * restart the countdown and replay the bar — without it, scanning the same
+ * badge twice would look like nothing happened.
+ */
+export function ScanResultCard({
+  status,
+  nonce,
+  onExpire,
+  durationMs = 4000,
+}: {
+  status: ScanStatus;
+  /** increments on every scan; restarts countdown + animation */
+  nonce: number;
+  /** called once when the countdown elapses; parent resets to idle */
+  onExpire: () => void;
+  durationMs?: number;
+}): React.JSX.Element {
+  useEffect(() => {
+    if (status.kind === "idle") return;
+    const timer = setTimeout(onExpire, durationMs);
+    return () => clearTimeout(timer);
+    // onExpire is left out on purpose: an inline arrow from the parent changes
+    // identity every render and would keep restarting the countdown.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonce, status.kind, durationMs]);
+
+  return (
+    <div
+      aria-live="polite"
+      role="status"
+      className="flex min-h-[7rem] flex-col justify-center"
+    >
+      {status.kind === "idle" ? (
+        <p className="text-center text-sm text-fg-muted">Bereit zum Scannen…</p>
+      ) : (
+        <ResultCard status={status} nonce={nonce} durationMs={durationMs} />
+      )}
+    </div>
+  );
+}
+
+function ResultCard({
+  status,
+  nonce,
+  durationMs,
+}: {
+  status: Exclude<ScanStatus, { kind: "idle" }>;
+  nonce: number;
+  durationMs: number;
+}): React.JSX.Element {
+  const { tone, headline, detail } = resultContent(status);
+  const cls = TONE[tone];
+  const Icon = ICON[status.kind];
+
+  return (
+    <div className={`rounded-xl border p-5 text-center ${cls.card}`}>
+      <Icon className={`mx-auto size-10 ${cls.icon}`} aria-hidden="true" />
+      <p className="mt-3 font-display text-xl font-bold text-ink">{headline}</p>
+      <p className={`mt-1 text-sm ${cls.detail}`}>{detail}</p>
+      <div
+        // Remounting is what makes the animation replay per scan.
+        key={nonce}
+        className={`mt-4 h-1 origin-left rounded-full ${cls.bar}`}
+        style={{ animation: `scan-countdown ${durationMs}ms linear forwards` }}
+      />
+    </div>
+  );
+}
