@@ -1,6 +1,6 @@
 # Turnier-App — Übergabe an den nächsten Agent
 
-**Stand:** 2026-08-08 · Branch `main` @ `95627b9` · **auf `origin/main` gepusht** (`github.com/DiggaX/Turnier-App`) · live unter https://turnier-app-opal.vercel.app
+**Stand:** 2026-08-08 · Branch `main` @ `d43c818` · **auf `origin/main` gepusht** (`github.com/DiggaX/Turnier-App`) · live unter https://turnier-app-opal.vercel.app · ⚠️ **Deploy des Standes steht noch aus** (siehe §7.0)
 
 Lies zuerst diese Datei, dann `CLAUDE.md` (Regeln) und die Auto-Memory unter
 `C:\Users\Rene\.claude\projects\C--Users-Rene-Turnierapp\memory\` (MEMORY.md + die verlinkten Dateien).
@@ -18,6 +18,7 @@ Ein **Multi-Tenant-Esports-Turnier-SaaS**. Firmen (Organisationen) registrieren 
 
 ## 3. Deploy & DB — WIE (wichtig!)
 - **Deploy: manuell per Vercel CLI** vom Repo-Root: `vercel deploy --prod --yes` (eingeloggt als `moellersrene-3676`, Root Directory = `web`). Kein Auto-Deploy bei Push. **GitHub-Push ist OK und erwünscht** (Account nicht mit Vercel verbunden). ⚠️ **Brain (Obsidian `Zweites-Gehiern`) NIE pushen** — nur lokales Git, kein Remote.
+- ⚠️ **Commit-Autor muss eine Adresse sein, die GitHub kennt — sonst verweigert Vercel den Deploy.** Bis zum 2026-08-08 committete das Repo als `moellers.rene@gmx.de`; diese Adresse ist auf dem GitHub-Konto `DiggaX` nicht hinterlegt, GitHub liefert für solche Commits kein Autor-Objekt zurück, und Vercel bricht mit „GitHub user not found / Fix Git Configuration" ab. Repo-lokal steht jetzt `83634183+DiggaX@users.noreply.github.com` (die noreply-Adresse des Kontos, immer auflösbar, keine Verifizierung nötig). Global bleibt `tgn-digga@gmx.de` unangetastet. **Nicht auf eine beliebige Adresse zurückstellen.** Prüfen lässt es sich über die GitHub-API: liefert ein Commit ein `author`-Objekt mit `login`, passt es.
 - **Migrationen: über den `supabase-db2` MCP** (`mcp__supabase-db2__apply_migration` / `execute_sql`). Read-write, zeigt auf `zqhdbygopftretjtlods`. **Workflow:** Migrations-`.sql` schreiben → `apply_migration` → mit `execute_sql` verifizieren → Datei committen. Der **primäre** Supabase-MCP (`mcp__1830aac2…`) gehört einem ANDEREN Account und kann das Projekt NICHT lesen — **immer db2 nehmen**.
 - RLS simulieren: `begin; set local role authenticated; set local "request.jwt.claims" to '{"sub":"<uuid>","role":"authenticated"}'; <query>; rollback;`
 - ⚠️ **Vercel „Shared" Env-Vars (Team-Ebene) wirken NICHT automatisch im Projekt** — sie müssen dem Projekt zugeordnet werden, und `vercel env ls` zeigt sie gar nicht an. Genau daran hing die Geräte-Kopplung: Key war gesetzt, kam aber nie an. Wenn eine Env-Variable „fehlt", obwohl der User sie gesetzt hat: das prüfen. Env-Änderungen brauchen außerdem ein **neues Deployment**.
@@ -53,6 +54,8 @@ Plan-für-Plan: **brainstorming → writing-plans → Ausführung**. Ausführung
 
 **Kanal wird mitgeschrieben:** `checkin_method` hat neu `camera_scan` + `hardware_scan`; `qr_scan` bleibt als Altwert stehen. Der `check_in`-Guard ist dabei umgedreht worden — Selbstbedienung (`station`/`online`) ist jetzt die **Allowlist**, alles andere verlangt Staff der Org. Vorher war `qr_scan` als einziger Staff-Pfad ausgezeichnet, wodurch jede später ergänzte Methode automatisch zur Self-Check-in-Methode geworden wäre. Fällt jetzt zu.
 
+**Commit-Identität repariert:** Vercel verweigerte den Deploy, weil GitHub die Autor-Adresse nicht auflösen konnte — Details und die Prüfmethode in §3.
+
 **Aktueller Datenstand:** DB wurde am 2026-08-07 komplett geleert und neu befüllt. Org **„Abenteuerinsel Fehmarn"** (slug bleibt `testverein-fehmarn`). Admins: `organizer@test.de` / `test1234` (nur Passwort-Login) und `rene.moellers@gmx.de` (Magic Link). Turniere: „Misson: Next Level EA Sports 2026" (Anmeldung offen), „Misson: Next Level Rocket League 2026" (Entwurf), „Sommer Cup 2026" (archiviert).
 
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
@@ -71,7 +74,7 @@ Plan-für-Plan: **brainstorming → writing-plans → Ausführung**. Ausführung
 - **Generatoren** sind pure TS (TDD): `web/src/lib/bracket/*`, `swiss/*`, `groups/*`. Swiss/Gruppen werden runde-für-runde fortgeschrieben.
 
 ## 7. OFFEN / To-do (für dich)
-0. ⚠️ **Deploy steht aus.** `20260808060000_checkin_scan_channel.sql` ist am 2026-08-08 angewandt und die Guards sind bewiesen (Fremder + `hardware_scan`/`camera_scan` → blockiert, Fremder + `online` → blockiert, Staff der Org + `hardware_scan` → erlaubt; Testschreibvorgänge per Sentinel-Exception zurückgerollt, keine Spuren in `check_ins`). Die DB akzeptiert die neuen Werte also bereits, der **Live-Client sendet aber noch `qr_scan`** — der Kanal landet erst nach `vercel deploy --prod --yes` in der Tabelle. Cross-Org-Staff ließ sich nicht empirisch prüfen (es existiert nur eine Org); der Pfad läuft unverändert über `is_staff_of_participant_org`.
+0. ⚠️ **Deploy steht aus — als Erstes `vercel deploy --prod --yes`.** Der Live-Stand ist noch `95627b9` (Handscanner-Fix, funktioniert), es fehlt der Kanal-Commit `f19994a`. `20260808060000_checkin_scan_channel.sql` ist am 2026-08-08 angewandt und die Guards sind bewiesen (Fremder + `hardware_scan`/`camera_scan` → blockiert, Fremder + `online` → blockiert, Staff der Org + `hardware_scan` → erlaubt; Testschreibvorgänge per Sentinel-Exception zurückgerollt, keine Spuren in `check_ins`). Die DB akzeptiert die neuen Werte also bereits, der **Live-Client sendet aber noch `qr_scan`** — der Kanal landet erst nach `vercel deploy --prod --yes` in der Tabelle. Cross-Org-Staff ließ sich nicht empirisch prüfen (es existiert nur eine Org); der Pfad läuft unverändert über `is_staff_of_participant_org`.
 1. **e2e nie ausgeführt:** ~20 Specs in `web/e2e/*.spec.ts` sind geschrieben, aber nur build+unit-grün. Brauchen lokalen Dev-Server + Test-Creds (`E2E_ORG_EMAIL`/`E2E_ORG_PASSWORD`). ⚠️ Nach dem DB-Wipe zeigen sie ggf. auf nicht mehr existierende Fixtures. Kein aktives e2e-Sicherheitsnetz.
 2. **Cross-Device-Magic-Link** offen (Template-Umstellung, siehe §6) — User weiß Bescheid, hat sich noch nicht entschieden.
 3. **36 verwaiste Storage-Objekte** aus der Zeit vor dem Wipe. Per SQL nicht löschbar (Supabase blockt), nur über Dashboard/Storage-API.
