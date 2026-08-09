@@ -39,6 +39,14 @@ export type BoardContentProps = {
 const SECTION_LABEL =
   "font-display text-xs uppercase tracking-[0.2em] text-fg-dim";
 
+/**
+ * How much screen the bracket gets on the board: everything below the header.
+ * Measured, not guessed — on a 1080p projector the box starts at y=253 (board
+ * top bar 49, page padding, title block, section label), so 270 leaves it a
+ * little air at the bottom rather than a scrollbar.
+ */
+const BRACKET_BOX = "h-[calc(100vh-270px)] min-h-[420px] w-full";
+
 /** Is this match playable right now? Both sides present and not yet decided. */
 function isPlayable(m: BoardMatch): boolean {
   return m.aName != null && m.bName != null && m.status !== "done";
@@ -210,36 +218,11 @@ export function BoardContent({
         </div>
       </header>
 
-      {/* Jetzt spielbar */}
-      <section className="mb-12">
-        <div className={cn(SECTION_LABEL, "mb-4")}>{liveMatches.length > 0 ? "Laeuft jetzt" : "Bereit zum Start"}</div>
-        {playable.length === 0 ? (
-          <p className="rounded-2xl border border-line bg-bg/40 px-6 py-8 text-center font-display text-lg text-fg-muted">
-            Noch kein Match gestartet
-          </p>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {playable.map((m) => (
-              <PlayableCard key={m.id} match={m} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* decided matches — final score + winner (highlighted lime) */}
-      {decided.length > 0 && (
-        <section className="mb-12">
-          <div className={cn(SECTION_LABEL, "mb-4")}>Ergebnisse</div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {decided.map((m) => (
-              <ResultCard key={m.id} match={m} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* standings + schedule (round-robin / swiss), WB/LB/GF (double-elim), or
-          the single bracket (single-elim). */}
+      {/* The bracket comes first on purpose. This is the projector view, and
+          with sixteen entrants the ready-to-play list ran to 570px, which
+          pushed the tree off the bottom of a 1080p screen — where nobody can
+          scroll it back. Standings + schedule (round-robin / swiss), WB/LB/GF
+          (double-elim), or the single bracket (single-elim). */}
       {isGroupsPlayoffs ? (
         <div className="flex flex-col gap-8">
           <GroupsView
@@ -255,7 +238,9 @@ export function BoardContent({
             <section className="flex flex-col gap-3 border-t border-line pt-6">
               <div className={cn(SECTION_LABEL, "mb-2")}>Playoffs</div>
               <FitToBox maxScale={1.4} className="h-[55vh] w-full">
-                <BracketView matches={matches.filter((m) => m.groupNo == null)} />
+                <BracketView
+                  matches={matches.filter((m) => m.groupNo == null)}
+                />
               </FitToBox>
             </section>
           )}
@@ -281,7 +266,7 @@ export function BoardContent({
           <div className={cn(SECTION_LABEL, "mb-4")}>Turnierbaum</div>
           {/* One box around all three sub-brackets, so they scale together and
               stay the same size relative to each other. */}
-          <FitToBox maxScale={1.4} className="h-[72vh] w-full">
+          <FitToBox maxScale={1.4} className={BRACKET_BOX}>
             <DoubleElimView matches={matches} />
           </FitToBox>
         </section>
@@ -289,10 +274,41 @@ export function BoardContent({
         <section>
           <div className={cn(SECTION_LABEL, "mb-4")}>Turnierbaum</div>
           {/* Fixed box, because nobody scrolls a projector: the bracket is
-              scaled to whatever fits instead of running off the edge. */}
-          <FitToBox maxScale={1.6} className="h-[70vh] w-full">
+              scaled to whatever fits instead of running off the edge. The
+              height is what is left of the screen under the header. */}
+          <FitToBox maxScale={1.6} className={BRACKET_BOX}>
             <BracketView matches={matches} />
           </FitToBox>
+        </section>
+      )}
+
+      {/* Below the fold on a projector, and deliberately so — these are for
+          anyone reading the board on a phone or laptop. */}
+      <section className="mt-12">
+        <div className={cn(SECTION_LABEL, "mb-4")}>
+          {liveMatches.length > 0 ? "Laeuft jetzt" : "Bereit zum Start"}
+        </div>
+        {playable.length === 0 ? (
+          <p className="rounded-2xl border border-line bg-bg/40 px-6 py-8 text-center font-display text-lg text-fg-muted">
+            Noch kein Match gestartet
+          </p>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {playable.map((m) => (
+              <PlayableCard key={m.id} match={m} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {decided.length > 0 && (
+        <section className="mt-12">
+          <div className={cn(SECTION_LABEL, "mb-4")}>Ergebnisse</div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {decided.map((m) => (
+              <ResultCard key={m.id} match={m} />
+            ))}
+          </div>
         </section>
       )}
     </div>
