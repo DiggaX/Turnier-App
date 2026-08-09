@@ -121,6 +121,20 @@ function setTrackZoom(track: MediaStreamTrack | undefined, value: number) {
 // processed for this window.
 const DEBOUNCE_MS = 2500;
 
+/**
+ * How often a station re-reads the attendance list so it sees the other doors'
+ * check-ins. Own scans refresh immediately; this is only for the others.
+ *
+ * Deliberately polling and not Realtime: `participants` would have to join the
+ * `supabase_realtime` publication, and its SELECT policy for `anon` is
+ * `USING (true)` — the PII defence is column GRANTs alone. The row carries
+ * `qr_token`, the check-in credential. Whether Realtime applies column
+ * privileges to the payload is not something to assume, so the table stays out
+ * of the publication. Sub-second sync, if ever needed, belongs on a private
+ * Broadcast channel fed by a trigger, which sends only the columns it is given.
+ */
+const ATTENDANCE_POLL_MS = 10_000;
+
 export function ScannerClient({ tournamentId }: ScannerClientProps) {
   void tournamentId; // staff RLS already scopes participants; token lookup is global by qr_token
   const router = useRouter();
@@ -159,6 +173,24 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
     setMode(next);
     localStorage.setItem(MODE_KEY, next);
   }
+
+  // With more than one door open, a check-in taken at the other station used to
+  // stay invisible here until someone reloaded. Re-reading the server data on a
+  // timer keeps every station's list honest. Skipped while the tab is hidden —
+  // a backgrounded station has nobody reading it, and it refreshes on return.
+  useEffect(() => {
+    const tick = window.setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, ATTENDANCE_POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") router.refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(tick);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [router]);
 
   const [showSettings, setShowSettings] = useState(false);
   const [rescanning, setRescanning] = useState(false);
