@@ -279,7 +279,11 @@ export function BoardContent({
       ) : isDoubleElim ? (
         <section>
           <div className={cn(SECTION_LABEL, "mb-4")}>Turnierbaum</div>
-          <DoubleElimView matches={matches} />
+          {/* One box around all three sub-brackets, so they scale together and
+              stay the same size relative to each other. */}
+          <FitToBox maxScale={1.4} className="h-[72vh] w-full">
+            <DoubleElimView matches={matches} />
+          </FitToBox>
         </section>
       ) : (
         <section>

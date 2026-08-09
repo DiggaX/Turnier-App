@@ -379,7 +379,9 @@ export default async function BracketPage({
                 ) : tournament.format === "round_robin" ? (
                   <RoundRobinView matches={matches} />
                 ) : tournament.format === "double_elim" ? (
-                  <DoubleElimView matches={matches} />
+                  <div className="-mx-1 overflow-x-auto px-1 pb-2">
+                    <DoubleElimView matches={matches} />
+                  </div>
                 ) : (
                   // Scrolls here rather than scaling: at a desk the details are
                   // worth more than fitting, and there is a hand on the mouse.
