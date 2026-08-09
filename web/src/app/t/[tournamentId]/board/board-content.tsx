@@ -1,5 +1,6 @@
 import { BracketView, type BracketMatch } from "@/components/brand/bracket-view";
 import { DoubleElimView } from "@/components/brand/double-elim-view";
+import { FitToBox } from "@/components/brand/fit-to-box";
 import { GroupsView, type GroupMatch } from "@/components/brand/groups-view";
 import { RoundRobinView } from "@/components/brand/round-robin-view";
 import { StandingsTable } from "@/components/brand/standings-table";
@@ -168,7 +169,9 @@ export function BoardContent({
   const decided = matches.filter(isDecided);
 
   return (
-    <div className="mx-auto max-w-[1280px] px-6 pb-20 pt-8 sm:px-10">
+    // max-w-[1600px] rather than 1280: this is the beamer view, and a 1080p
+    // projector was leaving 600px of its width unused.
+    <div className="mx-auto max-w-[1600px] px-6 pb-20 pt-8 sm:px-10">
       {/* header */}
       <header className="mb-10">
         <div className="mb-2 font-display text-xs uppercase tracking-[0.22em] text-cyan">
@@ -251,7 +254,9 @@ export function BoardContent({
           {matches.some((m) => m.groupNo == null) && (
             <section className="flex flex-col gap-3 border-t border-line pt-6">
               <div className={cn(SECTION_LABEL, "mb-2")}>Playoffs</div>
-              <BracketView matches={matches.filter((m) => m.groupNo == null)} />
+              <FitToBox maxScale={1.4} className="h-[55vh] w-full">
+                <BracketView matches={matches.filter((m) => m.groupNo == null)} />
+              </FitToBox>
             </section>
           )}
         </div>
@@ -279,7 +284,11 @@ export function BoardContent({
       ) : (
         <section>
           <div className={cn(SECTION_LABEL, "mb-4")}>Turnierbaum</div>
-          <BracketView matches={matches} />
+          {/* Fixed box, because nobody scrolls a projector: the bracket is
+              scaled to whatever fits instead of running off the edge. */}
+          <FitToBox maxScale={1.6} className="h-[70vh] w-full">
+            <BracketView matches={matches} />
+          </FitToBox>
         </section>
       )}
     </div>

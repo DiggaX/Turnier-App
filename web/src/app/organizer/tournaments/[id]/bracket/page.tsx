@@ -346,11 +346,13 @@ export default async function BracketPage({
                         <h3 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
                           Playoffs
                         </h3>
-                        <BracketView
-                          matches={groupMatches.filter(
-                            (m) => m.groupNo === null,
-                          )}
-                        />
+                        <div className="-mx-1 overflow-x-auto px-1 pb-2">
+                          <BracketView
+                            matches={groupMatches.filter(
+                              (m) => m.groupNo === null,
+                            )}
+                          />
+                        </div>
                       </section>
                     ) : groupStageComplete ? (
                       <section className="flex flex-col gap-3 border-t border-line pt-6">
@@ -379,7 +381,12 @@ export default async function BracketPage({
                 ) : tournament.format === "double_elim" ? (
                   <DoubleElimView matches={matches} />
                 ) : (
-                  <BracketView matches={matches} />
+                  // Scrolls here rather than scaling: at a desk the details are
+                  // worth more than fitting, and there is a hand on the mouse.
+                  // The board is the surface that must fit, and it does.
+                  <div className="-mx-1 overflow-x-auto px-1 pb-2">
+                    <BracketView matches={matches} />
+                  </div>
                 )}
               </section>
 
