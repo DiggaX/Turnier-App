@@ -92,8 +92,16 @@ export default async function ParticipantsPage({
 
           <TournamentTabs tournamentId={id} />
 
-          <div className="mb-4 font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
-            {rows.length} Teilnehmer
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+              {rows.length} Teilnehmer
+            </div>
+            <Link
+              href={`/organizer/tournaments/${id}/consents`}
+              className="font-display text-[11px] uppercase tracking-[0.14em] text-cyan transition-colors hover:text-ink"
+            >
+              Fotoerlaubnisse drucken
+            </Link>
           </div>
 
           <AddParticipantForm

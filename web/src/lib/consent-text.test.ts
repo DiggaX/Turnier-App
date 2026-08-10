@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { photoConsentText } from "@/lib/consent-text";
+import {
+  LEGACY_CONSENT_TEXT,
+  photoConsentText,
+  storedConsentText,
+} from "@/lib/consent-text";
 
 const org = {
   name: "Tourismus-Service Fehmarn",
@@ -20,6 +24,14 @@ describe("photoConsentText", () => {
     expect(photoConsentText(org, "guardian", "Mia")).toContain(
       "auf dem meine Tochter/mein Sohn Mia abgebildet ist,",
     );
+  });
+
+  // Zeilen von vor dem 2026-08-10 haben keinen gespeicherten Wortlaut. Der
+  // Ausdruck darf dann nicht leer bleiben, sondern zeigt den damaligen Satz.
+  it("falls back to the pre-2026-08-10 wording when none was stored", () => {
+    expect(storedConsentText(null)).toBe(LEGACY_CONSENT_TEXT);
+    expect(storedConsentText("   ")).toBe(LEGACY_CONSENT_TEXT);
+    expect(storedConsentText("Eigener Satz")).toBe("Eigener Satz");
   });
 
   // Ohne gepflegte Anschrift bleibt der Satz ein Satz — keine leere Klammer.
