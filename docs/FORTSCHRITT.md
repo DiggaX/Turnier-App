@@ -1,6 +1,8 @@
 # Turnier-App — Fortschritt
 
-**Letzter Stand:** 2026-08-10 · Branch `main` @ `08fa197` · auf `origin/main` gepusht (`github.com/DiggaX/Turnier-App`)
+**Letzter Stand:** 2026-08-10 · Branch `main` @ `ad71491` · ⚠️ **noch nicht gepusht** — der CHECK aus
+`c7d2f28` ist bereits in der Live-DB, der Code-Anteil geht erst mit dem Push live (Push auf `main`
+deployt automatisch, siehe HANDOVER §3).
 
 > Zwei Sitzungen liefen an diesem Tag **parallel** im selben Arbeitsbaum: Auth/Teilnehmer-Zugang
 > (`6e3e21c`…`015b759`, `b47a4b1`) und Nachmeldung/Live-Steuerung (`5e4c211`…`e634f7d`). Die
@@ -39,7 +41,9 @@ ist ab „Session 2026-08-10" wieder lückenlos. **Bei Widersprüchen gilt HANDO
 | Aufstellung wird bei Team-Turnieren mit abgefragt (Captain + Spieler) | ✅ 2026-08-10 · Browser-Klick steht aus |
 | Match starten/zählen/beenden aus der Orga-Ansicht, ohne Scorekeeper | ✅ 2026-08-10 |
 | Riegel: „Bracket neu generieren" löscht keine Arbeit mehr unbemerkt | ✅ 2026-08-10 · vom User live bestätigt |
-| 393 Unit-Tests grün (waren 226) | ✅ 2026-08-10 |
+| Geburtsdatum: `validBirthdate()` in beiden Pfaden + CHECK auf `participants.birthdate` | ✅ 2026-08-10 · CHECK **live in der DB**, Code erst mit dem Push |
+| Checkbox der Fotoerlaubnis wird vom eigenen Wortlaut benannt (a11y) | ✅ 2026-08-10 · Code erst mit dem Push |
+| 395 Unit-Tests grün (waren 226) | ✅ 2026-08-10 |
 
 ---
 
@@ -54,12 +58,12 @@ ist ab „Session 2026-08-10" wieder lückenlos. **Bei Widersprüchen gilt HANDO
 | 8 | Leaked Password Protection | ⛔ **blockiert** | Pro-Plan-Feature, Projekt läuft auf Free. Advisor meldet es weiter — Plan-Grenze, kein Versäumnis. Nicht nochmal recherchieren. |
 | 9 | Abgelaufenes Recovery-Fenster meldet irreführend | 🟡 | `pw_recovery` läuft nach 15 min ab; danach fragt `/passwort` nach dem **alten** Passwort, das der Nutzer gerade nicht weiß. Rauskommen geht (neuer Link), aber die Meldung sagt es nicht. User hat es vertagt. |
 | 10 | Magic-Link-Template weiter PKCE | 🟡 | Nur *Reset Password* wurde auf `token_hash` umgestellt. Magic Link bleibt an den anfordernden Browser gebunden — bewusst offen gelassen. |
-| 11 | `consent-step.tsx` doppelter Accessible-Name | 🟢 klein | `aria-label` + umschließendes `<Label>` ergibt gestotterte Screenreader-Ansage. Im neuen Dialog behoben, hier nicht. |
+| 11 | `consent-step.tsx` doppelter Accessible-Name | ✅ **fertig** | `aria-label` entfernt (2026-08-10); das umschließende `<Label>` benennt die Checkbox allein, angesagt wird der Wortlaut der Fotoerlaubnis selbst. Erster Test für `PhotoConsentStep` überhaupt (`consent-step.test.tsx`), Name **exakt** gepinnt. HANDOVER §7.14 |
 | 12 | 🚨 Drei Auth-Schalter dürfen NICHT an | ⛔ **Dauerhinweis** | „Require current password when updating", „Secure password change", „Enable Captcha protection". Details HANDOVER §7 Punkt 12 — Captcha würde **jede Teilnehmer-Anmeldung** killen. |
 | 13 | Aufstellungs-Formular im Browser ansehen | 🟢 klein | Tests grün, RLS bewiesen, aber nie geöffnet — ein Agent kann sich nicht einloggen. 3v3-Turnier → Teilnehmer → „Team nachmelden" → drei Zeilen. HANDOVER §7.16 |
 | 14 | Kein e2e für Nachmeldung / Live-Steuerung / Riegel | 🟡 | Der Riegel wäre der lohnendste — einzige Stelle, an der ein Fehlklick unwiederbringlich Daten kostet. Vorher §7.1 lesen. HANDOVER §7.17 |
-| 15 | Öffentliche Anmeldung nimmt Geburtsdaten aus der Zukunft | 🟢 klein | `validBirthdate()` sichert nur den Nachmelde-Pfad. Beleg live: „Moritz b." trägt `2026-07-10`. Ein Aufruf in `register-client.tsx` reicht. HANDOVER §7.18 |
-| 16 | Müll-Dateien entstehen weiter | 🟡 | Am 2026-08-10 kamen zehn neue nach dem ersten Aufräumen; gelöscht, Ursache weiter unbekannt. `usage` (0 Byte) bewusst stehen gelassen. HANDOVER §7.15 |
+| 15 | Geburtsdatum-Prüfung doppelt gepflegt | ✅ **fertig** | ⚠️ Hieß vorher „nimmt Geburtsdaten aus der Zukunft", Beleg „Moritz b." (`2026-07-10`) — **beides falsch**: die `refine()` lehnt Zukunft seit `1bbcfe4` ab, und jenes Datum lag bei Anlage in der Vergangenheit. Echt war die schwächere Kopie und dass der öffentliche Pfad **ohne Server-Action** mit dem Anon-Key schreibt. Jetzt `validBirthdate()` im Formular + CHECK auf `participants.birthdate`. HANDOVER §7.18 |
+| 16 | Müll-Dateien entstehen weiter | 🟡 | Am 2026-08-10 kamen zehn neue nach dem ersten Aufräumen, abends noch `` web/1900-01-01` `` — gelöscht, Ursache weiter unbekannt (zwei Repro-Versuche gescheitert). ⚠️ **`git status` sieht nicht alle:** `design-refs/s.trim()` liegt seit 2026-06-16 in einem ignorierten Ordner. Suchen mit `find -size 0`. HANDOVER §7.15 |
 
 ---
 
@@ -166,14 +170,13 @@ jetzt auch von einem zweiten Gerät an alles Nötige. Die Turnierleitung kann se
 nachmelden, Matches selbst starten und zählen — und „Bracket neu generieren" nimmt keine Arbeit
 mehr mit, ohne vorher zu sagen, welche.
 
-1. **Kleine Handgriffe:** #9 (irreführende Meldung nach abgelaufenem Recovery-Fenster), #11
-   (doppelter Accessible-Name in `consent-step.tsx`).
+1. **Kleine Handgriffe:** #9 (irreführende Meldung nach abgelaufenem Recovery-Fenster).
 2. **Vom User zu entscheiden:** #10 (Magic-Link ebenfalls cross-device?), #8 (Pro-Plan wegen
    Leak-Schutz — reine Kostenfrage).
 3. **Liegt unverändert:** #4 Live-Acceptance-Durchlauf ([ACCEPTANCE.md](ACCEPTANCE.md)), #3
    Push-Gerätetest, #7 Live-Score-Capture, sowie die 35 verwaisten Signatur-Objekte im
    `consent-signatures`-Storage (SQL-Delete blockiert, nur über Dashboard/Storage-API).
 5. **Neu offen aus der Nachmelde-Session:** #13 (Aufstellungs-Formular einmal im Browser ansehen),
-   #14 (kein e2e für die neuen Funktionen), #15 (Zukunftsdatum in der öffentlichen Anmeldung).
+   #14 (kein e2e für die neuen Funktionen).
 4. ⚠️ **Vor jedem Anfassen der Auth-Einstellungen:** #12 lesen. Drei Schalter sehen dort nach
    Verbesserung aus und würden je einen Teil der App abschalten.

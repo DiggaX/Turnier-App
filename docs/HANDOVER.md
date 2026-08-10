@@ -16,7 +16,7 @@ Ein **Multi-Tenant-Esports-Turnier-SaaS**. Firmen (Organisationen) registrieren 
 - **Frontend/Backend:** Next.js **16.2.9** (App Router) im Unterordner **`web/`**. Vercel Root Directory = `web`. ⚠️ Next 16 hat Breaking Changes ggü. Trainingsdaten: async `params`/`searchParams`/`cookies()`/`headers()`, Middleware heißt `proxy.ts`, Turbopack-Build. **Vor Next-Code: `web/node_modules/next/dist/docs/` lesen** (steht auch in `web/AGENTS.md`).
 - **DB/Auth:** Supabase (Postgres + RLS + Anonymous Auth + Storage + Realtime). Projekt-Ref **`zqhdbygopftretjtlods`**.
 - **UI:** Tailwind v4 + shadcn/ui (button/badge/card/checkbox/input/label/table — **kein Select**, nutze native `<select>`). Dark-Esports-Design: BG `#07090c`, surface `#10141c`, lime `#c5f72e`, cyan `#1fd1e3`, live-red `#ff3b5c`; Fonts Space Grotesk (variabel) + Chakra Petch.
-- **Forms:** react-hook-form + zod. **Tests:** Vitest (**393** Unit-Tests grün) + Playwright (e2e geschrieben, s.u.).
+- **Forms:** react-hook-form + zod. **Tests:** Vitest (**395** Unit-Tests grün) + Playwright (e2e geschrieben, s.u.).
 - ⚠️ **UI-Primitive sind Base UI (`@base-ui/react`), NICHT Radix.** `components.json` steht auf `base-nova`, ein `@radix-ui/*`-Paket existiert nirgends. Polymorphie über `render={…}` statt `asChild`, Zustände über `data-checked`/`data-open` statt `data-state`. Wer nach shadcn-Gewohnheit Radix-Code schreibt, baut gegen eine Bibliothek, die nicht da ist.
 
 ## 3. Deploy & DB — WIE (wichtig!)
@@ -325,8 +325,13 @@ kein Policy-Fehler. Genau darauf bin ich erst hereingefallen.
     Passwort fragt — das er gerade nicht weiß. Man kommt raus (neuen Link anfordern), aber die
     Meldung sagt es nicht. Sauber wäre: den abgelaufenen Recovery-Fall erkennen und direkt benennen.
     Dem User angeboten, er hat es vertagt.
-14. **`consent-step.tsx` hat den doppelten Accessible-Name** (`aria-label` + umschließendes `<Label>`,
-    siehe §5). Ergibt eine gestotterte Ansage. Im Dialog behoben, hier nicht — eigener Handgriff.
+14. ✅ **Doppelter Accessible-Name in `consent-step.tsx` behoben** (2026-08-10): `aria-label` entfernt,
+    das umschließende `<Label>` benennt die Checkbox jetzt allein. Angesagt wird damit der Wortlaut der
+    Fotoerlaubnis selbst statt „Fotoerlaubnis erteilen" plus derselbe Satz. Gleicher Handgriff wie im
+    `save-access-dialog`, gleicher Kommentar. **Erstmals mit Test** (`consent-step.test.tsx`, vorher gab
+    es für `PhotoConsentStep` gar keinen): er pinnt den berechneten Namen **exakt** gegen
+    `photoConsentText(...)` — ein Teilstring-Match liefe mit dem Stottern weiterhin grün, weil der
+    doppelte Name den Satz enthält. Gegenprobe gemacht: mit wieder eingesetztem `aria-label` fällt er um.
 15. ✅ **Müll-Dateien gelöscht** (2026-08-10): `'`, `(,`, `0)`, `1`, `m.status`, `usage`, `void`, `{,`,
     `web/'`, `web/ACHTUNG`, `web/{,+` — alle 0 Byte, nie im Index, `git status` ist wieder leer.
 
@@ -351,6 +356,34 @@ kein Policy-Fehler. Genau darauf bin ich erst hereingefallen.
     offen, nicht erledigt. ⚠️ **`usage` liegt entgegen der Liste oben wieder (oder noch) da**, 0 Byte,
     Zeitstempel 12:12; bewusst stehen gelassen, weil der Name als Platzhalter gemeint sein könnte und
     er nicht nach Kommandobruchstück aussieht.
+
+    **Zweiter Nachtrag, 2026-08-10 abends — zwei Befunde, die die Suche verengen.**
+
+    (a) **`git status` findet strukturell nicht alle.** `design-refs/s.trim()` liegt seit dem
+    **2026-06-16, 23:27** da, 0 Byte, Name eindeutig ein Code-Bruchstück — im selben Minutentakt wie
+    die `*.extracted.html` daneben. Nie in einer Liste aufgetaucht, weil `.gitignore:42` das ganze
+    Verzeichnis ausblendet. Damit ist zweierlei falsch an der bisherigen Fassung: das Phänomen ist
+    **zwei Monate älter** als angenommen, und die empfohlene Gegenmaßnahme („`git status` nach jedem
+    Workflow") kann es prinzipiell nicht vollständig sehen. Wer wirklich sucht, nimmt
+    `find . -maxdepth 2 -type f -size 0 -not -path './.git/*' -not -path '*/node_modules/*'`.
+    Die Datei wurde **stehen gelassen** — ignoriertes Verzeichnis mit fremden Referenzdateien.
+
+    (b) **Ein neuer Fund, eine naheliegende Spur — und zwei Versuche, die sie nicht bestätigen.**
+    Während der Doku-Arbeit entstand `` web/1900-01-01` `` (0 Byte, 20:07:45), gelöscht. Die
+    Zeichenfolge `1900-01-01` stand in genau einem Text dieser Minute: der Ergänzung zu §7.18, dort
+    **in Backticks** als `` `>= 1900-01-01` ``. Kein Shell-Kommando der Sitzung enthielt sie. Das legte
+    nahe, dass Dateiinhalt irgendwo durch eine Shell läuft, wo Backticks Kommandosubstitution und `>`
+    eine Umleitung auslösen — was zu den Altfunden passt, die alle Bruchstücke von *geschriebenem Text*
+    sind (`m.status`, `(,`, `ACHTUNG`), nicht von Kommandos.
+
+    ⚠️ **Zwei gezielte Reproduktionsversuche sind gescheitert:** (1) neue Datei mit Backticks,
+    Umleitungszeichen und Sentinel-Token ins Scratchpad **geschrieben**, (2) eine Repo-Markdown-Datei
+    mit demselben Muster **editiert** — danach jeweils sofort `find -size 0`: keine neue Datei, kein
+    Sentinel. **Die Spur ist damit eine Korrelation, keine Ursache.** Entweder braucht der Auslöser
+    noch etwas, das in den Versuchen fehlte, oder der Erzeuger ist ein anderer Prozess und die zeitliche
+    Nähe war Zufall. **Bitte nicht als geklärt weitertragen** — das ist genau der Fehler, den §10 dieser
+    Datei als teuerste Angewohnheit nennt. Was bleibt und belastbar ist: der Fund selbst, dass er
+    weitergeht, und die Detektionsmethode aus (a).
 16. **Das Aufstellungs-Formular ist nie in einem Browser geöffnet worden.** Unit- und Komponententests
     sind grün (`add-participant-form.test.tsx`), die RLS ist gegen die Live-DB bewiesen, aber die
     Organizer-Seiten verlangen einen Login — den kann ein Agent nicht führen. Erster Handgriff für
@@ -360,11 +393,25 @@ kein Policy-Fehler. Genau darauf bin ich erst hereingefallen.
     der Regenerate-Riegel haben keine Spec. Der Riegel wäre der lohnendste: er ist die einzige Stelle,
     an der ein Fehlklick unwiederbringlich Daten kostet, und ein Test dafür braucht nur ein Fixture
     mit einem freigegebenen Ergebnis. ⚠️ Vorher §7.1 lesen — die Suite hat gerade eigene Probleme.
-18. **Die öffentliche Anmeldung nimmt weiterhin Geburtsdaten aus der Zukunft.** `validBirthdate()`
-    (`lib/consent.ts`) sichert nur den Nachmelde-Pfad ab. Beleg in Produktion: Teilnehmer „Moritz b."
-    im EA-Sports-Turnier trägt `2026-07-10`. Harmlos, solange niemand nach Alter auswertet — aber
-    `requiredConsentMethod()` hängt am Geburtsdatum, ein Erwachsener mit Tippfehler bekäme die
-    Unterschriftspflicht. Ein Aufruf in `register-client.tsx` würde reichen.
+18. ✅ **Geburtsdatum-Prüfung vereinheitlicht** (2026-08-10). Die öffentliche Anmeldung ruft jetzt
+    `validBirthdate()` (`lib/consent.ts`) auf — dieselbe Funktion wie der Nachmelde-Pfad, mit
+    demselben Satz bei Fehlschlag — und `participants.birthdate` trägt einen CHECK
+    (`>= 1900-01-01`, `<= current_date`, Migration `20260810160000`).
+
+    ⚠️ **Diese Zeile behauptete vorher, die öffentliche Anmeldung nehme Geburtsdaten aus der Zukunft,
+    und führte Teilnehmer „Moritz b." mit `2026-07-10` als Beleg. Beides ist falsch, nachgemessen:**
+    die handgeschriebene `refine()` in `register-client.tsx` lehnt Zukunftsdaten seit `1bbcfe4` ab,
+    dem allerersten Anmelde-Commit; und jenes Datum lag am Tag des Eintrags bereits in der
+    Vergangenheit (`birthdate > created_at::date` traf auf keine einzige der 21 Zeilen). Es sieht nur
+    aus der Gegenwart heraus wie Zukunft. Wer der alten Fassung folgt, sucht einen Bug, den es nie gab.
+
+    Der echte Mangel war ein anderer und stand nirgends: die Kopie prüfte **weniger** als das Original
+    (Jahr < 1900 ging durch; der Kalender-Rollover `2013-02-31` fängt ohnehin Postgres selbst mit
+    `22008` ab), und sie ist ohnehin nur Kosmetik — **die öffentliche Anmeldung hat keine
+    Server-Action**, `onSubmit` schreibt mit dem Anon-Key direkt in `participants`. Deshalb der CHECK:
+    er ist die einzige Stelle, die ein von Hand abgesetztes POST nicht umgeht. ⚠️ `current_date` in
+    einem CHECK ist zulässig **und hier unbedenklich, weil die Schranke nur nach vorne wandert** —
+    Begründung und die beiden offen gelassenen Restränder stehen im Kopf der Migration.
 
 16. **Fotoerlaubnis — was bewusst fehlt** (siehe §5): **kein Widerruf** (eine erteilte Erlaubnis lässt
     sich in der App nicht zurückziehen oder löschen — DSGVO-seitig der nächste ehrliche Handgriff),
@@ -389,7 +436,7 @@ kein Policy-Fehler. Genau darauf bin ich erst hereingefallen.
 ## 9. Erste Schritte für dich
 1. `git -C C:\Users\Rene\Turnierapp log --oneline -10`, `git status`.
 2. db2-Verbindung testen: `mcp__supabase-db2__list_tables` (~15 Tabellen erwartet). Bei „Unauthorized" → User muss `SUPABASE_ACCESS_TOKEN_DB2` setzen + Claude Code neu starten.
-3. `cd web && npm run build && npm test` (**393** grün erwartet). ⚠️ `npm run lint` meldet 6 Altlasten in
+3. `cd web && npm run build && npm test` (**395** grün erwartet). ⚠️ `npm run lint` meldet 6 Altlasten in
    `checkin/scanner-client.tsx`, `checkin/page.tsx` und `members/actions.test.ts` — vorbestehend, nicht
    von der letzten Session. Nicht erschrecken, aber auch nicht mitschleifen.
 4. Mit dem User klären, was ansteht. Vor Feature-Bau: **brainstorming-Skill**.
@@ -490,5 +537,6 @@ schließen (A), eine Warnung verbindlich machen (B), eine Grenze verschieben (C)
 
 ### Was offen blieb (Details in §7)
 Leak-Schutz braucht Pro · Magic-Link-Template weiter PKCE · abgelaufenes Recovery-Fenster meldet sich
-irreführend (#13) · `consent-step.tsx` doppelter Accessible-Name (#14) · die drei Auth-Schalter, die
+irreführend (#13) · `consent-step.tsx` doppelter Accessible-Name (#14, seit 2026-08-10 erledigt) ·
+die drei Auth-Schalter, die
 niemand umlegen darf (#12).
