@@ -15,6 +15,9 @@ const LINKS = [
   { href: "/organizer", label: "Turniere", adminOnly: false },
   { href: "/organizer/games", label: "Spiele", adminOnly: false },
   { href: "/organizer/members", label: "Organisation", adminOnly: true },
+  // Not admin-only: a referee locked out of their own account needs this too,
+  // and /organizer/members (the other settings-ish page) is admin-gated.
+  { href: "/passwort", label: "Passwort", adminOnly: false },
 ] as const;
 
 /**

@@ -1,7 +1,7 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { getOrigin } from "@/lib/origin";
 import { createClient } from "@/lib/supabase/server";
 
 export type LoginState = {
@@ -9,17 +9,6 @@ export type LoginState = {
   /** Set after a magic link is requested so the UI can show "check your email". */
   magicLinkSent?: boolean;
 };
-
-/** Read the request origin (scheme + host) for building absolute redirect URLs. */
-async function getOrigin(): Promise<string> {
-  const h = await headers();
-  const origin = h.get("origin");
-  if (origin) return origin;
-  // Fall back to forwarded headers (proxies) or the host header.
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  return host ? `${proto}://${host}` : "";
-}
 
 export async function signInPassword(
   _prevState: LoginState,

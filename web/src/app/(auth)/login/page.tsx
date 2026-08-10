@@ -16,6 +16,8 @@ const LOGIN_ERRORS: Record<string, string> = {
     "Dieser QR-Code ist abgelaufen oder wurde schon benutzt. Lass am angemeldeten Gerät einen neuen erzeugen.",
   config:
     "Die Geräte-Kopplung ist auf diesem Server nicht konfiguriert. Melde dich unten normal an.",
+  recovery:
+    "Der Link zum Zurücksetzen ist ungültig oder abgelaufen. Fordere unten einen neuen an.",
 };
 
 export default async function LoginPage(props: {
@@ -54,6 +56,15 @@ export default async function LoginPage(props: {
           )}
 
           <PasswordForm />
+
+          <p className="-mt-1 text-center text-sm">
+            <Link
+              href="/passwort/vergessen"
+              className="text-fg-muted hover:text-cyan"
+            >
+              Passwort vergessen?
+            </Link>
+          </p>
 
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-line" />

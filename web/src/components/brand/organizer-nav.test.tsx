@@ -24,4 +24,11 @@ describe("OrganizerNav", () => {
       screen.getByRole("link", { name: "Organisation" }),
     ).toBeInTheDocument();
   });
+
+  // A referee who cannot reach their own password page is locked out with no
+  // recourse, and nothing else in the UI would show it.
+  it("renders the Passwort link for non-admins", () => {
+    render(<OrganizerNav />);
+    expect(screen.getByRole("link", { name: "Passwort" })).toBeInTheDocument();
+  });
 });

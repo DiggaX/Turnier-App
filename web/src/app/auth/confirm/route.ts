@@ -2,6 +2,7 @@ import { type EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { sessionIdFromAccessToken } from "@/lib/auth/device-pairing";
+import { RECOVERY_COOKIE, RECOVERY_COOKIE_MAX_AGE } from "@/lib/auth/recovery";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -60,9 +61,38 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // A password reset arrives through this same callback. Rather than carry a
+  // `next` target (which would need an allowlist or become an open redirect),
+  // the type itself is the signal: the mail template stamps `type=recovery` on
+  // the token_hash link, and requestPasswordReset stamps it on the PKCE
+  // `redirectTo`, so both link shapes are recognisable here.
+  const isRecovery = type === "recovery";
+
   const redirectTo = request.nextUrl.clone();
   redirectTo.search = "";
-  redirectTo.pathname = verified ? "/organizer" : "/login";
-  if (!verified) redirectTo.searchParams.set("error", "auth");
-  return NextResponse.redirect(redirectTo);
+  redirectTo.pathname = verified
+    ? isRecovery
+      ? "/passwort"
+      : "/organizer"
+    : "/login";
+  if (!verified) {
+    redirectTo.searchParams.set("error", isRecovery ? "recovery" : "auth");
+  }
+
+  const response = NextResponse.redirect(redirectTo);
+
+  // Lets /passwort tell "just reset their password" apart from "already signed
+  // in", which is what makes the old-password prompt on the change form more
+  // than decoration.
+  if (verified && isRecovery) {
+    response.cookies.set(RECOVERY_COOKIE, "1", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: RECOVERY_COOKIE_MAX_AGE,
+    });
+  }
+
+  return response;
 }
