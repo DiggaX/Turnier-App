@@ -7,6 +7,7 @@ import type { Database } from "@/lib/database.types";
 import { requiredConsentMethod } from "@/lib/consent";
 import { photoConsentText, type ConsentOrg } from "@/lib/consent-text";
 import { friendlyDbError, isUniqueViolation } from "@/lib/db-errors";
+import { AddressField } from "@/components/address-field";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -160,12 +161,10 @@ export function PhotoConsentStep({
   const addressField = (
     <div className="flex flex-col gap-2">
       <Label htmlFor="consentAddress">Wohnhaft (Anschrift)</Label>
-      <Input
+      <AddressField
         id="consentAddress"
         value={address}
-        autoComplete="street-address"
-        placeholder="Straße Hausnummer, PLZ Ort"
-        onChange={(e) => setAddress(e.target.value)}
+        onChange={setAddress}
       />
     </div>
   );
