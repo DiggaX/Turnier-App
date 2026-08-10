@@ -43,9 +43,12 @@ interface MeClientProps {
   tournamentId: string;
   /**
    * True when this view was resolved via a saved/shared recovery link
-   * (`?token=`) instead of the owning browser session. Check-in and match
-   * reporting require the original session, so those actions are hidden —
-   * this is a read-only "here's your status and QR again" view.
+   * (`?token=`) instead of the owning browser session.
+   *
+   * Check-in and reporting still work here — they just take the token-keyed
+   * RPCs, because the ordinary ones authorise on auth.uid() and a second device
+   * cannot have that session. Only push stays out: a subscription belongs to
+   * one device, and handing it to whoever holds the link is not the same thing.
    */
   viaToken?: boolean;
 }
@@ -99,9 +102,12 @@ function oppScoreFromReport(report: MyReport, mySide: "a" | "b"): number {
 function MatchReportCard({
   supabase,
   match,
+  linkToken,
 }: {
   supabase: SupabaseClient<Database>;
   match: CurrentMatch;
+  /** Set in shared-link mode; picks the token-keyed RPC instead of the session one. */
+  linkToken: string | null;
 }) {
   const [myScore, setMyScore] = useState(
     match.myReport ? String(myScoreFromReport(match.myReport, match.mySide)) : "",
@@ -133,10 +139,16 @@ function MatchReportCard({
     setSubmitting(true);
     try {
       const scores = toMatchScores(match.mySide, my, opp);
-      const { error: rpcErr } = await supabase.rpc("report_match", {
-        p_match_id: match.matchId,
-        ...scores,
-      });
+      const { error: rpcErr } = linkToken
+        ? await supabase.rpc("report_match_via_token", {
+            p_qr_token: linkToken,
+            p_match_id: match.matchId,
+            ...scores,
+          })
+        : await supabase.rpc("report_match", {
+            p_match_id: match.matchId,
+            ...scores,
+          });
       if (rpcErr) {
         setError(reportError(rpcErr));
         return;
@@ -240,10 +252,14 @@ export function MeClient({
     setError(null);
     setSubmitting(true);
     try {
-      const { error: rpcErr } = await supabase.rpc("check_in", {
-        p_participant_id: participant.id,
-        p_method: "online",
-      });
+      const { error: rpcErr } = viaToken
+        ? await supabase.rpc("check_in_via_token", {
+            p_qr_token: participant.qr_token,
+          })
+        : await supabase.rpc("check_in", {
+            p_participant_id: participant.id,
+            p_method: "online",
+          });
       if (rpcErr) {
         setError(CHECK_IN_ERROR);
         return;
@@ -272,11 +288,15 @@ export function MeClient({
         </div>
 
         {/* current match report */}
-        {!viaToken && currentMatch && (
-          <MatchReportCard supabase={supabase} match={currentMatch} />
+        {currentMatch && (
+          <MatchReportCard
+            supabase={supabase}
+            match={currentMatch}
+            linkToken={viaToken ? participant.qr_token : null}
+          />
         )}
 
-        {/* push opt-in */}
+        {/* push opt-in — session only, see the viaToken note on MeClientProps */}
         {!viaToken && <PushOptIn tournamentId={tournamentId} />}
 
         {/* QR card */}
@@ -300,13 +320,7 @@ export function MeClient({
         <QrActions tournamentId={tournamentId} qrToken={participant.qr_token} />
 
         {/* check-in action */}
-        {viaToken ? (
-          <p className="text-center text-sm text-fg-muted">
-            Zum Online-Einchecken oder Ergebnisse melden bitte das Gerät
-            nutzen, mit dem du dich angemeldet hast — vor Ort einchecken kann
-            die Orga trotzdem jederzeit über deinen QR-Code.
-          </p>
-        ) : checkedIn ? (
+        {checkedIn ? (
           <div
             className="flex items-center justify-center gap-2 rounded-2xl border border-lime/30 bg-lime/[0.08] px-5 py-4 font-display text-base font-semibold text-lime"
             role="status"
@@ -329,6 +343,14 @@ export function MeClient({
               </p>
             )}
           </div>
+        )}
+
+        {viaToken && (
+          <p className="text-center text-sm text-fg-muted">
+            Du bist über deinen gespeicherten Link hier — einchecken und
+            Ergebnisse melden geht damit. Nur Benachrichtigungen bekommst du
+            auf dem Gerät, mit dem du dich angemeldet hast.
+          </p>
         )}
       </div>
     </ParticipantShell>

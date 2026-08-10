@@ -380,6 +380,29 @@ export interface Database {
           has_consent: boolean;
         }[];
       };
+      check_in_via_token: {
+        Args: { p_qr_token: string };
+        Returns: undefined;
+      };
+      report_match_via_token: {
+        Args: {
+          p_qr_token: string;
+          p_match_id: string;
+          p_score_a: number;
+          p_score_b: number;
+        };
+        Returns: undefined;
+      };
+      get_open_match_by_qr_token: {
+        Args: { p_qr_token: string };
+        Returns: {
+          match_id: string;
+          opponent_name: string;
+          my_side: string;
+          report_score_a: number | null;
+          report_score_b: number | null;
+        }[];
+      };
     };
     Enums: {
       user_role: UserRole;

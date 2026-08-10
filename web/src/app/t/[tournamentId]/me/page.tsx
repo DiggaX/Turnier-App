@@ -72,11 +72,30 @@ export default async function MePage(props: {
   }
 
   // The participant's current open match in this tournament: both slots filled,
-  // not yet decided, and they are on one of the two sides. Skipped in
-  // recovery-link mode — reporting/check-in needs the owning session anyway,
-  // so this view is read-only (status + QR only).
+  // not yet decided, and they are on one of the two sides.
   let currentMatch: CurrentMatch | null = null;
-  if (!viaToken) {
+
+  if (viaToken && token) {
+    // One RPC instead of the two queries below. matches is publicly readable,
+    // but match_reports is not — its policy wants p.user_id = auth.uid(), and in
+    // link mode there is no such session. Without the definer path an already
+    // submitted score would never load, and every visit would show an empty
+    // form as if nothing had been reported.
+    const { data: row } = await supabase
+      .rpc("get_open_match_by_qr_token", { p_qr_token: token })
+      .maybeSingle();
+    if (row) {
+      currentMatch = {
+        matchId: row.match_id,
+        opponentName: row.opponent_name,
+        mySide: row.my_side === "a" ? "a" : "b",
+        myReport:
+          row.report_score_a !== null && row.report_score_b !== null
+            ? { score_a: row.report_score_a, score_b: row.report_score_b }
+            : null,
+      };
+    }
+  } else if (!viaToken) {
     const { data: rawMatch } = await supabase
       .from("matches")
       .select(
