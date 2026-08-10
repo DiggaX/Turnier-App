@@ -29,6 +29,11 @@ Plan-für-Plan: **brainstorming → writing-plans → Ausführung**. Ausführung
 - **Commits:** **NIE** `Co-Authored-By`-Trailer (CLAUDE.md). `git add <konkrete Dateien>`, nie `git add -A`.
 - **Nie committen:** `.claude/`, `.mcp.json`, `CLAUDE.md`, `skills-lock.json` (Tooling, absichtlich untracked).
 - ⚠️ **Workflow-Agents erzeugen manchmal Müll-Dateien im Root**. Nach jedem Workflow `git status` prüfen.
+- ⚠️ **Mehrzeiligen Text (SQL, Prosa, Commit-Messages) nie roh in eine Shell-Zeile geben.** Genau daraus
+  entstanden am 2026-08-10 elf 0-Byte-Dateien mit Namen wie `m.status`, `(,`, `{,` — Bruchstücke des
+  Textes, die als Redirect-Ziel oder Brace-Expansion landeten. Für SQL den db2-MCP nehmen, für
+  Commit-Messages `git commit -F -` mit Heredoc, für alles andere das Scratchpad. **Temporärdateien
+  gehören nie ins Repo-Verzeichnis.**
 - ⚠️ **Dev-Server (Turbopack) hängt nach Modul-Umbenennungen auf altem Graph** und meldet Import-Fehler, die es nicht mehr gibt → Preview neu starten. `npm run build` ist die Wahrheit.
 
 ## 5. Was fertig + LIVE ist
@@ -198,10 +203,22 @@ Site URL + Redirect-Liste geprüft, **Anonymous-Rate-Limit 30 → 200/h**.
     Dem User angeboten, er hat es vertagt.
 14. **`consent-step.tsx` hat den doppelten Accessible-Name** (`aria-label` + umschließendes `<Label>`,
     siehe §5). Ergibt eine gestotterte Ansage. Im Dialog behoben, hier nicht — eigener Handgriff.
-15. **Müll-Dateien im Repo-Root**, 0 Byte, aus kaputtem Shell-Quoting: `'`, `(,`, `0)`, `1`, `m.status`,
-    `usage`, `{,`, `web/'`, `web/ACHTUNG`. Leer, Löschen gefahrlos. ⚠️ **Ursache mit abstellen:**
-    `git add` mit Pfaden wie `t/[tournamentId]/…` braucht `git --literal-pathspecs add` — die eckigen
-    Klammern sind sonst eine Zeichenklasse, und der Schalter muss **vor** das Unterkommando.
+15. ✅ **Müll-Dateien gelöscht** (2026-08-10): `'`, `(,`, `0)`, `1`, `m.status`, `usage`, `void`, `{,`,
+    `web/'`, `web/ACHTUNG`, `web/{,+` — alle 0 Byte, nie im Index, `git status` ist wieder leer.
+
+    ⚠️ **Diese Zeile behauptete zuerst, `git add` mit Pfaden wie `t/[tournamentId]/…` sei die Ursache
+    und brauche `git --literal-pathspecs`. Beides ist falsch, nachgemessen:** `git ls-files` findet den
+    Bracket-Pfad mit und ohne das Flag gleich gut (Git probiert den literalen Treffer, und die Datei
+    heißt nun mal so), und `git add` kann grundsätzlich keine Dateien anlegen — es findet höchstens
+    nichts. Wer der alten Fassung folgt, schleppt ein wirkungsloses Flag mit und sucht an der falschen
+    Stelle.
+
+    Die echte Ursache ist **nicht belegt**. Die Namen sind Bruchstücke von Kommandotext (`m.status`,
+    `(,`, `0)` stammen erkennbar aus SQL, `ACHTUNG` aus deutscher Prosa), also mehrzeiliger Text, der
+    in einer Shell landete und dort mit `>` oder Brace-Expansion Dateien erzeugte. Mehrere Sessions
+    liefen parallel; welche es war, lässt sich nachträglich nicht sagen. **Nicht raten** — die
+    Gegenmaßnahmen stehen ohnehin schon in §4: `git status` nach jedem Workflow, und Temporärdateien
+    gehören ins Scratchpad, nie ins Repo.
 
 ## 8. Datei-Landkarte
 - `web/src/app/` — Routen. Öffentlich: `page.tsx`, `o/[slug]/`, `t/[tournamentId]/{,register,me,board,checkin-station}`. Auth: `(auth)/login`, `(auth)/signup`, `auth/confirm/route.ts`, `link/[token]/route.ts` (Geräte-Kopplung). Organizer: `organizer/`, `games`, `members` (Org-Name + Geräte + Mitglieder), `tournaments/[id]/{,bracket,matches,participants,checkin,station}`. Scorekeeper: `score/[token]/`.
