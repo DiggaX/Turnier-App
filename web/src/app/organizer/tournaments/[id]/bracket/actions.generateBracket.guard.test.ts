@@ -1,10 +1,11 @@
 /**
- * Unit tests for generateBracket's released-results guard.
+ * Unit tests for generateBracket's guard on work in the existing bracket.
  *
  * Regenerating deletes every match of the tournament. Since adding a latecomer
  * makes that a mid-tournament action, the action must refuse to take released
- * results with it unless the caller explicitly says to. These tests pin that
- * lock down at the action, independent of any browser dialog.
+ * results — or a match being counted right now — with it, unless the caller
+ * explicitly says to. These tests pin that lock down at the action, independent
+ * of any browser dialog.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -19,16 +20,18 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => Promise.resolve(mockClient),
 }));
 
-describe("generateBracket released-results guard", () => {
+describe("generateBracket bracket-work guard", () => {
   let matchesSelect: ReturnType<typeof vi.fn>;
   let matchesDelete: ReturnType<typeof vi.fn>;
 
-  /** Staff profile + a matches table reporting `decided` done matches. */
-  function setup(decided: number) {
+  /** Staff profile + a matches table holding `done` and `live` rows. */
+  function setup(done: number, live: number) {
+    const rows = [
+      ...Array.from({ length: done }, () => ({ status: "done" })),
+      ...Array.from({ length: live }, () => ({ status: "live" })),
+    ];
     matchesSelect = vi.fn().mockReturnValue({
-      eq: () => ({
-        eq: () => Promise.resolve({ count: decided, error: null }),
-      }),
+      eq: () => ({ in: () => Promise.resolve({ data: rows, error: null }) }),
     });
     matchesDelete = vi.fn().mockReturnValue({
       eq: () => Promise.resolve({ error: null }),
@@ -68,36 +71,49 @@ describe("generateBracket released-results guard", () => {
   }
 
   beforeEach(() => {
-    setup(0);
+    setup(0, 0);
   });
 
-  it("refuses to run while results are released, and deletes nothing", async () => {
-    setup(3);
+  it("refuses while results are released, and deletes nothing", async () => {
+    setup(3, 0);
     const { generateBracket } = await import("./actions");
     const result = await generateBracket("t1");
 
     expect(result).toEqual({
       error:
-        "Es gibt bereits 3 freigegebene Ergebnisse. " +
-        "Neu generieren würde sie löschen — bitte ausdrücklich bestätigen.",
+        "Es gibt bereits 3 gespielte Ergebnisse. " +
+        "Neu generieren löscht das unwiderruflich — bitte ausdrücklich bestätigen.",
     });
     expect(matchesDelete).not.toHaveBeenCalled();
   });
 
-  it("uses the singular for exactly one result", async () => {
-    setup(1);
+  it("refuses while a match is being counted", async () => {
+    setup(0, 1);
     const { generateBracket } = await import("./actions");
     const result = await generateBracket("t1");
 
     expect(result).toEqual({
       error:
-        "Es gibt bereits 1 freigegebenes Ergebnis. " +
-        "Neu generieren würde es löschen — bitte ausdrücklich bestätigen.",
+        "Es gibt bereits 1 laufendes Spiel. " +
+        "Neu generieren löscht das unwiderruflich — bitte ausdrücklich bestätigen.",
+    });
+    expect(matchesDelete).not.toHaveBeenCalled();
+  });
+
+  it("names both kinds at once", async () => {
+    setup(1, 1);
+    const { generateBracket } = await import("./actions");
+    const result = await generateBracket("t1");
+
+    expect(result).toEqual({
+      error:
+        "Es gibt bereits 1 gespieltes Ergebnis und 1 laufendes Spiel. " +
+        "Neu generieren löscht das unwiderruflich — bitte ausdrücklich bestätigen.",
     });
   });
 
-  it("proceeds when nothing has been released yet", async () => {
-    setup(0);
+  it("proceeds on an untouched bracket", async () => {
+    setup(0, 0);
     const { generateBracket } = await import("./actions");
     const result = await generateBracket("t1");
 
@@ -106,7 +122,7 @@ describe("generateBracket released-results guard", () => {
   });
 
   it("proceeds on explicit confirmation, without re-counting", async () => {
-    setup(3);
+    setup(3, 2);
     const { generateBracket } = await import("./actions");
     const result = await generateBracket("t1", { discardResults: true });
 

@@ -15,6 +15,7 @@ import {
   resolveLinkUpdates,
   resolveLoserLinkUpdates,
 } from "@/lib/bracket/resolve-links";
+import { lostWork } from "@/lib/bracket/regenerate-warning";
 import type { GeneratedMatch, SeededParticipant } from "@/lib/bracket/types";
 import type { Database, TournamentFormat } from "@/lib/database.types";
 import { friendlyDbError } from "@/lib/db-errors";
@@ -133,7 +134,7 @@ function generatorFor(
  * participants, ordered by seed.
  *
  * Pipeline:
- *  1. Refuse to discard released results unless the caller says to (see below).
+ *  1. Refuse to discard work in the existing bracket unless the caller says to.
  *  2. Ensure every checked-in participant has a 1..N seed (assign by created_at
  *     for any missing) so the generator receives a clean sequence.
  *  3. Run the format's generator.
@@ -143,9 +144,11 @@ function generatorFor(
  *
  * `discardResults` exists because regenerating is now a mid-tournament action:
  * adding a latecomer means pressing this button again, and the delete in step 4
- * takes released results with it. The guard lives here rather than in the
- * button so no caller can wipe a played round by accident — the browser dialog
- * is a courtesy, this is the lock.
+ * takes the whole bracket with it. Both released results and matches currently
+ * being counted block it — a scorekeeper mid-game loses just as much as a
+ * confirmed round. The guard lives here rather than in the button so no caller
+ * can wipe a played round by accident: the browser dialog is a courtesy, this
+ * is the lock.
  */
 export async function generateBracket(
   tournamentId: string,
@@ -156,25 +159,27 @@ export async function generateBracket(
   const { supabase } = guard;
 
   if (!options?.discardResults) {
-    const { count: decidedCount, error: decidedErr } = await supabase
+    const { data: atRisk, error: atRiskErr } = await supabase
       .from("matches")
-      .select("id", { count: "exact", head: true })
+      .select("status")
       .eq("tournament_id", tournamentId)
-      .eq("status", "done");
+      .in("status", ["done", "live"]);
 
-    if (decidedErr) {
+    if (atRiskErr) {
       return {
-        error: friendlyDbError(decidedErr, "Matches konnten nicht geladen werden."),
+        error: friendlyDbError(atRiskErr, "Matches konnten nicht geladen werden."),
       };
     }
-    if ((decidedCount ?? 0) > 0) {
+    const rows = atRisk ?? [];
+    const lost = lostWork(
+      rows.filter((m) => m.status === "done").length,
+      rows.filter((m) => m.status === "live").length,
+    );
+    if (lost) {
       return {
         error:
-          decidedCount === 1
-            ? "Es gibt bereits 1 freigegebenes Ergebnis. Neu generieren würde " +
-              "es löschen — bitte ausdrücklich bestätigen."
-            : `Es gibt bereits ${decidedCount} freigegebene Ergebnisse. ` +
-              "Neu generieren würde sie löschen — bitte ausdrücklich bestätigen.",
+          `Es gibt bereits ${lost.label}. ` +
+          "Neu generieren löscht das unwiderruflich — bitte ausdrücklich bestätigen.",
       };
     }
   }

@@ -3,14 +3,18 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { lostWork } from "@/lib/bracket/regenerate-warning";
+
 import { generateBracket } from "./actions";
 
 export type GenerateButtonProps = {
   tournamentId: string;
   /** When true, the bracket already exists — warn that this replaces it. */
   regenerate?: boolean;
-  /** Number of released results this regenerate would delete. */
+  /** Released results this regenerate would delete. */
   decidedCount?: number;
+  /** Matches currently being counted, which it would delete too. */
+  liveCount?: number;
 };
 
 /**
@@ -18,34 +22,33 @@ export type GenerateButtonProps = {
  * error, and refreshes the route on success so the new bracket renders.
  *
  * When `regenerate` is set the label and a confirm step warn that the existing
- * bracket will be replaced. Once results have been released — the normal state
- * once someone is added late — the dialog names how many are about to be lost
- * and confirming is what unlocks the server's guard. A generic "are you sure"
- * does not carry that: the count is the part that makes someone stop.
+ * bracket will be replaced. Once there is work in it — released results or a
+ * match being counted, the normal state once someone is added late — the dialog
+ * names exactly what is about to be lost, and confirming is what unlocks the
+ * server's guard. A generic "are you sure" does not carry that: the count is
+ * the part that makes someone stop.
  */
 export function GenerateButton({
   tournamentId,
   regenerate = false,
   decidedCount = 0,
+  liveCount = 0,
 }: GenerateButtonProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function onClick() {
-    const losesResults = regenerate && decidedCount > 0;
+  const lost = regenerate ? lostWork(decidedCount, liveCount) : null;
 
-    if (losesResults) {
-      const label =
-        decidedCount === 1
-          ? "1 gespieltes Ergebnis"
-          : `${decidedCount} gespielte Ergebnisse`;
+  function onClick() {
+    if (lost) {
       if (
         !window.confirm(
-          `ACHTUNG: ${label} werden dabei unwiderruflich gelöscht.\n\n` +
-            "Das Bracket wird komplett neu ausgelost — alle bereits " +
-            "freigegebenen Spielstände sind danach weg und müssen neu " +
-            "eingetragen werden.\n\nWirklich neu generieren?",
+          `ACHTUNG: ${lost.label} ${lost.plural ? "werden" : "wird"} dabei ` +
+            "unwiderruflich gelöscht.\n\n" +
+            "Das Bracket wird komplett neu ausgelost — alle bisherigen " +
+            "Spielstände sind danach weg und müssen neu eingetragen " +
+            "werden.\n\nWirklich neu generieren?",
         )
       ) {
         return;
@@ -62,7 +65,7 @@ export function GenerateButton({
     setError(null);
     startTransition(async () => {
       const result = await generateBracket(tournamentId, {
-        discardResults: losesResults,
+        discardResults: lost !== null,
       });
       if ("error" in result) {
         setError(result.error);
@@ -87,13 +90,10 @@ export function GenerateButton({
             : "Generieren"}
       </button>
       {regenerate &&
-        (decidedCount > 0 ? (
+        (lost ? (
           <p className="text-xs text-live">
-            Löscht das Bracket inklusive{" "}
-            {decidedCount === 1
-              ? "1 gespieltem Ergebnis"
-              : `${decidedCount} gespielten Ergebnissen`}
-            .
+            Löscht das Bracket — {lost.label} {lost.plural ? "gehen" : "geht"}{" "}
+            dabei verloren.
           </p>
         ) : (
           <p className="text-xs text-fg-dim">
