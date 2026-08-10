@@ -16,7 +16,7 @@ Ein **Multi-Tenant-Esports-Turnier-SaaS**. Firmen (Organisationen) registrieren 
 - **Frontend/Backend:** Next.js **16.2.9** (App Router) im Unterordner **`web/`**. Vercel Root Directory = `web`. ⚠️ Next 16 hat Breaking Changes ggü. Trainingsdaten: async `params`/`searchParams`/`cookies()`/`headers()`, Middleware heißt `proxy.ts`, Turbopack-Build. **Vor Next-Code: `web/node_modules/next/dist/docs/` lesen** (steht auch in `web/AGENTS.md`).
 - **DB/Auth:** Supabase (Postgres + RLS + Anonymous Auth + Storage + Realtime). Projekt-Ref **`zqhdbygopftretjtlods`**.
 - **UI:** Tailwind v4 + shadcn/ui (button/badge/card/checkbox/input/label/table — **kein Select**, nutze native `<select>`). Dark-Esports-Design: BG `#07090c`, surface `#10141c`, lime `#c5f72e`, cyan `#1fd1e3`, live-red `#ff3b5c`; Fonts Space Grotesk (variabel) + Chakra Petch.
-- **Forms:** react-hook-form + zod. **Tests:** Vitest (**395** Unit-Tests grün) + Playwright (e2e geschrieben, s.u.).
+- **Forms:** react-hook-form + zod. **Tests:** Vitest (**405** Unit-Tests grün) + Playwright (e2e geschrieben, s.u.).
 - ⚠️ **UI-Primitive sind Base UI (`@base-ui/react`), NICHT Radix.** `components.json` steht auf `base-nova`, ein `@radix-ui/*`-Paket existiert nirgends. Polymorphie über `render={…}` statt `asChild`, Zustände über `data-checked`/`data-open` statt `data-state`. Wer nach shadcn-Gewohnheit Radix-Code schreibt, baut gegen eine Bibliothek, die nicht da ist.
 
 ## 3. Deploy & DB — WIE (wichtig!)
@@ -252,6 +252,31 @@ Statements** eingefügt werden. Steckt beides in einer Anweisung (CTE), sieht di
 der Policy die eben angelegte Zeile nicht und der Insert scheitert — ein Artefakt des Testaufbaus,
 kein Policy-Fehler. Genau darauf bin ich erst hereingefallen.
 
+### Neu am 2026-08-10 (Geburtsdatum wird getippt, nicht gesucht)
+
+`<input type="date">` ist an **beiden** Stellen raus — öffentliche Anmeldung und Nachmeldung —
+und durch `components/birthdate-field.tsx` ersetzt: drei Zahlenfelder (TT/MM/JJJJ), Zifferntastatur
+per `inputMode="numeric"`, Fokus springt nach zwei Ziffern von allein weiter. `10042013`
+durchtippen genügt. Auslöser war die Praxis: der native Kalender öffnet beim Geburtsdatum immer
+viele Jahre in der Vergangenheit, und am Tresen kostet das jedes Mal mehrere Wischer.
+
+- **Nach außen ändert sich nichts.** Der Wert bleibt ein `YYYY-MM-DD`-String und ist leer, solange
+  etwas fehlt — `validBirthdate()`, die zod-Regel und die „erforderlich"-Meldung greifen unverändert.
+- **Ein ganzes Datum im Tag-Feld wird verteilt** statt auf zwei Zeichen gekürzt (ISO und
+  `TT.MM.JJJJ`). Das deckt das Einfügen aus der Zwischenablage ab — und ist der Grund, warum die
+  **elf** vorhandenen Aufrufe, die dieses Feld mit einem ISO-String füllen (fünf Komponententests,
+  sechs Playwright-Specs), **ohne Änderung** weiterlaufen.
+- ⚠️ **Kein `role="group"` mit `aria-labelledby`, und kein `aria-label` auf dem Tag-Feld.** Das
+  sichtbare `<Label>` zeigt per `htmlFor` schon dorthin; beides zusammen vergäbe denselben Namen ein
+  zweites Mal — derselbe Fehler wie in `consent-step.tsx`, und Abfragen nach dem Label finden dann
+  **zwei** Treffer statt einem. Genau daran sind beim Bauen die Formulartests rot geworden; in
+  Playwright wäre es ein Strict-Mode-Verstoß gewesen. Wer hier eine Gruppenbeschriftung nachrüstet,
+  muss das `htmlFor` mitnehmen.
+- ⚠️ **Der Elternwert wird im Render übernommen, nicht in einem Effect.** Das Orga-Formular leert
+  sich nach jedem angelegten Walk-in; ohne diese Übernahme stünde beim nächsten noch das Geburtsdatum
+  des vorigen in den Kästchen — ein Fehler, den am Tresen niemand bemerkt. Als Effect gebaut wäre es
+  zusätzlich ein Lint-Fehler (`react-hooks/set-state-in-effect`) und ein zweiter Renderdurchlauf.
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - **Multi-Tenant-Isolation:** `profiles.org_id` + `tournaments.org_id` + `public.current_org_id()` (SECURITY DEFINER). Staff-Write-RLS ist `is_staff() AND <org = current_org_id()>`. **Turnier-SELECT bleibt public**. `games` bleiben **global**. Organizer-Seiten 404'en fremde Turniere via `requireOrgTournament`.
 - **⚠️ SECURITY-DEFINER-RPCs umgehen RLS** → brauchen EXPLIZITE Guards. Neue schreibende Definer-RPCs: **immer `is_staff()`/`is_admin()` UND Org-Check**. Bei `my_sessions()`/`revoke_session()` ist die `auth.uid()`-Bedingung die Autorisierung — nicht entfernen.
@@ -429,6 +454,7 @@ kein Policy-Fehler. Genau darauf bin ich erst hereingefallen.
 - **Passwort-Flow (neu 2026-08-10):** `web/src/app/(auth)/passwort/` (`actions.ts` + `actions.test.ts`, `page.tsx` = Modus-Weiche, `password-form.tsx`, `vergessen/`), `web/src/lib/auth/recovery.ts` (Cookie-Name + `hasRecoveryCookie`), `web/src/lib/origin.ts` (aus `login/actions.ts` herausgelöst — dort wäre jeder Export eine aufrufbare Server-Action gewesen). Routing sitzt in `auth/confirm/route.ts`.
 - **Zugang-sichern (neu 2026-08-10):** `web/src/components/ui/alert-dialog.tsx` (Base-UI-Wrapper), `web/src/app/t/[tournamentId]/register/save-access-dialog.tsx` (+ Test), `web/src/components/qr-actions.tsx` (`variant="bare"` + exportiertes `participantRecoveryUrl`, damit angezeigte und kopierte URL nicht auseinanderlaufen).
 - `supabase/migrations/` — alle live angewandt. Neu: `20260807170000_tournament_archive.sql`, `20260807200000_device_pairing.sql`, `20260808060000_checkin_scan_channel.sql`, `20260810090000_photo_consent_optional.sql`, `20260810120000_participants_insert_staff.sql`, `20260810140000_participant_link_writes.sql`.
+- **Geburtsdatum-Feld (neu 2026-08-10):** `web/src/components/birthdate-field.tsx` (+ Test) — drei Zahlenfelder statt Kalender, gibt `YYYY-MM-DD` heraus. Benutzt von `t/[tournamentId]/register/register-client.tsx` (über RHF-`Controller`) und `organizer/tournaments/[id]/participants/add-participant-form.tsx` (kontrolliert). Reine Logik exportiert: `partsToIso`, `partsFromText`.
 - **Fotoerlaubnis (neu 2026-08-10):** `web/src/lib/consent-text.ts` (+ Test) — Wortlaut, Legacy-Fallback; `web/src/app/t/[tournamentId]/register/consent-step.tsx` (`PhotoConsentStep`, optional); `web/src/components/brand/photo-consent-chip.tsx`; Ausdruck unter `web/src/app/organizer/tournaments/[id]/consents/` (`page.tsx` + `print-button.tsx`).
 - `docs/superpowers/{specs,plans}/` — Designs + Pläne. `docs/DEPLOY.md` — Deploy/Setup-Notizen.
 - Brain (Obsidian, NICHT im Repo): `C:\Users\Rene\Documents\Zweites-Gehirn\02 Projekte\Turnier-App\`.
@@ -436,7 +462,7 @@ kein Policy-Fehler. Genau darauf bin ich erst hereingefallen.
 ## 9. Erste Schritte für dich
 1. `git -C C:\Users\Rene\Turnierapp log --oneline -10`, `git status`.
 2. db2-Verbindung testen: `mcp__supabase-db2__list_tables` (~15 Tabellen erwartet). Bei „Unauthorized" → User muss `SUPABASE_ACCESS_TOKEN_DB2` setzen + Claude Code neu starten.
-3. `cd web && npm run build && npm test` (**395** grün erwartet). ⚠️ `npm run lint` meldet 6 Altlasten in
+3. `cd web && npm run build && npm test` (**405** grün erwartet). ⚠️ `npm run lint` meldet 6 Altlasten in
    `checkin/scanner-client.tsx`, `checkin/page.tsx` und `members/actions.test.ts` — vorbestehend, nicht
    von der letzten Session. Nicht erschrecken, aber auch nicht mitschleifen.
 4. Mit dem User klären, was ansteht. Vor Feature-Bau: **brainstorming-Skill**.

@@ -1,8 +1,7 @@
 # Turnier-App — Fortschritt
 
-**Letzter Stand:** 2026-08-10 · Branch `main` @ `ad71491` · ⚠️ **noch nicht gepusht** — der CHECK aus
-`c7d2f28` ist bereits in der Live-DB, der Code-Anteil geht erst mit dem Push live (Push auf `main`
-deployt automatisch, siehe HANDOVER §3).
+**Letzter Stand:** 2026-08-10 · Branch `main` @ `07a37b4` · gepusht und deployt
+(`turnier-app-opal.vercel.app`; Push auf `main` deployt automatisch, siehe HANDOVER §3)
 
 > Zwei Sitzungen liefen an diesem Tag **parallel** im selben Arbeitsbaum: Auth/Teilnehmer-Zugang
 > (`6e3e21c`…`015b759`, `b47a4b1`) und Nachmeldung/Live-Steuerung (`5e4c211`…`e634f7d`). Die
@@ -41,9 +40,10 @@ ist ab „Session 2026-08-10" wieder lückenlos. **Bei Widersprüchen gilt HANDO
 | Aufstellung wird bei Team-Turnieren mit abgefragt (Captain + Spieler) | ✅ 2026-08-10 · Browser-Klick steht aus |
 | Match starten/zählen/beenden aus der Orga-Ansicht, ohne Scorekeeper | ✅ 2026-08-10 |
 | Riegel: „Bracket neu generieren" löscht keine Arbeit mehr unbemerkt | ✅ 2026-08-10 · vom User live bestätigt |
-| Geburtsdatum: `validBirthdate()` in beiden Pfaden + CHECK auf `participants.birthdate` | ✅ 2026-08-10 · CHECK **live in der DB**, Code erst mit dem Push |
-| Checkbox der Fotoerlaubnis wird vom eigenen Wortlaut benannt (a11y) | ✅ 2026-08-10 · Code erst mit dem Push |
-| 395 Unit-Tests grün (waren 226) | ✅ 2026-08-10 |
+| Geburtsdatum: `validBirthdate()` in beiden Pfaden + CHECK auf `participants.birthdate` | ✅ live 2026-08-10 |
+| Checkbox der Fotoerlaubnis wird vom eigenen Wortlaut benannt (a11y) | ✅ live 2026-08-10 |
+| Geburtsdatum wird getippt (TT/MM/JJJJ) statt im Kalender gesucht — beide Formulare | ✅ 2026-08-10 · im Browser durchgetippt |
+| 405 Unit-Tests grün (waren 226) | ✅ 2026-08-10 |
 
 ---
 
