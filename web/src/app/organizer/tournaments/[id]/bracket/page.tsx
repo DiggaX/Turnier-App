@@ -133,11 +133,26 @@ export default async function BracketPage({
   }));
 
   // Work a regenerate would delete — named in the confirm dialog. A match being
-  // counted right now costs as much as a released one.
+  // counted right now costs as much as a released one, and player reports on a
+  // still-pending match cascade away with it without its status showing that.
   const decidedCount = (rawMatches ?? []).filter(
     (m) => m.status === "done",
   ).length;
   const liveCount = (rawMatches ?? []).filter((m) => m.status === "live").length;
+
+  const pendingIds = (rawMatches ?? [])
+    .filter((m) => m.status === "pending")
+    .map((m) => m.id);
+  let reportedCount = 0;
+  if (pendingIds.length > 0) {
+    const { data: pendingReports } = await supabase
+      .from("match_reports")
+      .select("match_id")
+      .in("match_id", pendingIds);
+    reportedCount = new Set(
+      (pendingReports ?? []).map((r) => r.match_id),
+    ).size;
+  }
 
   // Swiss-specific derived data (computed regardless of format; no-ops when empty).
   const swissMatches: SwissMatch[] = (rawMatches ?? []).map((m) => ({
@@ -408,6 +423,7 @@ export default async function BracketPage({
                   regenerate
                   decidedCount={decidedCount}
                   liveCount={liveCount}
+                  reportedCount={reportedCount}
                 />
               </section>
               </div>

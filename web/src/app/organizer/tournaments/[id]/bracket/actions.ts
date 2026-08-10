@@ -144,11 +144,12 @@ function generatorFor(
  *
  * `discardResults` exists because regenerating is now a mid-tournament action:
  * adding a latecomer means pressing this button again, and the delete in step 4
- * takes the whole bracket with it. Both released results and matches currently
- * being counted block it — a scorekeeper mid-game loses just as much as a
- * confirmed round. The guard lives here rather than in the button so no caller
- * can wipe a played round by accident: the browser dialog is a courtesy, this
- * is the lock.
+ * takes the whole bracket with it. Three things block it: released results,
+ * matches being counted right now, and player reports on matches still pending
+ * (those cascade away with the match, and its status gives no hint they were
+ * there). The guard lives here rather than in the button so no caller can wipe
+ * a played round by accident: the browser dialog is a courtesy, this is the
+ * lock.
  */
 export async function generateBracket(
   tournamentId: string,
@@ -159,21 +160,39 @@ export async function generateBracket(
   const { supabase } = guard;
 
   if (!options?.discardResults) {
-    const { data: atRisk, error: atRiskErr } = await supabase
+    const { data: existing, error: existingErr } = await supabase
       .from("matches")
-      .select("status")
-      .eq("tournament_id", tournamentId)
-      .in("status", ["done", "live"]);
+      .select("id, status")
+      .eq("tournament_id", tournamentId);
 
-    if (atRiskErr) {
+    if (existingErr) {
       return {
-        error: friendlyDbError(atRiskErr, "Matches konnten nicht geladen werden."),
+        error: friendlyDbError(existingErr, "Matches konnten nicht geladen werden."),
       };
     }
-    const rows = atRisk ?? [];
+    const rows = existing ?? [];
+    const pendingIds = rows.filter((m) => m.status === "pending").map((m) => m.id);
+
+    // Player reports on a pending match cascade away with it, and the match's
+    // status says nothing about them — so count them separately.
+    let reportedCount = 0;
+    if (pendingIds.length > 0) {
+      const { data: reports, error: reportsErr } = await supabase
+        .from("match_reports")
+        .select("match_id")
+        .in("match_id", pendingIds);
+      if (reportsErr) {
+        return {
+          error: friendlyDbError(reportsErr, "Meldungen konnten nicht geladen werden."),
+        };
+      }
+      reportedCount = new Set((reports ?? []).map((r) => r.match_id)).size;
+    }
+
     const lost = lostWork(
       rows.filter((m) => m.status === "done").length,
       rows.filter((m) => m.status === "live").length,
+      reportedCount,
     );
     if (lost) {
       return {

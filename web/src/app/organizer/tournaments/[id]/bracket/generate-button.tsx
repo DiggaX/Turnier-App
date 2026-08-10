@@ -15,6 +15,8 @@ export type GenerateButtonProps = {
   decidedCount?: number;
   /** Matches currently being counted, which it would delete too. */
   liveCount?: number;
+  /** Pending matches carrying player reports, which cascade away with them. */
+  reportedCount?: number;
 };
 
 /**
@@ -22,23 +24,26 @@ export type GenerateButtonProps = {
  * error, and refreshes the route on success so the new bracket renders.
  *
  * When `regenerate` is set the label and a confirm step warn that the existing
- * bracket will be replaced. Once there is work in it — released results or a
- * match being counted, the normal state once someone is added late — the dialog
- * names exactly what is about to be lost, and confirming is what unlocks the
- * server's guard. A generic "are you sure" does not carry that: the count is
- * the part that makes someone stop.
+ * bracket will be replaced. Once there is work in it — a released result, a
+ * match being counted, or a report waiting for release, the normal state once
+ * someone is added late — the dialog names exactly what is about to be lost,
+ * and confirming is what unlocks the server's guard. A generic "are you sure"
+ * does not carry that: the count is the part that makes someone stop.
  */
 export function GenerateButton({
   tournamentId,
   regenerate = false,
   decidedCount = 0,
   liveCount = 0,
+  reportedCount = 0,
 }: GenerateButtonProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const lost = regenerate ? lostWork(decidedCount, liveCount) : null;
+  const lost = regenerate
+    ? lostWork(decidedCount, liveCount, reportedCount)
+    : null;
 
   function onClick() {
     if (lost) {

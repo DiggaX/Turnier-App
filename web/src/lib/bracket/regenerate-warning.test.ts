@@ -28,6 +28,17 @@ describe("lostWork", () => {
     });
   });
 
+  it("declines reports on matches nobody released yet", () => {
+    expect(lostWork(0, 0, 1)).toEqual({
+      label: "1 gemeldetes Ergebnis ohne Freigabe",
+      plural: false,
+    });
+    expect(lostWork(0, 0, 2)).toEqual({
+      label: "2 gemeldete Ergebnisse ohne Freigabe",
+      plural: true,
+    });
+  });
+
   it("names both kinds when both exist", () => {
     expect(lostWork(3, 2)).toEqual({
       label: "3 gespielte Ergebnisse und 2 laufende Spiele",
@@ -35,7 +46,16 @@ describe("lostWork", () => {
     });
   });
 
-  it("takes a plural verb once the two singulars add up", () => {
+  it("comma-separates three kinds, 'und' before the last", () => {
+    expect(lostWork(3, 1, 2)).toEqual({
+      label:
+        "3 gespielte Ergebnisse, 1 laufendes Spiel und " +
+        "2 gemeldete Ergebnisse ohne Freigabe",
+      plural: true,
+    });
+  });
+
+  it("takes a plural verb once the singulars add up", () => {
     expect(lostWork(1, 1)).toEqual({
       label: "1 gespieltes Ergebnis und 1 laufendes Spiel",
       plural: true,

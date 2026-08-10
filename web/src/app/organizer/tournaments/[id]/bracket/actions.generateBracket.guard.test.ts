@@ -2,10 +2,10 @@
  * Unit tests for generateBracket's guard on work in the existing bracket.
  *
  * Regenerating deletes every match of the tournament. Since adding a latecomer
- * makes that a mid-tournament action, the action must refuse to take released
- * results — or a match being counted right now — with it, unless the caller
- * explicitly says to. These tests pin that lock down at the action, independent
- * of any browser dialog.
+ * makes that a mid-tournament action, the action must refuse to take existing
+ * work with it unless the caller explicitly says to: released results, matches
+ * being counted right now, and player reports sitting on pending matches. These
+ * tests pin that lock down at the action, independent of any browser dialog.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -23,18 +23,54 @@ vi.mock("@/lib/supabase/server", () => ({
 describe("generateBracket bracket-work guard", () => {
   let matchesSelect: ReturnType<typeof vi.fn>;
   let matchesDelete: ReturnType<typeof vi.fn>;
+  let reportsSelect: ReturnType<typeof vi.fn>;
 
-  /** Staff profile + a matches table holding `done` and `live` rows. */
-  function setup(done: number, live: number) {
-    const rows = [
-      ...Array.from({ length: done }, () => ({ status: "done" })),
-      ...Array.from({ length: live }, () => ({ status: "live" })),
+  /**
+   * Staff profile + a bracket holding `done` / `live` matches and pending ones,
+   * of which `reportedPending` carry player reports.
+   */
+  function setup(options: {
+    done?: number;
+    live?: number;
+    reportedPending?: number;
+    plainPending?: number;
+  }) {
+    const done = options.done ?? 0;
+    const live = options.live ?? 0;
+    const reportedPending = options.reportedPending ?? 0;
+    const plainPending = options.plainPending ?? 0;
+
+    const matchRows = [
+      ...Array.from({ length: done }, (_, i) => ({
+        id: `d${i}`,
+        status: "done",
+      })),
+      ...Array.from({ length: live }, (_, i) => ({
+        id: `l${i}`,
+        status: "live",
+      })),
+      ...Array.from({ length: reportedPending + plainPending }, (_, i) => ({
+        id: `p${i}`,
+        status: "pending",
+      })),
     ];
+    // Two reports on the first reported match: both players said their score.
+    // The guard must count the match once, not the reports.
+    const reportRows = [
+      ...Array.from({ length: reportedPending }, (_, i) => ({
+        match_id: `p${i}`,
+      })),
+      ...(reportedPending > 0 ? [{ match_id: "p0" }] : []),
+    ];
+
     matchesSelect = vi.fn().mockReturnValue({
-      eq: () => ({ in: () => Promise.resolve({ data: rows, error: null }) }),
+      eq: () => Promise.resolve({ data: matchRows, error: null }),
     });
     matchesDelete = vi.fn().mockReturnValue({
       eq: () => Promise.resolve({ error: null }),
+    });
+    reportsSelect = vi.fn().mockReturnValue({
+      in: () => Promise.resolve({ data: reportRows, error: null }),
     });
 
     mockClient = {
@@ -55,6 +91,7 @@ describe("generateBracket bracket-work guard", () => {
         if (table === "matches") {
           return { select: matchesSelect, delete: matchesDelete };
         }
+        if (table === "match_reports") return { select: reportsSelect };
         if (table === "tournaments") {
           // Past the guard the action stops here; "not found" proves it got through.
           return {
@@ -70,50 +107,60 @@ describe("generateBracket bracket-work guard", () => {
     };
   }
 
+  const confirmTail =
+    "Neu generieren löscht das unwiderruflich — bitte ausdrücklich bestätigen.";
+
   beforeEach(() => {
-    setup(0, 0);
+    setup({});
   });
 
   it("refuses while results are released, and deletes nothing", async () => {
-    setup(3, 0);
+    setup({ done: 3 });
     const { generateBracket } = await import("./actions");
     const result = await generateBracket("t1");
 
     expect(result).toEqual({
-      error:
-        "Es gibt bereits 3 gespielte Ergebnisse. " +
-        "Neu generieren löscht das unwiderruflich — bitte ausdrücklich bestätigen.",
+      error: `Es gibt bereits 3 gespielte Ergebnisse. ${confirmTail}`,
     });
     expect(matchesDelete).not.toHaveBeenCalled();
   });
 
   it("refuses while a match is being counted", async () => {
-    setup(0, 1);
+    setup({ live: 1 });
     const { generateBracket } = await import("./actions");
     const result = await generateBracket("t1");
 
     expect(result).toEqual({
-      error:
-        "Es gibt bereits 1 laufendes Spiel. " +
-        "Neu generieren löscht das unwiderruflich — bitte ausdrücklich bestätigen.",
+      error: `Es gibt bereits 1 laufendes Spiel. ${confirmTail}`,
     });
     expect(matchesDelete).not.toHaveBeenCalled();
   });
 
-  it("names both kinds at once", async () => {
-    setup(1, 1);
+  it("refuses over reports on pending matches, counting matches not reports", async () => {
+    setup({ reportedPending: 2, plainPending: 4 });
+    const { generateBracket } = await import("./actions");
+    const result = await generateBracket("t1");
+
+    expect(result).toEqual({
+      error: `Es gibt bereits 2 gemeldete Ergebnisse ohne Freigabe. ${confirmTail}`,
+    });
+    expect(matchesDelete).not.toHaveBeenCalled();
+  });
+
+  it("names all three kinds at once", async () => {
+    setup({ done: 3, live: 1, reportedPending: 2 });
     const { generateBracket } = await import("./actions");
     const result = await generateBracket("t1");
 
     expect(result).toEqual({
       error:
-        "Es gibt bereits 1 gespieltes Ergebnis und 1 laufendes Spiel. " +
-        "Neu generieren löscht das unwiderruflich — bitte ausdrücklich bestätigen.",
+        "Es gibt bereits 3 gespielte Ergebnisse, 1 laufendes Spiel und " +
+        `2 gemeldete Ergebnisse ohne Freigabe. ${confirmTail}`,
     });
   });
 
-  it("proceeds on an untouched bracket", async () => {
-    setup(0, 0);
+  it("proceeds when pending matches carry no reports", async () => {
+    setup({ plainPending: 8 });
     const { generateBracket } = await import("./actions");
     const result = await generateBracket("t1");
 
@@ -121,12 +168,22 @@ describe("generateBracket bracket-work guard", () => {
     expect(result).toEqual({ error: "Turnier nicht gefunden." });
   });
 
+  it("proceeds on an empty bracket without asking for reports", async () => {
+    setup({});
+    const { generateBracket } = await import("./actions");
+    const result = await generateBracket("t1");
+
+    expect(result).toEqual({ error: "Turnier nicht gefunden." });
+    expect(reportsSelect).not.toHaveBeenCalled();
+  });
+
   it("proceeds on explicit confirmation, without re-counting", async () => {
-    setup(3, 2);
+    setup({ done: 3, live: 2, reportedPending: 1 });
     const { generateBracket } = await import("./actions");
     const result = await generateBracket("t1", { discardResults: true });
 
     expect(result).toEqual({ error: "Turnier nicht gefunden." });
     expect(matchesSelect).not.toHaveBeenCalled();
+    expect(reportsSelect).not.toHaveBeenCalled();
   });
 });
