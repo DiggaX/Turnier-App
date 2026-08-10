@@ -5,6 +5,7 @@ import { ScorekeeperQr } from "@/components/scorekeeper-qr";
 import { scorePrefill } from "@/lib/station/station";
 
 import { ConfirmForm } from "./confirm-form";
+import { LiveControl } from "./live-control";
 
 /** A single player report in match (a/b) terms. */
 export type ReportView = {
@@ -141,10 +142,26 @@ export function ReportRow({ match }: { match: MatchRowView }) {
         match.status !== "done" &&
         match.status !== "bye" &&
         bothSlotsFilled && (
-          <ScorekeeperQr
-            token={match.scorekeeperToken}
-            label={"Scorekeeper-QR fuer " + aLabel + " gegen " + bLabel}
-          />
+          <>
+            <ScorekeeperQr
+              token={match.scorekeeperToken}
+              label={"Scorekeeper-QR fuer " + aLabel + " gegen " + bLabel}
+            />
+            {/* Same controls as the QR leads to — for when nobody scans it. */}
+            <LiveControl
+              token={match.scorekeeperToken}
+              match={{
+                status: match.status,
+                participant_a_name: match.aName,
+                participant_b_name: match.bName,
+                live_score_a: match.liveScoreA,
+                live_score_b: match.liveScoreB,
+                live_ended_at: match.liveEndedAt,
+                score_a: match.scoreA,
+                score_b: match.scoreB,
+              }}
+            />
+          </>
         )}
       {match.status === "done" ? (
         <div
