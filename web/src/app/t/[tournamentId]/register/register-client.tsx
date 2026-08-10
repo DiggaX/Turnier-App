@@ -1,12 +1,17 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  ensureGuestSession,
+  isGuestUser,
+  STAFF_SESSION_MESSAGE,
+} from "@/lib/supabase/guest-session";
 import type { Database } from "@/lib/database.types";
 import { friendlyDbError, isUniqueViolation } from "@/lib/db-errors";
 import { Button } from "@/components/ui/button";
@@ -79,23 +84,28 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
   const signInRef = useRef<Promise<string> | null>(null);
 
   const ensureSession = useCallback((): Promise<string> => {
-    signInRef.current ??= (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.user) return session.user.id;
-      const { data, error } = await supabase.auth.signInAnonymously();
-      if (error || !data.user) {
-        throw new Error(
-          "Anmeldung konnte nicht gestartet werden. Bitte versuche es erneut.",
-        );
-      }
-      return data.user.id;
-    })().catch((e) => {
+    signInRef.current ??= ensureGuestSession(supabase.auth).catch((e) => {
       signInRef.current = null; // allow retry on failure
       throw e;
     });
     return signInRef.current;
+  }, [supabase]);
+
+  // A signed-in staff/organizer account must not register as a guest — see
+  // ensureGuestSession. That guard runs at submit time; this read-only check
+  // (never a sign-in, so Strict Mode's double effect is harmless) surfaces it
+  // before the form is filled in.
+  const [accountSession, setAccountSession] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!cancelled && session && !isGuestUser(session.user)) {
+        setAccountSession(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [supabase]);
 
   const [step, setStep] = useState<Step>("form");
@@ -270,6 +280,32 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
         getUid={ensureSession}
         onDone={() => setStep("done")}
       />
+    );
+  }
+
+  if (accountSession) {
+    return (
+      <ParticipantShell
+        eyebrow={`/ ${tournament.name} / Register`}
+        heading="Anmeldung"
+      >
+        <div className="rounded-2xl border border-warn/35 bg-warn/[0.08] p-6">
+          <div className="mb-2 font-display text-[11px] font-semibold uppercase tracking-[0.12em] text-warn">
+            ⚠ Angemeldet mit einem Konto
+          </div>
+          <p className="text-sm leading-relaxed text-fg-muted">
+            {STAFF_SESSION_MESSAGE}
+          </p>
+        </div>
+        <Button
+          render={<a href={`/t/${tournament.id}`} />}
+          nativeButton={false}
+          variant="outline"
+          className="mt-4 h-12 w-full font-display text-sm font-bold uppercase tracking-wider"
+        >
+          Zurück zum Turnier
+        </Button>
+      </ParticipantShell>
     );
   }
 
