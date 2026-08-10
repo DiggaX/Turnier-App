@@ -52,11 +52,12 @@ export default async function ParticipantsPage({
     id: string;
     name: string;
     org_id: string;
+    team_size: number;
   }>(
     supabase,
     id,
     profile.org_id as string | null,
-    "id, name, org_id",
+    "id, name, org_id, team_size",
   );
 
   // Single query: embed consents (FK consents.participant_id -> participants.id)
@@ -95,7 +96,10 @@ export default async function ParticipantsPage({
             {rows.length} Teilnehmer
           </div>
 
-          <AddParticipantForm tournamentId={id} />
+          <AddParticipantForm
+            tournamentId={id}
+            teamSize={tournament.team_size ?? 1}
+          />
 
           {rows.length === 0 ? (
             <p className="text-sm text-fg-muted">

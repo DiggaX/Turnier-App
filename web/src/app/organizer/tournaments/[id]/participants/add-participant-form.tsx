@@ -10,22 +10,46 @@ import { Label } from "@/components/ui/label";
 
 import { addParticipant } from "./actions";
 
+type MemberDraft = { name: string; gamertag: string };
+
+const emptyRoster = (size: number): MemberDraft[] =>
+  Array.from({ length: size }, () => ({ name: "", gamertag: "" }));
+
 /**
- * Nachmeldung at the desk: name, birthdate, optional gamertag.
+ * Nachmeldung at the desk: name, birthdate, optional gamertag — plus the roster
+ * on a team tournament, because a 3v3 entry with no players in it is not an
+ * entry. The first row is the captain, matching what the public registration
+ * writes.
  *
- * Collapsed by default — at an event the participant list is what staff reads,
+ * Collapsed by default: at an event the participant list is what staff reads,
  * the form is what they occasionally need. Birthdate uses the native date input
  * so phones show their own picker.
  */
-export function AddParticipantForm({ tournamentId }: { tournamentId: string }) {
+export function AddParticipantForm({
+  tournamentId,
+  teamSize = 1,
+}: {
+  tournamentId: string;
+  teamSize?: number;
+}) {
+  const isTeam = teamSize > 1;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [displayName, setDisplayName] = useState("");
   const [birthdate, setBirthdate] = useState("");
   const [gamertag, setGamertag] = useState("");
+  const [members, setMembers] = useState<MemberDraft[]>(() =>
+    emptyRoster(teamSize),
+  );
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState<string | null>(null);
+
+  function updateMember(index: number, patch: Partial<MemberDraft>) {
+    setMembers((prev) =>
+      prev.map((m, i) => (i === index ? { ...m, ...patch } : m)),
+    );
+  }
 
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -38,6 +62,7 @@ export function AddParticipantForm({ tournamentId }: { tournamentId: string }) {
         name,
         birthdate,
         gamertag,
+        isTeam ? members : [],
       );
       if ("error" in result) {
         setError(result.error);
@@ -47,6 +72,7 @@ export function AddParticipantForm({ tournamentId }: { tournamentId: string }) {
       setDisplayName("");
       setBirthdate("");
       setGamertag("");
+      setMembers(emptyRoster(teamSize));
       router.refresh();
     });
   }
@@ -61,7 +87,7 @@ export function AddParticipantForm({ tournamentId }: { tournamentId: string }) {
           onClick={() => setOpen(true)}
         >
           <UserPlus data-icon="inline-start" />
-          Teilnehmer nachmelden
+          {isTeam ? "Team nachmelden" : "Teilnehmer nachmelden"}
         </Button>
         {added && (
           <p className="text-sm text-lime" role="status">
@@ -78,12 +104,12 @@ export function AddParticipantForm({ tournamentId }: { tournamentId: string }) {
       className="mb-6 flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5"
     >
       <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
-        Teilnehmer nachmelden
+        {isTeam ? `Team nachmelden · ${teamSize}v${teamSize}` : "Teilnehmer nachmelden"}
       </h2>
 
       <div className="flex flex-col gap-4 sm:flex-row">
         <div className="flex flex-1 flex-col gap-1.5">
-          <Label htmlFor="add-name">Anzeigename</Label>
+          <Label htmlFor="add-name">{isTeam ? "Teamname" : "Anzeigename"}</Label>
           <Input
             id="add-name"
             value={displayName}
@@ -93,7 +119,9 @@ export function AddParticipantForm({ tournamentId }: { tournamentId: string }) {
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="add-birthdate">Geburtsdatum</Label>
+          <Label htmlFor="add-birthdate">
+            {isTeam ? "Geburtsdatum Captain" : "Geburtsdatum"}
+          </Label>
           <Input
             id="add-birthdate"
             type="date"
@@ -103,7 +131,9 @@ export function AddParticipantForm({ tournamentId }: { tournamentId: string }) {
           />
         </div>
         <div className="flex flex-1 flex-col gap-1.5">
-          <Label htmlFor="add-gamertag">Gamertag (optional)</Label>
+          <Label htmlFor="add-gamertag">
+            {isTeam ? "Team-Tag (optional)" : "Gamertag (optional)"}
+          </Label>
           <Input
             id="add-gamertag"
             value={gamertag}
@@ -112,6 +142,40 @@ export function AddParticipantForm({ tournamentId }: { tournamentId: string }) {
           />
         </div>
       </div>
+
+      {isTeam && (
+        <fieldset className="flex flex-col gap-3 border-t border-line pt-4">
+          <legend className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+            Aufstellung
+          </legend>
+          {members.map((member, i) => (
+            <div key={i} className="flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor={`add-member-${i}`}>
+                  {i === 0 ? "Captain" : `Spieler ${i + 1}`}
+                  {i > 0 && " (optional)"}
+                </Label>
+                <Input
+                  id={`add-member-${i}`}
+                  value={member.name}
+                  onChange={(e) => updateMember(i, { name: e.target.value })}
+                  autoComplete="off"
+                  required={i === 0}
+                />
+              </div>
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor={`add-member-tag-${i}`}>Gamertag (optional)</Label>
+                <Input
+                  id={`add-member-tag-${i}`}
+                  value={member.gamertag}
+                  onChange={(e) => updateMember(i, { gamertag: e.target.value })}
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+          ))}
+        </fieldset>
+      )}
 
       <p className="text-xs text-fg-dim">
         Wird sofort eingecheckt. Kein Konto und keine Fotoerlaubnis — die

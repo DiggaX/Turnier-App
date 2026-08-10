@@ -127,6 +127,7 @@ function setupAdd(options?: {
   teamSize?: number | null;
   tournamentMissing?: boolean;
   insertError?: { code: string; message: string };
+  memberError?: { code: string; message: string };
   checkInError?: { code: string; message: string };
 }) {
   const insert = vi.fn().mockReturnValue({
@@ -139,6 +140,9 @@ function setupAdd(options?: {
         ),
     }),
   });
+  const memberInsert = vi
+    .fn()
+    .mockResolvedValue({ error: options?.memberError ?? null });
   const rpc = vi
     .fn()
     .mockResolvedValue({ error: options?.checkInError ?? null });
@@ -159,10 +163,11 @@ function setupAdd(options?: {
       };
     }
     if (table === "participants") return { insert };
+    if (table === "team_members") return { insert: memberInsert };
     return {};
   });
   mockSupabase.rpc = rpc;
-  return { insert, rpc };
+  return { insert, memberInsert, rpc };
 }
 
 describe("addParticipant", () => {
@@ -222,13 +227,62 @@ describe("addParticipant", () => {
     });
   });
 
-  it("uses the team type when the tournament is not solo", async () => {
-    const { insert } = setupAdd({ teamSize: 2 });
+  it("writes no roster on a solo tournament", async () => {
+    const { memberInsert } = setupAdd({ teamSize: 1 });
     const { addParticipant } = await import("./actions");
-    await addParticipant("t1", "Team Rakete", "2013-04-10", null);
+    // Members passed by mistake must not turn a solo entry into a team.
+    await addParticipant("t1", "Luuk", "2013-04-10", null, [{ name: "Wer?" }]);
+    expect(memberInsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses a team without a single player", async () => {
+    const { insert } = setupAdd({ teamSize: 3 });
+    const { addParticipant } = await import("./actions");
+    const blank = [{ name: "  " }, { name: "" }, { name: "" }];
+    const result = await addParticipant("t1", "Team Rakete", "2013-04-10", null, blank);
+
+    expect(result).toEqual({
+      error: "Bitte mindestens einen Spieler für das Team eintragen.",
+    });
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("writes the roster, first name captain, blanks dropped", async () => {
+    const { insert, memberInsert } = setupAdd({ teamSize: 3 });
+    const { addParticipant } = await import("./actions");
+    const result = await addParticipant("t1", "Team Rakete", "2013-04-10", "TR", [
+      { name: " Ada ", gamertag: " ada99 " },
+      { name: "Bo", gamertag: "" },
+      { name: "   " },
+    ]);
+
+    expect(result).toEqual({ ok: true });
     expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "team", gamertag: null }),
+      expect.objectContaining({ type: "team", display_name: "Team Rakete" }),
     );
+    expect(memberInsert).toHaveBeenCalledWith([
+      {
+        participant_id: "p-new",
+        name: "Ada",
+        gamertag: "ada99",
+        is_captain: true,
+      },
+      { participant_id: "p-new", name: "Bo", gamertag: null, is_captain: false },
+    ]);
+  });
+
+  it("says the team exists when only the roster failed", async () => {
+    setupAdd({ teamSize: 3, memberError: { code: "42501", message: "rls" } });
+    const { addParticipant } = await import("./actions");
+    const result = await addParticipant("t1", "Team Rakete", "2013-04-10", null, [
+      { name: "Ada" },
+    ]);
+
+    expect(result).toEqual({
+      error:
+        "Team Rakete wurde angelegt, aber die Mitglieder konnten nicht " +
+        "gespeichert werden. Bitte auf der Teilnehmerseite ergänzen.",
+    });
   });
 
   it("propagates DB error from insert", async () => {

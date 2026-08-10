@@ -71,6 +71,9 @@ export async function manualCheckIn(id: string, tournamentId: string): Promise<A
   return { ok: true };
 }
 
+/** One roster row for a team walk-in. Blank names are dropped. */
+export type NewTeamMember = { name: string; gamertag?: string | null };
+
 /**
  * Nachmeldung: add someone who turns up after registration closed.
  *
@@ -81,6 +84,10 @@ export async function manualCheckIn(id: string, tournamentId: string): Promise<A
  * and checks them in right away, since someone standing at the desk is by
  * definition present.
  *
+ * On a team tournament `members` is the roster, first entry the captain, same
+ * shape the public form writes. A team without players is not a team: for
+ * team_size > 1 at least one name is required.
+ *
  * Note this does NOT touch the bracket. An already generated bracket has to be
  * regenerated for the new entrant to get a match.
  */
@@ -89,6 +96,7 @@ export async function addParticipant(
   displayName: string,
   birthdate: string,
   gamertag: string | null,
+  members: NewTeamMember[] = [],
 ): Promise<ActionResult> {
   const guard = await requireStaff();
   if ("error" in guard) return guard;
@@ -99,8 +107,7 @@ export async function addParticipant(
     return { error: "Bitte ein gültiges Geburtsdatum eingeben." };
   }
 
-  // team_size decides solo vs team; team members stay empty and can be filled
-  // in on the participant's page afterwards.
+  // team_size decides solo vs team, and whether a roster is required.
   const { data: tournament } = await guard.supabase
     .from("tournaments")
     .select("id, team_size")
@@ -108,12 +115,24 @@ export async function addParticipant(
     .maybeSingle();
   if (!tournament) return { error: "Turnier wurde nicht gefunden." };
 
+  const isTeam = (tournament.team_size ?? 1) > 1;
+  const roster = members
+    .map((m) => ({
+      name: m.name?.trim() ?? "",
+      gamertag: m.gamertag?.trim() || null,
+    }))
+    .filter((m) => m.name.length > 0);
+
+  if (isTeam && roster.length === 0) {
+    return { error: "Bitte mindestens einen Spieler für das Team eintragen." };
+  }
+
   const { data: participant, error: insErr } = await guard.supabase
     .from("participants")
     .insert({
       tournament_id: tournamentId,
       user_id: null,
-      type: (tournament.team_size ?? 1) > 1 ? "team" : "solo",
+      type: isTeam ? "team" : "solo",
       display_name: name,
       gamertag: gamertag?.trim() || null,
       birthdate: birthdate.trim(),
@@ -123,6 +142,25 @@ export async function addParticipant(
 
   if (insErr || !participant) {
     return { error: friendlyDbError(insErr, "Teilnehmer konnte nicht angelegt werden.") };
+  }
+
+  // First name is the captain, same as the public registration writes it.
+  if (isTeam) {
+    const { error: memberErr } = await guard.supabase.from("team_members").insert(
+      roster.map((m, i) => ({
+        participant_id: participant.id,
+        name: m.name,
+        gamertag: m.gamertag,
+        is_captain: i === 0,
+      })),
+    );
+    if (memberErr) {
+      return {
+        error:
+          `${name} wurde angelegt, aber die Mitglieder konnten nicht ` +
+          "gespeichert werden. Bitte auf der Teilnehmerseite ergänzen.",
+      };
+    }
   }
 
   // Separate step on purpose: check_in writes the audit row that says a human
