@@ -139,6 +139,47 @@ Site URL + Redirect-Liste geprüft, **Anonymous-Rate-Limit 30 → 200/h**.
   Absender korrekt, Link in der `token_hash`-Form, **in einem fremden Browser geöffnet** → landet
   im Reset-Modus. Cross-Device funktioniert damit real, nicht nur auf dem Papier.
 
+### Neu am 2026-08-10 (Fotoerlaubnis: freiwillig, nachweisbar, druckbar)
+
+**Die Einwilligung ist keine Zutrittsbedingung mehr** (`0f8d0fd`, Migration
+`20260810090000_photo_consent_optional.sql`). Trigger `trg_checkin_requires_consent`,
+`enforce_consent_before_checkin()` und `participant_has_valid_consent()` sind **gelöscht**.
+
+- Vorher kam ein Kind ohne Eltern-Unterschrift gar nicht ins Turnier — der Check-in wurde in der
+  DB abgelehnt. Wer nicht fotografiert werden will, nimmt trotzdem teil; das ist die Entscheidung
+  des Veranstalters, nicht der Datenbank. Ihr Vorliegen wird jetzt nur noch **angezeigt**.
+- Anmeldeschritt 2 heißt „Fotoerlaubnis (optional)" und hat einen zweiten, gleichwertigen Weg:
+  **„Ohne Fotoerlaubnis fortfahren"** schreibt keine `consents`-Zeile und beendet die Anmeldung.
+- Neue Spalten: `consents.address` (das „wohnhaft" des Papierformulars, in der UI Pflicht bei
+  Erteilung), `consents.consent_text`, `organizations.address`. Dazu der **Unique-Index
+  `consents_participant_id_key`** — `consent-step.tsx` behandelte die Verletzung längst, nur der
+  Index fehlte, Doppelzeilen waren möglich.
+- ⚠️ **`consent_text` ist ein Snapshot, kein Verweis.** Der Wortlaut kann sich ändern, eine
+  erteilte Einwilligung nicht rückwirkend. Zeilen von **vor** dem 2026-08-10 haben `null` — dafür
+  gibt es `storedConsentText()` in `lib/consent-text.ts`, das auf `LEGACY_CONSENT_TEXT` zurückfällt
+  (den Satz, der damals wirklich auf dem Schirm stand). Nie durch den heutigen Text ersetzen.
+- Blau (Token `cyan`) heißt „Fotoerlaubnis liegt vor": Scan-Karte (`resultContent` →
+  Ton `cyan`, Detail „Eingecheckt · Fotoerlaubnis erteilt"), Anwesenheitsliste, Teilnehmerliste,
+  `/me`. Der Chip steckt in `components/brand/photo-consent-chip.tsx` — **fehlend ist grau, nicht
+  rot**, es ist der zweite Normalfall. Der `ScanStatus`-Zweig `"consent"` ist ersatzlos raus.
+- Verifiziert in Produktion: Minderjähriger ohne Erlaubnis meldet sich an und checkt ein;
+  Anwesenheitsliste zeigt 15× blau, 2× grau.
+
+**Nachweis-Ausdruck für die Unterlagen** (`b47a4b1`): `/organizer/tournaments/<id>/consents`,
+verlinkt oben rechts auf der Teilnehmerseite. Ein A4-Blatt pro Person mit Name, Anschrift, dem
+zugestimmten Wortlaut, Datum und der Unterschrift.
+
+- **Kein PDF-Generator und keine neue Dependency.** Der Browser druckt seit Jahren nach PDF; der
+  Knopf ruft `window.print()`, im Dialog wählt man „Als PDF speichern". Nur `@page` und die
+  Seitenumbrüche brauchen echtes CSS (inline im Server-Component), der Rest ist Tailwinds
+  `print:`-Variante.
+- Die Unterschriften liegen im **privaten** Bucket: ein `createSignedUrls(paths, 600)` für alle
+  Blätter zusammen. Ohne signierte Links bleibt im Ausdruck ein leeres Kästchen.
+
+**Org-Stammdaten gesetzt:** Name **„Tourismus-Service Fehmarn"**, Anschrift „Zur Strandpromenade 4,
+23769 Fehmarn" — beides pflegbar unter `/organizer/members` (`setOrgAddress`). Die Anschrift steht
+im Einwilligungstext; fehlt sie, nennt der Satz nur den Namen. Der Slug bleibt `testverein-fehmarn`.
+
 **Aktueller Datenstand:** DB wurde am 2026-08-07 komplett geleert und neu befüllt. Org **„Abenteuerinsel Fehmarn"** (slug bleibt `testverein-fehmarn`). Admins: `organizer@test.de` / `test1234` (nur Passwort-Login) und `rene.moellers@gmx.de` (Magic Link). Turniere: „Misson: Next Level EA Sports 2026" (Anmeldung offen), „Misson: Next Level Rocket League 2026" (Entwurf), „Sommer Cup 2026" (archiviert).
 
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
@@ -165,7 +206,20 @@ Site URL + Redirect-Liste geprüft, **Anonymous-Rate-Limit 30 → 200/h**.
 - **Iteration 2** (`55d2c32`): Der Platzhalter „Handscanner bereit" ist ersatzlos raus — er wiederholte nur den Modus-Schalter und schob das Ergebnis nach unten. Im Handscanner-Modus steht die Ergebnis-Karte jetzt ganz oben, im Kamera-Modus liegt sie als **Overlay über dem Livebild** (`variant="overlay"` in `scan-result-card.tsx`). ⚠️ **Die Ton-Füllungen sind durchscheinend** (`bg-lime/10` usw.) — über Video braucht die Karte eine deckende Ebene, und die muss ein **eigenes Element** sein: zwei Hintergrund-Utilities auf einem Knoten entscheidet die Stylesheet-Reihenfolge, nicht die Reihenfolge im `class`-String. Idle rendert im Overlay nur `sr-only`, der `aria-live`-Container bleibt aber montiert (eine Live-Region, die zusammen mit ihrer ersten Meldung erscheint, wird unzuverlässig vorgelesen).
 - **Anwesenheitsliste synct nach Scans:** `handleToken` ruft im Erfolgszweig `router.refresh()` (aktualisiert Tabelle **und** den „x von y anwesend"-Zähler, Client-State bleibt erhalten). Bewusst **nur** bei Erfolg — „schon anwesend" bricht vor dem RPC ab, Fehler schreiben nichts. Kein Realtime: andere Geräte sieht man weiterhin erst beim eigenen Reload.
 - **Manueller Check-in:** neue `checkin_method` **`manual`** (`20260808090000_manual_checkin.sql`) + Server-Action `manualCheckIn` und ein „Einchecken"-Knopf in der Anwesenheitsliste — Gegenstück zu „Zurücksetzen", für kaputten QR oder leeres Handy. Guard brauchte keine Änderung: `check_in` behandelt seit dem Kanal-Commit jede Methode außerhalb der Self-Service-Allowlist automatisch als Staff-only. Ende-zu-Ende verifiziert (Zeile mit `method='manual'` in `check_ins`).
-1. **e2e nie ausgeführt:** ~20 Specs in `web/e2e/*.spec.ts` sind geschrieben, aber nur build+unit-grün. Brauchen lokalen Dev-Server + Test-Creds (`E2E_ORG_EMAIL`/`E2E_ORG_PASSWORD`). ⚠️ Nach dem DB-Wipe zeigen sie ggf. auf nicht mehr existierende Fixtures. Kein aktives e2e-Sicherheitsnetz.
+1. **e2e am 2026-08-10 ausgeführt — 19 von 28 rot, beide Ursachen liegen NICHT im Code:**
+   (a) **Kein Turnier steht mehr auf `registration`.** Vier Specs (`register-*`, `checkin-*`) greifen
+   sich per `.eq("status","registration").limit(1).single()` das erstbeste offene Turnier; gibt es
+   keins, sterben sie mit *„Cannot coerce the result to a single JSON object"*, und „Sommer Cup 2026"
+   ist zusätzlich archiviert. (b) **`E2E_ORG_PASSWORD` in `web/.env.local` ist veraltet** —
+   `login.spec` bleibt nach dem Absenden auf `/login` stehen, was nach dem heutigen Passwort-Reset
+   plausibel ist. Alles, was einen Organizer-Login braucht, hängt daran.
+   **Gegenprobe:** mit einem eigens angelegten offenen Wegwerf-Turnier liefen die vier geänderten
+   Specs **5/5 grün** (register-solo, register-minor ×2, checkin-online, checkin-station); das
+   Turnier wurde danach gelöscht, 0 `E2E %`-Teilnehmer blieben zurück.
+   ⚠️ **Die vier Specs sollten sich ihr Turnier selbst anlegen** wie die Fixture-Specs
+   (`e2e/fixtures.ts`), statt sich fremde Produktionsdaten zu greifen — solange sie das nicht tun,
+   ist die Suite bei jedem echten Turnierende rot **und** sie schreibt Testteilnehmer in ein
+   laufendes Event.
 2. **Cross-Device: für Reset erledigt, für Magic Link weiter offen.** Am 2026-08-10 wurde **nur** das
    *Reset-Password*-Template auf die `token_hash`-Form umgestellt (bewusst, das Magic-Link-Template ist
    eine eigene Entscheidung). ⚠️ **Und dabei fiel eine Annahme in §6 um:** der Token in der Mail trägt
@@ -173,7 +227,7 @@ Site URL + Redirect-Liste geprüft, **Anonymous-Rate-Limit 30 → 200/h**.
    hergeleitet. Das Präfix bindet nur den `?code=`-Pfad über `exchangeCodeForSession`; `verifyOtp` mit
    `token_hash` braucht den Verifier nicht. Wer den Magic Link umstellt, sollte also nicht mit
    „PKCE geht sowieso nicht cross-device" argumentieren — der Grund ist allein die Linkform.
-3. **36 verwaiste Storage-Objekte** aus der Zeit vor dem Wipe. Per SQL nicht löschbar (Supabase blockt), nur über Dashboard/Storage-API.
+3. **39 verwaiste Storage-Objekte** im Bucket `consent-signatures` (Stand 2026-08-10: 54 Objekte, davon 39 ohne zugehörige `consents`-Zeile — Reste gelöschter Test-Teilnehmer). Per SQL nicht löschbar (Supabase blockt mit „Use Storage API"), nur über Dashboard/Service-Role. ⚠️ Das sind **Unterschriften von Erziehungsberechtigten** — Datenminimierung spricht dafür, sie wegzuräumen, nicht liegen zu lassen. Prüfquery: `select count(*) from storage.objects o where bucket_id='consent-signatures' and not exists (select 1 from consents c where c.signature_path = o.name);`
 4. **Push** nie auf echtem Gerät getestet (VAPID-Keys sind gesetzt).
 5. **Datei-Hygiene:** zwei Migrationen teilen den Timestamp `20260628090000`. Live-DB korrekt, nur Datei-Kollision; bei Gelegenheit umbenennen (NICHT neu anwenden).
 6. ✅ **Geleakter `sb_secret_…`-Key ist rotiert** (laut `docs/FORTSCHRITT.md` am 2026-06-18). Diese Zeile stand bis 2026-08-09 fälschlich als offen und hat zu falschen Empfehlungen geführt. Am 2026-08-09 geprüft: in der gesamten Historie taucht nur die geschwärzte Form `sb_secret_…` auf, nie ein Key-Wert; `.gitignore` deckt `.env*` ab, getrackt ist allein `web/.env.example`.
@@ -220,6 +274,15 @@ Site URL + Redirect-Liste geprüft, **Anonymous-Rate-Limit 30 → 200/h**.
     Gegenmaßnahmen stehen ohnehin schon in §4: `git status` nach jedem Workflow, und Temporärdateien
     gehören ins Scratchpad, nie ins Repo.
 
+16. **Fotoerlaubnis — was bewusst fehlt** (siehe §5): **kein Widerruf** (eine erteilte Erlaubnis lässt
+    sich in der App nicht zurückziehen oder löschen — DSGVO-seitig der nächste ehrliche Handgriff),
+    **kein Nachtragen** (weder auf `/me` noch am Check-in-Tresen, wenn jemand vor Ort das Papier
+    unterschreibt) und **kein Sammel-Export** außer dem Ausdruck. Alles drei war beim Bau explizit
+    abgewählt, nicht vergessen.
+17. **Vier alte `consents`-Zeilen ohne Anschrift und Wortlaut** (erteilt vor dem 2026-08-10, im
+    EA-Sports-Turnier: Linus Augsten, Maxi, Nico, Supermats1). Der Ausdruck zeigt für sie „wohnhaft —"
+    und den Alt-Satz. Nicht nachträglich auffüllen — was nicht erhoben wurde, wurde nicht erhoben.
+
 ## 8. Datei-Landkarte
 - `web/src/app/` — Routen. Öffentlich: `page.tsx`, `o/[slug]/`, `t/[tournamentId]/{,register,me,board,checkin-station}`. Auth: `(auth)/login`, `(auth)/signup`, `auth/confirm/route.ts`, `link/[token]/route.ts` (Geräte-Kopplung). Organizer: `organizer/`, `games`, `members` (Org-Name + Geräte + Mitglieder), `tournaments/[id]/{,bracket,matches,participants,checkin,station}`. Scorekeeper: `score/[token]/`.
 - `web/src/lib/` — `bracket/`, `swiss/`, `groups/`, `standings.ts`, `tournament/lifecycle.ts`, `org/`, `auth/{staff,org-tournament,device-pairing,device-label}.ts`, `supabase/{server,client,public,admin}.ts`, `format-date.ts`, `hardware-scan.ts`, `scan-feedback.ts`, `push/`, `station/`, `db-errors.ts`, `database.types.ts`.
@@ -227,6 +290,7 @@ Site URL + Redirect-Liste geprüft, **Anonymous-Rate-Limit 30 → 200/h**.
 - **Passwort-Flow (neu 2026-08-10):** `web/src/app/(auth)/passwort/` (`actions.ts` + `actions.test.ts`, `page.tsx` = Modus-Weiche, `password-form.tsx`, `vergessen/`), `web/src/lib/auth/recovery.ts` (Cookie-Name + `hasRecoveryCookie`), `web/src/lib/origin.ts` (aus `login/actions.ts` herausgelöst — dort wäre jeder Export eine aufrufbare Server-Action gewesen). Routing sitzt in `auth/confirm/route.ts`.
 - **Zugang-sichern (neu 2026-08-10):** `web/src/components/ui/alert-dialog.tsx` (Base-UI-Wrapper), `web/src/app/t/[tournamentId]/register/save-access-dialog.tsx` (+ Test), `web/src/components/qr-actions.tsx` (`variant="bare"` + exportiertes `participantRecoveryUrl`, damit angezeigte und kopierte URL nicht auseinanderlaufen).
 - `supabase/migrations/` — alle live angewandt. Neu: `20260807170000_tournament_archive.sql`, `20260807200000_device_pairing.sql`, `20260808060000_checkin_scan_channel.sql`, `20260810090000_photo_consent_optional.sql`, `20260810120000_participants_insert_staff.sql`, `20260810140000_participant_link_writes.sql`.
+- **Fotoerlaubnis (neu 2026-08-10):** `web/src/lib/consent-text.ts` (+ Test) — Wortlaut, Legacy-Fallback; `web/src/app/t/[tournamentId]/register/consent-step.tsx` (`PhotoConsentStep`, optional); `web/src/components/brand/photo-consent-chip.tsx`; Ausdruck unter `web/src/app/organizer/tournaments/[id]/consents/` (`page.tsx` + `print-button.tsx`).
 - `docs/superpowers/{specs,plans}/` — Designs + Pläne. `docs/DEPLOY.md` — Deploy/Setup-Notizen.
 - Brain (Obsidian, NICHT im Repo): `C:\Users\Rene\Documents\Zweites-Gehirn\02 Projekte\Turnier-App\`.
 
