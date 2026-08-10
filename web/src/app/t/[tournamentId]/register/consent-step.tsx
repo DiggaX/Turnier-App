@@ -185,10 +185,11 @@ export function PhotoConsentStep({
           {method === "checkbox" ? (
             <>
               <Label className="items-start gap-3 rounded-xl border border-line bg-surface-2/60 p-4">
+                {/* No aria-label: the wrapping Label already names it, and Base UI
+                    concatenates the two into a stuttering announcement. */}
                 <Checkbox
                   checked={checked}
                   onCheckedChange={(value) => setChecked(value)}
-                  aria-label="Fotoerlaubnis erteilen"
                 />
                 <span className="leading-snug text-fg-muted">
                   {consentText}
