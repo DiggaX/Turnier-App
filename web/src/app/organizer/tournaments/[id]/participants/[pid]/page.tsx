@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
+import { PhotoConsentChip } from "@/components/brand/photo-consent-chip";
 import { QrCode } from "@/components/qr-code";
 import { createClient } from "@/lib/supabase/server";
 import { requireOrgTournament } from "@/lib/auth/org-tournament";
@@ -108,18 +109,10 @@ export default async function ParticipantDetailPage({
                 </dd>
 
                 <dt className="font-display text-[10px] uppercase tracking-[0.12em] text-fg-dim">
-                  Einwilligung
+                  Fotoerlaubnis
                 </dt>
                 <dd>
-                  {hasConsent ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-md bg-lime/15 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-lime">
-                      Erteilt
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-md bg-live/15 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-live">
-                      Keine
-                    </span>
-                  )}
+                  <PhotoConsentChip granted={hasConsent} />
                 </dd>
 
                 <dt className="font-display text-[10px] uppercase tracking-[0.12em] text-fg-dim">

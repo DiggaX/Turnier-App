@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { OrganizerNav } from "@/components/brand/organizer-nav";
 import { TournamentTabs } from "@/components/brand/tournament-tabs";
+import { PhotoConsentChip } from "@/components/brand/photo-consent-chip";
 import {
   Table,
   TableBody,
@@ -112,7 +113,7 @@ export default async function ParticipantsPage({
                       Typ
                     </TableHead>
                     <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
-                      Einwilligung
+                      Fotoerlaubnis
                     </TableHead>
                     <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
                       Check-in
@@ -143,15 +144,7 @@ export default async function ParticipantsPage({
                           {TYPE_LABELS[participant.type] ?? participant.type}
                         </TableCell>
                         <TableCell>
-                          {hasConsent ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-md bg-lime/15 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-lime">
-                              Erteilt
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 rounded-md bg-live/15 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-live">
-                              Keine
-                            </span>
-                          )}
+                          <PhotoConsentChip granted={hasConsent} />
                         </TableCell>
                         <TableCell>
                           {participant.checked_in_at ? (

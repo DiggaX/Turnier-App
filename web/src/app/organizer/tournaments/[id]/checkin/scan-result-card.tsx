@@ -9,13 +9,12 @@ import { formatShortDateTime } from "@/lib/format-date";
 
 export type ScanStatus =
   | { kind: "idle" }
-  | { kind: "success"; name: string }
-  | { kind: "already"; name: string; since: string }
+  | { kind: "success"; name: string; photoConsent: boolean }
+  | { kind: "already"; name: string; since: string; photoConsent: boolean }
   | { kind: "unknown" }
-  | { kind: "consent" }
   | { kind: "error" };
 
-export type ResultTone = "lime" | "warn" | "live";
+export type ResultTone = "lime" | "cyan" | "warn" | "live";
 
 /**
  * What a scan outcome says on screen. Pure, and exported so the wording can be
@@ -30,27 +29,32 @@ export function resultContent(status: Exclude<ScanStatus, { kind: "idle" }>): {
   detail: string;
 } {
   switch (status.kind) {
+    // Blau statt grün, wenn eine Fotoerlaubnis vorliegt: das ist am Einlass die
+    // eine Sache, die zusätzlich zum "ist drin" beim Blick auf die Karte
+    // hängenbleiben muss — Fotografen fragen genau danach.
     case "success":
-      return { tone: "lime", headline: status.name, detail: "Eingecheckt" };
+      return status.photoConsent
+        ? {
+            tone: "cyan",
+            headline: status.name,
+            detail: "Eingecheckt · Fotoerlaubnis erteilt",
+          }
+        : { tone: "lime", headline: status.name, detail: "Eingecheckt" };
     case "already":
       return {
         tone: "warn",
         headline: status.name,
         // Never toLocaleString here: server and browser disagree on the zone and
         // React aborts hydration on the mismatch (see lib/format-date).
-        detail: `Schon anwesend — seit ${formatShortDateTime(status.since)}`,
+        detail:
+          `Schon anwesend — seit ${formatShortDateTime(status.since)}` +
+          (status.photoConsent ? " · Fotoerlaubnis erteilt" : ""),
       };
     case "unknown":
       return {
         tone: "live",
         headline: "QR nicht erkannt",
         detail: "Der Code gehört zu keinem Teilnehmer.",
-      };
-    case "consent":
-      return {
-        tone: "live",
-        headline: "Einwilligung fehlt",
-        detail: "Check-in erst nach vorliegender Einwilligung.",
       };
     case "error":
       return {
@@ -71,6 +75,12 @@ const TONE: Record<
     icon: "text-lime",
     detail: "text-lime",
     bar: "bg-lime",
+  },
+  cyan: {
+    card: "border-cyan/40 bg-cyan/10",
+    icon: "text-cyan",
+    detail: "text-cyan",
+    bar: "bg-cyan",
   },
   warn: {
     card: "border-warn/40 bg-warn/10",
@@ -95,7 +105,6 @@ const ICON: Record<
   success: CheckCircle2,
   already: AlertTriangle,
   unknown: XCircle,
-  consent: XCircle,
   error: XCircle,
 };
 

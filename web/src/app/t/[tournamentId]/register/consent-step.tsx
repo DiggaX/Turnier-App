@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/database.types";
 import { requiredConsentMethod } from "@/lib/consent";
+import { photoConsentText, type ConsentOrg } from "@/lib/consent-text";
 import { friendlyDbError, isUniqueViolation } from "@/lib/db-errors";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import { Button } from "@/components/ui/button";
@@ -13,53 +14,69 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ParticipantShell } from "@/components/brand/participant-shell";
 
-const CONSENT_TEXT =
-  "Ich willige in Bild/Ton/Video-Aufnahmen und deren Nutzung für Social Media/Dritte ein";
-
 /** Map a consents-insert failure to a safe German message (no raw DB leak). */
 function consentSaveError(error: unknown): string {
   // unique(participant_id) — consent for this registration already exists.
   if (isUniqueViolation(error)) {
-    return "Für diese Anmeldung wurde bereits eine Einwilligung erteilt.";
+    return "Für diese Anmeldung wurde bereits eine Fotoerlaubnis erteilt.";
   }
   return friendlyDbError(
     error,
-    "Die Einwilligung konnte nicht gespeichert werden. Bitte versuche es erneut.",
+    "Die Fotoerlaubnis konnte nicht gespeichert werden. Bitte versuche es erneut.",
   );
 }
 
-interface ConsentStepProps {
+interface PhotoConsentStepProps {
   supabase: SupabaseClient<Database>;
   participantId: string;
   birthdate: string;
   participantName: string;
+  org: ConsentOrg;
   getUid: () => Promise<string>;
   onDone: () => void;
 }
 
-export function ConsentStep({
+/**
+ * Die Fotoerlaubnis — freiwillig. Wer sie nicht erteilt, geht mit "Ohne
+ * Fotoerlaubnis fortfahren" weiter und ist genauso angemeldet; es wird dann
+ * schlicht keine consents-Zeile geschrieben.
+ *
+ * Der angezeigte Wortlaut wird als consents.consent_text mitgespeichert: welcher
+ * Satz zugestimmt wurde, lässt sich später nicht rekonstruieren.
+ */
+export function PhotoConsentStep({
   supabase,
   participantId,
   birthdate,
   participantName,
+  org,
   getUid,
   onDone,
-}: ConsentStepProps) {
+}: PhotoConsentStepProps) {
   const method = useMemo(
     () => requiredConsentMethod(birthdate, new Date()),
     [birthdate],
+  );
+  const grantor = method === "signature" ? "guardian" : "self";
+
+  const consentText = useMemo(
+    () => photoConsentText(org, grantor, participantName),
+    [org, grantor, participantName],
   );
 
   const [grantorName, setGrantorName] = useState(
     method === "checkbox" ? participantName : "",
   );
+  const [address, setAddress] = useState("");
   const [checked, setChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sigRef = useRef<SignaturePadHandle>(null);
 
   const canSubmit =
-    grantorName.trim().length > 0 && (method === "checkbox" ? checked : true);
+    grantorName.trim().length > 0 &&
+    address.trim().length > 0 &&
+    (method === "checkbox" ? checked : true);
 
   async function handleSubmit() {
     setError(null);
@@ -69,8 +86,13 @@ export function ConsentStep({
       return;
     }
 
+    if (address.trim().length === 0) {
+      setError("Bitte Anschrift angeben.");
+      return;
+    }
+
     if (method === "checkbox" && !checked) {
-      setError("Bitte der Einwilligung zustimmen.");
+      setError("Bitte der Fotoerlaubnis zustimmen.");
       return;
     }
 
@@ -112,6 +134,8 @@ export function ConsentStep({
           grantor_name: grantorName.trim(),
           method: "signature",
           signature_path: path,
+          address: address.trim(),
+          consent_text: consentText,
         });
         if (cErr) throw new Error(consentSaveError(cErr));
       } else {
@@ -120,6 +144,8 @@ export function ConsentStep({
           grantor: "self",
           grantor_name: grantorName.trim(),
           method: "checkbox",
+          address: address.trim(),
+          consent_text: consentText,
         });
         if (cErr) throw new Error(consentSaveError(cErr));
       }
@@ -131,14 +157,27 @@ export function ConsentStep({
     }
   }
 
+  const addressField = (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor="consentAddress">Wohnhaft (Anschrift)</Label>
+      <Input
+        id="consentAddress"
+        value={address}
+        autoComplete="street-address"
+        placeholder="Straße Hausnummer, PLZ Ort"
+        onChange={(e) => setAddress(e.target.value)}
+      />
+    </div>
+  );
+
   return (
     <ParticipantShell
-      eyebrow="/ Einwilligung · Alters-Gate"
-      heading="Einwilligung"
+      eyebrow="/ Fotoerlaubnis · optional"
+      heading="Fotoerlaubnis"
       subheading={
         method === "signature"
-          ? "Da die teilnehmende Person minderjährig ist, ist die Unterschrift eines Erziehungsberechtigten erforderlich."
-          : "Bitte bestätige die Einwilligung in Medienaufnahmen."
+          ? "Freiwillig. Soll die teilnehmende Person auf Fotos zu sehen sein dürfen, unterschreibt ein Erziehungsberechtigter — sonst einfach überspringen."
+          : "Freiwillig. Du kannst sie erteilen oder ohne sie fortfahren — angemeldet bist du in beiden Fällen."
       }
     >
       <div className="rounded-2xl border border-line bg-surface p-6 sm:p-7">
@@ -149,10 +188,10 @@ export function ConsentStep({
                 <Checkbox
                   checked={checked}
                   onCheckedChange={(value) => setChecked(value)}
-                  aria-label="Einwilligung erteilen"
+                  aria-label="Fotoerlaubnis erteilen"
                 />
                 <span className="leading-snug text-fg-muted">
-                  {CONSENT_TEXT}
+                  {consentText}
                 </span>
               </Label>
 
@@ -164,15 +203,17 @@ export function ConsentStep({
                   onChange={(e) => setGrantorName(e.target.value)}
                 />
               </div>
+
+              {addressField}
             </>
           ) : (
             <>
               <div className="rounded-xl border border-warn/35 bg-warn/[0.08] p-4">
                 <div className="mb-2 font-display text-[11px] font-semibold uppercase tracking-[0.12em] text-warn">
-                  ⚠ Minderjährig — Eltern-Einwilligung nötig
+                  ⚠ Minderjährig — nur mit Eltern-Unterschrift
                 </div>
                 <p className="text-sm leading-snug text-fg-muted">
-                  {CONSENT_TEXT}
+                  {consentText}
                 </p>
               </div>
 
@@ -186,6 +227,8 @@ export function ConsentStep({
                   onChange={(e) => setGrantorName(e.target.value)}
                 />
               </div>
+
+              {addressField}
 
               <div className="flex flex-col gap-2">
                 <Label>Unterschrift des Erziehungsberechtigten</Label>
@@ -209,7 +252,19 @@ export function ConsentStep({
             disabled={submitting || !canSubmit}
             className="mt-1 h-12 font-display text-sm font-bold uppercase tracking-wider"
           >
-            {submitting ? "Wird gespeichert…" : "Einwilligung abschließen"}
+            {submitting ? "Wird gespeichert…" : "Fotoerlaubnis erteilen"}
+          </Button>
+
+          {/* Gleichwertiger Weg, kein Notausgang: ohne Erlaubnis ist die
+              Anmeldung genauso fertig. */}
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onDone}
+            disabled={submitting}
+            className="h-11 font-display text-xs font-bold uppercase tracking-wider"
+          >
+            Ohne Fotoerlaubnis fortfahren
           </Button>
         </div>
       </div>

@@ -20,7 +20,7 @@ async function getOpenTournamentId(): Promise<string> {
   return data.id as string;
 }
 
-test("solo adult registration + checkbox consent", async ({ page }) => {
+test("solo adult registration + checkbox photo consent", async ({ page }) => {
   expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
   expect(SUPABASE_ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set").not.toBe(
     "",
@@ -39,24 +39,24 @@ test("solo adult registration + checkbox consent", async ({ page }) => {
     await captain.fill(`${displayName} Captain`);
   }
 
-  await page.getByRole("button", { name: /weiter zur einwilligung/i }).click();
+  await page.getByRole("button", { name: /weiter zur fotoerlaubnis/i }).click();
 
-  // Consent step (adult -> checkbox path)
+  // Photo consent step (adult -> checkbox path). Optional, but this test walks
+  // the granting path — the skip path is covered in register-minor.spec.ts.
   const finishButton = page.getByRole("button", {
-    name: /einwilligung abschließen/i,
+    name: /^fotoerlaubnis erteilen$/i,
   });
   await expect(finishButton).toBeVisible();
-  // Hard gate: button disabled until the box is checked.
+  // Nothing ticked, no address: granting stays disabled.
   await expect(finishButton).toBeDisabled();
 
-  await page.getByRole("checkbox", { name: /einwilligung erteilen/i }).click();
+  await page.getByRole("checkbox", { name: /fotoerlaubnis erteilen/i }).click();
   await page.getByLabel("Name (zur Bestätigung)").fill(displayName);
+  await page.getByLabel("Wohnhaft (Anschrift)").fill("Teststraße 1, 23769 Fehmarn");
 
   await expect(finishButton).toBeEnabled();
   await finishButton.click();
 
-  await expect(
-    page.getByText(/anmeldung & einwilligung abgeschlossen/i),
-  ).toBeVisible();
+  await expect(page.getByText(/anmeldung abgeschlossen/i)).toBeVisible();
   await expect(page.getByText(displayName, { exact: false })).toBeVisible();
 });

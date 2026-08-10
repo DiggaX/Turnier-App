@@ -7,21 +7,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { renameOrg } from "./actions";
+import { renameOrg, setOrgAddress } from "./actions";
 
 type Props = {
   name: string;
   slug: string;
+  address: string | null;
 };
 
-export function OrgSettings({ name, slug }: Props) {
+export function OrgSettings({ name, slug, address }: Props) {
   const router = useRouter();
   const [value, setValue] = useState(name);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  const [addressValue, setAddressValue] = useState(address ?? "");
+  const [addressPending, startAddressTransition] = useTransition();
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const [addressSaved, setAddressSaved] = useState(false);
+
   const dirty = value.trim() !== name && value.trim().length > 0;
+  const addressDirty = addressValue.trim() !== (address ?? "").trim();
 
   function handleSave() {
     setError(null);
@@ -32,6 +39,20 @@ export function OrgSettings({ name, slug }: Props) {
         setError(res.error);
       } else {
         setSaved(true);
+        router.refresh();
+      }
+    });
+  }
+
+  function handleSaveAddress() {
+    setAddressError(null);
+    setAddressSaved(false);
+    startAddressTransition(async () => {
+      const res = await setOrgAddress(addressValue);
+      if ("error" in res) {
+        setAddressError(res.error);
+      } else {
+        setAddressSaved(true);
         router.refresh();
       }
     });
@@ -81,6 +102,50 @@ export function OrgSettings({ name, slug }: Props) {
           </p>
         )}
         {saved && !error && (
+          <p className="text-sm text-lime" role="status">
+            Gespeichert ✓
+          </p>
+        )}
+      </div>
+
+      <div className="mt-6 flex flex-col gap-2 border-t border-line pt-6">
+        <Label htmlFor="org-address">Anschrift</Label>
+        <div className="flex flex-col gap-2.5 sm:flex-row">
+          <Input
+            id="org-address"
+            value={addressValue}
+            maxLength={200}
+            disabled={addressPending}
+            placeholder="Zur Strandpromenade 4, 23769 Fehmarn"
+            onChange={(e) => {
+              setAddressValue(e.target.value);
+              setAddressSaved(false);
+            }}
+            className="sm:flex-1"
+          />
+          <Button
+            type="button"
+            size="lg"
+            disabled={addressPending || !addressDirty}
+            onClick={handleSaveAddress}
+            className="font-display text-xs font-bold uppercase tracking-wider"
+          >
+            {addressPending ? "Speichert…" : "Speichern"}
+          </Button>
+        </div>
+
+        <p className="text-xs text-fg-muted">
+          Steht als verantwortliche Stelle im Text der Fotoerlaubnis, den
+          Teilnehmer bei der Anmeldung bestätigen. Ohne Anschrift nennt der Text
+          nur den Namen.
+        </p>
+
+        {addressError && (
+          <p className="text-sm text-destructive" role="alert">
+            {addressError}
+          </p>
+        )}
+        {addressSaved && !addressError && (
           <p className="text-sm text-lime" role="status">
             Gespeichert ✓
           </p>

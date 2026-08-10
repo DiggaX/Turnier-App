@@ -41,19 +41,14 @@ test("online check-in from participant status page", async ({ page }) => {
     await captain.fill(`${displayName} Captain`);
   }
 
-  await page.getByRole("button", { name: /weiter zur einwilligung/i }).click();
+  await page.getByRole("button", { name: /weiter zur fotoerlaubnis/i }).click();
 
-  const finishButton = page.getByRole("button", {
-    name: /einwilligung abschließen/i,
-  });
-  await expect(finishButton).toBeVisible();
-  await page.getByRole("checkbox", { name: /einwilligung erteilen/i }).click();
-  await page.getByLabel("Name (zur Bestätigung)").fill(displayName);
-  await finishButton.click();
+  // Ohne Fotoerlaubnis weiter: der Check-in darf davon nicht abhängen.
+  await page
+    .getByRole("button", { name: /ohne fotoerlaubnis fortfahren/i })
+    .click();
 
-  await expect(
-    page.getByText(/anmeldung & einwilligung abgeschlossen/i),
-  ).toBeVisible();
+  await expect(page.getByText(/anmeldung abgeschlossen/i)).toBeVisible();
 
   // The same context keeps the anon session, so /me resolves this participant.
   await page.goto(`/t/${id}/me`);

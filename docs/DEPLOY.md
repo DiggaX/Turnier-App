@@ -37,10 +37,14 @@ Then in the Dashboard:
 ## Check-in (Plan 3) — additional setup
 
 Apply `supabase/migrations/20260618090000_checkin.sql` (SQL Editor → Run). It adds the
-`check_ins` audit table + `participants.qr_token`, a **consent-enforcement trigger**
-(check-in is blocked at the DB unless a valid media consent exists — minor → guardian
-signature), and the `check_in(participant_id, method)` RPC. No new Auth/Storage toggles
-needed (anonymous auth + the `consent-signatures` bucket already exist).
+`check_ins` audit table + `participants.qr_token` and the `check_in(participant_id, method)`
+RPC. No new Auth/Storage toggles needed (anonymous auth + the `consent-signatures` bucket
+already exist).
+
+> The consent-enforcement trigger from that migration is **gone** since
+> `20260810090000_photo_consent_optional.sql`: the media consent became a voluntary
+> photo permission, so check-in no longer depends on it. Whether one exists is only
+> displayed (cyan badge instead of lime).
 
 Check-in methods: organizer camera scan (`camera_scan`), handheld barcode engine
 (`hardware_scan`), station-QR self-scan (`station`), online button (`online`).

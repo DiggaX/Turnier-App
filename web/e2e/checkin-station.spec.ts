@@ -41,19 +41,14 @@ test("station check-in from QR landing page", async ({ page }) => {
     await captain.fill(`${displayName} Captain`);
   }
 
-  await page.getByRole("button", { name: /weiter zur einwilligung/i }).click();
+  await page.getByRole("button", { name: /weiter zur fotoerlaubnis/i }).click();
 
-  const finishButton = page.getByRole("button", {
-    name: /einwilligung abschließen/i,
-  });
-  await expect(finishButton).toBeVisible();
-  await page.getByRole("checkbox", { name: /einwilligung erteilen/i }).click();
-  await page.getByLabel("Name (zur Bestätigung)").fill(displayName);
-  await finishButton.click();
+  // Ohne Fotoerlaubnis weiter: der Check-in darf davon nicht abhängen.
+  await page
+    .getByRole("button", { name: /ohne fotoerlaubnis fortfahren/i })
+    .click();
 
-  await expect(
-    page.getByText(/anmeldung & einwilligung abgeschlossen/i),
-  ).toBeVisible();
+  await expect(page.getByText(/anmeldung abgeschlossen/i)).toBeVisible();
 
   // Navigate to the station check-in URL (simulates scanning the station QR).
   await page.goto(`/t/${id}/checkin-station`);

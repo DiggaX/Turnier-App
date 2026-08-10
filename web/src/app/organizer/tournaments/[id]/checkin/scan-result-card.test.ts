@@ -9,12 +9,26 @@ import { resultContent } from "./scan-result-card";
 
 describe("resultContent", () => {
   it("greets a fresh check-in by name in lime", () => {
-    const { tone, headline } = resultContent({
+    const { tone, headline, detail } = resultContent({
       kind: "success",
       name: "Lena Fuchs",
+      photoConsent: false,
     });
     expect(tone).toBe("lime");
     expect(headline).toBe("Lena Fuchs");
+    expect(detail).toBe("Eingecheckt");
+  });
+
+  // Die Fotoerlaubnis ist das eine Extra, nach dem am Einlass gefragt wird —
+  // sie bekommt eine eigene Farbe, nicht nur eine Zeile Kleingedrucktes.
+  it("turns cyan and says so when a photo consent exists", () => {
+    const { tone, detail } = resultContent({
+      kind: "success",
+      name: "Lena Fuchs",
+      photoConsent: true,
+    });
+    expect(tone).toBe("cyan");
+    expect(detail).toBe("Eingecheckt · Fotoerlaubnis erteilt");
   });
 
   it("warns by name when someone is already inside", () => {
@@ -22,6 +36,7 @@ describe("resultContent", () => {
       kind: "already",
       name: "Lena Fuchs",
       since: "2026-08-07T18:33:12Z",
+      photoConsent: false,
     });
     expect(tone).toBe("warn");
     expect(headline).toBe("Lena Fuchs");
@@ -31,12 +46,6 @@ describe("resultContent", () => {
     const { tone, headline } = resultContent({ kind: "unknown" });
     expect(tone).toBe("live");
     expect(headline).toBe("QR nicht erkannt");
-  });
-
-  it("names the missing consent rather than blaming the scan", () => {
-    const { tone, headline } = resultContent({ kind: "consent" });
-    expect(tone).toBe("live");
-    expect(headline).toBe("Einwilligung fehlt");
   });
 
   it("falls back to a retry prompt on a failed check-in", () => {
@@ -54,9 +63,20 @@ describe("resultContent", () => {
       kind: "already",
       name: "Lena Fuchs",
       since: "2026-08-07T18:33:12Z",
+      photoConsent: false,
     });
     expect(detail).toContain("07.08.");
     expect(detail).toContain("20:33");
     expect(detail).toContain("Schon anwesend");
+  });
+
+  it("mentions the photo consent on a repeat scan too", () => {
+    const { detail } = resultContent({
+      kind: "already",
+      name: "Lena Fuchs",
+      since: "2026-08-07T18:33:12Z",
+      photoConsent: true,
+    });
+    expect(detail).toContain("Fotoerlaubnis erteilt");
   });
 });

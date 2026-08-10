@@ -6,6 +6,9 @@ import { requireAdmin, type ActionResult } from "@/lib/auth/staff";
 /** Max length for an organisation name — matches what the header can show. */
 const ORG_NAME_MAX = 80;
 
+/** Max length for the postal address — one line in the consent sentence. */
+const ORG_ADDRESS_MAX = 200;
+
 export async function renameOrg(name: string): Promise<ActionResult> {
   const guard = await requireAdmin();
   if ("error" in guard) return guard;
@@ -25,6 +28,35 @@ export async function renameOrg(name: string): Promise<ActionResult> {
     .eq("id", orgId);
   if (error) {
     return { error: friendlyDbError(error, "Name konnte nicht geändert werden (nur Admin).") };
+  }
+  return { ok: true };
+}
+
+/**
+ * Postanschrift der verantwortlichen Stelle. Sie steht im Wortlaut der
+ * Fotoerlaubnis, den Teilnehmer bei der Anmeldung zu sehen bekommen — ohne sie
+ * nennt der Satz nur den Namen (siehe lib/consent-text.ts).
+ *
+ * Eigene Aktion statt eines zweiten Feldes in renameOrg: die beiden Werte
+ * werden zu verschiedenen Anlässen geändert, und der Name hat eigene Regeln.
+ */
+export async function setOrgAddress(address: string): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if ("error" in guard) return guard;
+  const { supabase, orgId } = guard;
+
+  const clean = address.trim();
+  if (clean.length > ORG_ADDRESS_MAX) {
+    return { error: `Anschrift ist zu lang (max. ${ORG_ADDRESS_MAX} Zeichen).` };
+  }
+
+  // Leeren erlaubt: eine falsche Anschrift ist schlimmer als keine.
+  const { error } = await supabase
+    .from("organizations")
+    .update({ address: clean || null })
+    .eq("id", orgId);
+  if (error) {
+    return { error: friendlyDbError(error, "Anschrift konnte nicht gespeichert werden (nur Admin).") };
   }
   return { ok: true };
 }

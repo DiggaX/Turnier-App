@@ -51,7 +51,7 @@ export async function manualCheckIn(id: string, tournamentId: string): Promise<A
   if ("error" in guard) return guard;
   // Confirm the participant belongs to this tournament first, so a stale row
   // gets a clean message instead of the RPC's. Authorization stays with the
-  // RPC, which re-checks staff-of-org and consent.
+  // RPC, which re-checks staff-of-org.
   const { data: participant } = await guard.supabase
     .from("participants")
     .select("id")
@@ -65,9 +65,6 @@ export async function manualCheckIn(id: string, tournamentId: string): Promise<A
     p_method: "manual",
   });
   if (error) {
-    if (error.message.toLowerCase().includes("consent")) {
-      return { error: "Einwilligung fehlt — Check-in nicht möglich." };
-    }
     return { error: friendlyDbError(error, "Check-in fehlgeschlagen.") };
   }
   return { ok: true };

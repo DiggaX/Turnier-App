@@ -35,17 +35,6 @@ interface ScannerClientProps {
 
 type Status = ScanStatus;
 
-/** Map a check_in RPC failure to a friendly German message (no raw DB leak). */
-function isConsentError(error: unknown): boolean {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "object" && error !== null && "message" in error
-        ? String((error as { message: unknown }).message)
-        : "";
-  return message.toLowerCase().includes("consent");
-}
-
 /**
  * Turn a camera failure into something the person at the check-in desk can act
  * on. Without this the scanner just sits there showing its frame overlay and
@@ -300,9 +289,11 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
       busyRef.current = true;
 
       try {
+        // consents(id) kommt mit, damit die Karte sagen kann, ob eine
+        // Fotoerlaubnis vorliegt — genau danach wird am Einlass gefragt.
         const { data: participant, error: lookupErr } = await supabase
           .from("participants")
-          .select("id, display_name, checked_in_at")
+          .select("id, display_name, checked_in_at, consents(id)")
           .eq("qr_token", token)
           .maybeSingle();
 
@@ -312,6 +303,8 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
           return;
         }
 
+        const photoConsent = (participant.consents ?? []).length > 0;
+
         // check_in is idempotent, so a second scan used to look identical to a
         // first one. At a door that matters: someone passing their code back
         // over the barrier should not read as a fresh admission.
@@ -320,6 +313,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
             kind: "already",
             name: participant.display_name,
             since: participant.checked_in_at,
+            photoConsent,
           });
           playScanSound("already");
           return;
@@ -332,15 +326,17 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
 
         if (rpcErr) {
           // The already-checked-in case is handled above, so a failure here is a
-          // real one — most importantly missing consent.
-          showStatus(
-            isConsentError(rpcErr) ? { kind: "consent" } : { kind: "error" },
-          );
+          // real one — a scan by staff of another org, or a dropped connection.
+          showStatus({ kind: "error" });
           playScanSound("reject");
           return;
         }
 
-        showStatus({ kind: "success", name: participant.display_name });
+        showStatus({
+          kind: "success",
+          name: participant.display_name,
+          photoConsent,
+        });
         playScanSound("success");
         // The attendance list and the "x von y anwesend" count are server-
         // rendered on this same page, so a scan used to leave them stale until
@@ -349,8 +345,8 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         // nothing. Re-rendering the server components leaves this client's
         // state (mode, camera stream, result card) untouched.
         router.refresh();
-      } catch (e) {
-        showStatus(isConsentError(e) ? { kind: "consent" } : { kind: "error" });
+      } catch {
+        showStatus({ kind: "error" });
         playScanSound("reject");
       } finally {
         busyRef.current = false;

@@ -37,7 +37,7 @@ export default async function MembersPage() {
 
   const { data: org } = await supabase
     .from("organizations")
-    .select("name, slug")
+    .select("name, slug, address")
     .eq("id", profile.org_id)
     .maybeSingle();
 
@@ -77,7 +77,9 @@ export default async function MembersPage() {
           <h1 className="mb-7 font-display text-2xl font-bold uppercase leading-[1.05] tracking-tight text-ink sm:text-3xl">
             Organisation
           </h1>
-          {org && <OrgSettings name={org.name} slug={org.slug} />}
+          {org && (
+            <OrgSettings name={org.name} slug={org.slug} address={org.address} />
+          )}
           <DeviceLinking
             sessions={(sessions ?? []) as SessionRow[]}
             origin={origin}

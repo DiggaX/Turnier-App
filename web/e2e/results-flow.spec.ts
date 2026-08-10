@@ -75,17 +75,13 @@ test("a player reports via /me, the other via RPC, organizer confirms the winner
     const captain = formPage.getByLabel("Captain — Name");
     if (await captain.isVisible()) await captain.fill("RF-P1");
     await formPage
-      .getByRole("button", { name: /weiter zur einwilligung/i })
+      .getByRole("button", { name: /weiter zur fotoerlaubnis/i })
       .click();
     await formPage
-      .getByRole("checkbox", { name: /einwilligung erteilen/i })
-      .click();
-    await formPage.getByLabel("Name (zur Bestätigung)").fill("RF-P1");
-    await formPage
-      .getByRole("button", { name: /einwilligung abschließen/i })
+      .getByRole("button", { name: /ohne fotoerlaubnis fortfahren/i })
       .click();
     await expect(
-      formPage.getByText(/anmeldung & einwilligung abgeschlossen/i),
+      formPage.getByText(/anmeldung abgeschlossen/i),
     ).toBeVisible();
 
     // Check RF-P1 in via /me (no match exists yet — the bracket is generated next).

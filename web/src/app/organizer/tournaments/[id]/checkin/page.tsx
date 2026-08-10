@@ -72,7 +72,7 @@ export default async function CheckinPage({
 
   const { data: participants } = await supabase
     .from("participants")
-    .select("id, display_name, checked_in_at")
+    .select("id, display_name, checked_in_at, consents(id)")
     .eq("tournament_id", id);
 
   // Sort present participants first, then by name.
@@ -170,6 +170,7 @@ export default async function CheckinPage({
                         tournamentId={id}
                         displayName={p.display_name}
                         checkedInAt={p.checked_in_at}
+                        photoConsent={(p.consents ?? []).length > 0}
                       />
                     ))}
                   </TableBody>

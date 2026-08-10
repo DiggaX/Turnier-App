@@ -32,9 +32,9 @@ export interface Database {
   public: {
     Tables: {
       organizations: {
-        Row: { id: string; name: string; slug: string; created_at: string };
-        Insert: { id?: string; name: string; slug: string; created_at?: string };
-        Update: { id?: string; name?: string; slug?: string; created_at?: string };
+        Row: { id: string; name: string; slug: string; address: string | null; created_at: string };
+        Insert: { id?: string; name: string; slug: string; address?: string | null; created_at?: string };
+        Update: { id?: string; name?: string; slug?: string; address?: string | null; created_at?: string };
         Relationships: [];
       };
       profiles: {
@@ -136,15 +136,18 @@ export interface Database {
       consents: {
         Row: {
           id: string; participant_id: string; grantor: ConsentGrantor;
-          grantor_name: string; method: string; signature_path: string | null; granted_at: string;
+          grantor_name: string; method: string; signature_path: string | null;
+          address: string | null; consent_text: string | null; granted_at: string;
         };
         Insert: {
           id?: string; participant_id: string; grantor: ConsentGrantor;
-          grantor_name: string; method: string; signature_path?: string | null; granted_at?: string;
+          grantor_name: string; method: string; signature_path?: string | null;
+          address?: string | null; consent_text?: string | null; granted_at?: string;
         };
         Update: {
           id?: string; participant_id?: string; grantor?: ConsentGrantor;
-          grantor_name?: string; method?: string; signature_path?: string | null; granted_at?: string;
+          grantor_name?: string; method?: string; signature_path?: string | null;
+          address?: string | null; consent_text?: string | null; granted_at?: string;
         };
         Relationships: [
           { foreignKeyName: "consents_participant_id_fkey"; columns: ["participant_id"]; referencedRelation: "participants"; referencedColumns: ["id"] }

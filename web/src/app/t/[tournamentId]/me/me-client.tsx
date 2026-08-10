@@ -8,11 +8,11 @@ import type { Database } from "@/lib/database.types";
 import { QrCode } from "@/components/qr-code";
 import { QrActions } from "@/components/qr-actions";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   ParticipantShell,
   SectionLabel,
 } from "@/components/brand/participant-shell";
+import { PhotoConsentChip } from "@/components/brand/photo-consent-chip";
 import { PushOptIn } from "./push-opt-in";
 
 interface Participant {
@@ -50,19 +50,8 @@ interface MeClientProps {
   viaToken?: boolean;
 }
 
-/** Map a check_in RPC failure to a friendly German message (no raw DB leak). */
-function checkInError(error: unknown): string {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "object" && error !== null && "message" in error
-        ? String((error as { message: unknown }).message)
-        : "";
-  if (message.toLowerCase().includes("consent")) {
-    return "Einwilligung fehlt — Check-in nicht möglich.";
-  }
-  return "Check-in fehlgeschlagen.";
-}
+/** Never the raw DB message: it leaks schema and says nothing to a participant. */
+const CHECK_IN_ERROR = "Check-in fehlgeschlagen.";
 
 /** Map a report_match RPC failure to a friendly German message. */
 function reportError(error: unknown): string {
@@ -256,12 +245,12 @@ export function MeClient({
         p_method: "online",
       });
       if (rpcErr) {
-        setError(checkInError(rpcErr));
+        setError(CHECK_IN_ERROR);
         return;
       }
       setCheckedIn(true);
-    } catch (e) {
-      setError(checkInError(e));
+    } catch {
+      setError(CHECK_IN_ERROR);
     } finally {
       setSubmitting(false);
     }
@@ -274,16 +263,12 @@ export function MeClient({
       glow="lime"
     >
       <div className="flex flex-col gap-4">
-        {/* consent status */}
+        {/* photo consent status — freiwillig, deshalb ist "keine" kein Fehler */}
         <div className="flex items-center justify-between rounded-2xl border border-line bg-surface px-5 py-4">
           <span className="font-display text-sm font-semibold text-ink">
             {participant.display_name}
           </span>
-          {hasConsent ? (
-            <Badge className="bg-lime/15 text-lime">Einwilligung erteilt</Badge>
-          ) : (
-            <Badge variant="destructive">Einwilligung fehlt</Badge>
-          )}
+          <PhotoConsentChip granted={hasConsent} />
         </div>
 
         {/* current match report */}

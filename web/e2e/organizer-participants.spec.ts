@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 const email = process.env.E2E_ORG_EMAIL, password = process.env.E2E_ORG_PASSWORD;
 test.skip(!email || !password, "organizer creds not configured");
-test("organizer sees participants with consent status", async ({ page }) => {
+test("organizer sees participants with photo consent status", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel(/e-?mail/i).first().fill(email!);
   await page.getByLabel(/passwort|password/i).fill(password!);

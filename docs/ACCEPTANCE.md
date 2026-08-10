@@ -33,8 +33,8 @@ rendert korrekt? Fehler/Konsole sauber? Mobil-Layout ok?
 - [ ] 5. Übersicht → „Anmeldung öffnen" → Status „Anmeldung offen".
 
 ### C. Spieler-Flow (MOBIL, echtes Handy)
-- [ ] 6. `/t/<id>` → „Jetzt anmelden" → Erwachsener (Checkbox-Consent) registriert.
-- [ ] 7. Zweite Anmeldung als Minderjähriger (Geburtsdatum <18) → Unterschrift-Consent erscheint.
+- [ ] 6. `/t/<id>` → „Jetzt anmelden" → Erwachsener registriert, Fotoerlaubnis per Checkbox + Anschrift erteilt.
+- [ ] 7. Zweite Anmeldung als Minderjähriger (Geburtsdatum <18) → „Ohne Fotoerlaubnis fortfahren" → Anmeldung trotzdem fertig, Check-in später möglich.
 - [ ] 8. `/t/<id>/me` → QR-Code sichtbar + „Online einchecken" funktioniert.
 - [ ] 9. `/t/<id>/checkin-station` an zweitem Gerät → QR scannen → „eingecheckt".
 

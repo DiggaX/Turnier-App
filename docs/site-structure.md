@@ -18,15 +18,15 @@ Status: ✅ = gebaut · 🔜 = geplant (Plan N).
 |-------|-------|---------|--------|
 | `/` | Landing / Turnier-Übersicht: Liste offener & laufender Turniere, Einstieg zu Anmeldung + Live-Board | Öffentlich | ✅ (Basis) |
 | `/t/[id]` | Turnier-Detail (öffentlich): Spiel, Format, Status, Datum; Buttons „Anmelden" + „Live-Board" | Öffentlich | 🔜 (P4) |
-| `/t/[id]/register` | Registrierung (Gast/Account) + Einwilligung (Alters-Gate, Eltern-Signatur) | Öffentlich | ✅ |
+| `/t/[id]/register` | Registrierung (Gast/Account) + **optionale Fotoerlaubnis** (Alters-Gate, Eltern-Signatur) | Öffentlich | ✅ |
 | `/t/[id]/board` | Öffentliches **Live-Board**: Bracket, laufende Matches, Tabellen, „Aufruf an Station X" | Öffentlich (read-only) | 🔜 (P6) |
-| `/t/[id]/me` | Teilnehmer-Status: angemeldet?, Einwilligung?, **persönlicher Check-in-QR**, nächstes Match, Ergebnis melden | Teilnehmer | 🔜 (P3/P5) |
+| `/t/[id]/me` | Teilnehmer-Status: angemeldet?, Fotoerlaubnis?, **persönlicher Check-in-QR**, nächstes Match, Ergebnis melden | Teilnehmer | 🔜 (P3/P5) |
 | `/login` | Orga-Login: E-Mail+Passwort **und** Magic-Link | Öffentlich | ✅ |
 | `/auth/confirm` | Magic-Link-Callback (kein UI, leitet weiter) | System | ✅ |
 | `/organizer` | **Orga-Dashboard**: Turnier-Liste, Schnellzugriff, Logout | Orga | ✅ |
 | `/organizer/tournaments/new` | Turnier anlegen (Generator: Spiel, Format, Seeding, Modus) | Orga | 🔜 (P4) |
 | `/organizer/tournaments/[id]` | Turnier-Übersicht & Steuerung (Status, Phasen) | Orga | 🔜 (P4) |
-| `/organizer/tournaments/[id]/participants` | Teilnehmerliste + Consent-Status (grün/rot) + Check-in-Status | Orga | ✅ |
+| `/organizer/tournaments/[id]/participants` | Teilnehmerliste + Fotoerlaubnis (blau/grau) + Check-in-Status | Orga | ✅ |
 | `/organizer/tournaments/[id]/checkin` | **Check-in-Scanner** (Kamera scannt Spieler-QR) + Stations-QR + Anwesenheitsliste | Orga/Schiri | 🔜 (P3) |
 | `/organizer/tournaments/[id]/bracket` | Bracket/Spielplan generieren & steuern, seeden | Orga | 🔜 (P4) |
 | `/organizer/tournaments/[id]/matches` | Match-Verwaltung, **Ergebnis-Freigabe** (Schiri), Streitfälle | Orga/Schiri | 🔜 (P5) |

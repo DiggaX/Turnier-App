@@ -20,7 +20,7 @@ async function getOpenTournamentId(): Promise<string> {
   return data.id as string;
 }
 
-test("minor registration + drawn signature consent", async ({ page }) => {
+test("minor registration + drawn signature photo consent", async ({ page }) => {
   expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
   expect(SUPABASE_ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set").not.toBe(
     "",
@@ -38,9 +38,9 @@ test("minor registration + drawn signature consent", async ({ page }) => {
     await captain.fill(`${displayName} Captain`);
   }
 
-  await page.getByRole("button", { name: /weiter zur einwilligung/i }).click();
+  await page.getByRole("button", { name: /weiter zur fotoerlaubnis/i }).click();
 
-  // Consent step (minor -> signature path)
+  // Photo consent step (minor -> signature path)
   const pad = page.getByRole("img", {
     name: /unterschrift des erziehungsberechtigten/i,
   });
@@ -65,14 +65,45 @@ test("minor registration + drawn signature consent", async ({ page }) => {
   await page
     .getByLabel("Name des Erziehungsberechtigten")
     .fill("Erika Mustermann");
+  await page.getByLabel("Wohnhaft (Anschrift)").fill("Teststraße 1, 23769 Fehmarn");
 
   const finishButton = page.getByRole("button", {
-    name: /einwilligung abschließen/i,
+    name: /^fotoerlaubnis erteilen$/i,
   });
   await finishButton.click();
 
-  await expect(
-    page.getByText(/anmeldung & einwilligung abgeschlossen/i),
-  ).toBeVisible();
+  await expect(page.getByText(/anmeldung abgeschlossen/i)).toBeVisible();
+  await expect(page.getByText(displayName, { exact: false })).toBeVisible();
+});
+
+/**
+ * Der Punkt der ganzen Änderung: ohne Fotoerlaubnis — und für Minderjährige
+ * damit ohne Eltern-Unterschrift — kommt man trotzdem durch die Anmeldung.
+ */
+test("minor registration without photo consent", async ({ page }) => {
+  expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
+  expect(SUPABASE_ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set").not.toBe(
+    "",
+  );
+
+  const id = await getOpenTournamentId();
+  await page.goto(`/t/${id}/register`);
+
+  const displayName = `E2E NoConsent ${Date.now()}`;
+  await page.getByLabel("Anzeigename").fill(displayName);
+  await page.getByLabel("Geburtsdatum").fill("2014-01-01");
+
+  const captain = page.getByLabel("Captain — Name");
+  if (await captain.isVisible()) {
+    await captain.fill(`${displayName} Captain`);
+  }
+
+  await page.getByRole("button", { name: /weiter zur fotoerlaubnis/i }).click();
+
+  await page
+    .getByRole("button", { name: /ohne fotoerlaubnis fortfahren/i })
+    .click();
+
+  await expect(page.getByText(/anmeldung abgeschlossen/i)).toBeVisible();
   await expect(page.getByText(displayName, { exact: false })).toBeVisible();
 });

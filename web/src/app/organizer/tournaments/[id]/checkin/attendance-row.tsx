@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { TableCell, TableRow } from "@/components/ui/table";
+import { PhotoConsentChip } from "@/components/brand/photo-consent-chip";
 import { formatShortDateTime } from "@/lib/format-date";
 
 import { manualCheckIn, resetCheckIn } from "../participants/actions";
@@ -13,11 +14,13 @@ export function AttendanceRow({
   tournamentId,
   displayName,
   checkedInAt,
+  photoConsent,
 }: {
   participantId: string;
   tournamentId: string;
   displayName: string;
   checkedInAt: string | null;
+  photoConsent: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -50,12 +53,19 @@ export function AttendanceRow({
       </TableCell>
       <TableCell>
         {checkedInAt ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-lime/15 px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-lime">
+          // Blau, wenn eine Fotoerlaubnis vorliegt — dieselbe Farbe wie auf der
+          // Scan-Karte, damit die Liste und der Tresen dasselbe sagen.
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] ${
+              photoConsent ? "bg-cyan/15 text-cyan" : "bg-lime/15 text-lime"
+            }`}
+          >
             Anwesend
           </span>
         ) : (
           <span className="text-fg-dim">—</span>
         )}
+        <PhotoConsentChip granted={photoConsent} className="ml-2" />
         {checkedInAt && (
           <span className="ml-2 text-xs text-fg-muted">
             {formatShortDateTime(checkedInAt)}

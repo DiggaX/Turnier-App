@@ -18,7 +18,9 @@ import {
 } from "@/components/brand/participant-shell";
 import { QrCode } from "@/components/qr-code";
 import { QrActions } from "@/components/qr-actions";
-import { ConsentStep } from "./consent-step";
+import type { ConsentOrg } from "@/lib/consent-text";
+import { PhotoConsentStep } from "./consent-step";
+import { SaveAccessDialog } from "./save-access-dialog";
 
 type Step = "form" | "consent" | "done";
 
@@ -64,9 +66,15 @@ type FormValues = {
 interface RegisterClientProps {
   tournament: { id: string; name: string };
   teamSize: number;
+  /** Verantwortliche Stelle im Text der Fotoerlaubnis. */
+  org: ConsentOrg;
 }
 
-export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
+export function RegisterClient({
+  tournament,
+  teamSize,
+  org,
+}: RegisterClientProps) {
   const isTeam = teamSize > 1;
   // The browser Supabase client is created once (stable singleton, render-safe).
   const [supabase] = useState<SupabaseClient<Database>>(() => createClient());
@@ -105,6 +113,11 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [birthdate, setBirthdate] = useState<string>("");
   const [displayName, setDisplayName] = useState<string>("");
+  // Gates the success screen until the participant confirms they saved their
+  // QR/link. Not persisted: `step` is transient state, a reload lands back on
+  // the form, and a second submit is refused by unique(tournament_id, user_id) —
+  // so this dialog can only ever be reached once per registration.
+  const [accessSaved, setAccessSaved] = useState(false);
 
   const {
     register,
@@ -208,7 +221,7 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
     return (
       <ParticipantShell
         eyebrow="/ Anmeldung"
-        heading="Anmeldung & Einwilligung abgeschlossen"
+        heading="Anmeldung abgeschlossen"
         glow="lime"
       >
         <div className="flex flex-col gap-4">
@@ -253,6 +266,14 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
               >
                 Zu meinem Status
               </Button>
+
+              {!accessSaved && (
+                <SaveAccessDialog
+                  tournamentId={tournament.id}
+                  qrToken={qrToken}
+                  onDone={() => setAccessSaved(true)}
+                />
+              )}
             </>
           )}
         </div>
@@ -262,11 +283,12 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
 
   if (step === "consent" && participantId) {
     return (
-      <ConsentStep
+      <PhotoConsentStep
         supabase={supabase}
         participantId={participantId}
         birthdate={birthdate}
         participantName={displayName}
+        org={org}
         getUid={ensureSession}
         onDone={() => setStep("done")}
       />
@@ -404,7 +426,7 @@ export function RegisterClient({ tournament, teamSize }: RegisterClientProps) {
             disabled={submitting}
             className="mt-1 h-12 font-display text-sm font-bold uppercase tracking-wider"
           >
-            {submitting ? "Wird gesendet…" : "Weiter zur Einwilligung"}
+            {submitting ? "Wird gesendet…" : "Weiter zur Fotoerlaubnis"}
           </Button>
 
           <p className="text-center text-xs text-fg-muted">
