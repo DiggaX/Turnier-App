@@ -11,21 +11,43 @@ interface QrActionsProps {
   tournamentId: string;
   /** The participant's check-in QR token — also doubles as the recovery credential. */
   qrToken: string;
+  /**
+   * "bare" drops the card chrome and the heading, for use inside a container
+   * that already carries both (the save-access dialog). Buttons and behaviour
+   * are identical — only the wrapper differs.
+   */
+  variant?: "card" | "bare";
+}
+
+/**
+ * The link that gets a participant back to their status from any device —
+ * their own qr_token is the credential (see get_participant_by_qr_token RPC).
+ *
+ * Shared so the dialog that shows this URL as plain text and the button that
+ * copies it can never drift apart. Empty during SSR, where there is no origin.
+ */
+export function participantRecoveryUrl(
+  tournamentId: string,
+  qrToken: string,
+): string {
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}/t/${tournamentId}/me?token=${qrToken}`;
 }
 
 /**
  * "Save this for later" actions for a participant's QR: download the QR as a
  * PNG, and copy/share a recovery link back to `/me` that works even without
- * the original browser session (see get_participant_by_qr_token RPC).
+ * the original browser session.
  */
-export function QrActions({ tournamentId, qrToken }: QrActionsProps) {
+export function QrActions({
+  tournamentId,
+  qrToken,
+  variant = "card",
+}: QrActionsProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);
 
-  const recoveryUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/t/${tournamentId}/me?token=${qrToken}`
-      : "";
+  const recoveryUrl = participantRecoveryUrl(tournamentId, qrToken);
 
   function handleDownload() {
     const canvas = canvasRef.current;
@@ -60,14 +82,8 @@ export function QrActions({ tournamentId, qrToken }: QrActionsProps) {
     }
   }
 
-  return (
-    <div className="rounded-2xl border border-line bg-surface p-6">
-      <SectionLabel className="mb-3">Für später sichern</SectionLabel>
-      <p className="mb-4 text-sm text-fg-muted">
-        Lade deinen QR-Code herunter oder speichere den Link — damit findest du
-        deinen Status auch auf einem anderen Gerät wieder.
-      </p>
-
+  const actions = (
+    <>
       {/* Hidden canvas purely for PNG export; the visible QR is rendered separately. */}
       <span className="hidden">
         <QRCodeCanvas ref={canvasRef} value={qrToken} size={512} level="H" />
@@ -91,6 +107,19 @@ export function QrActions({ tournamentId, qrToken }: QrActionsProps) {
           {copied ? "Link kopiert ✓" : "Link teilen"}
         </Button>
       </div>
+    </>
+  );
+
+  if (variant === "bare") return actions;
+
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-6">
+      <SectionLabel className="mb-3">Für später sichern</SectionLabel>
+      <p className="mb-4 text-sm text-fg-muted">
+        Lade deinen QR-Code herunter oder speichere den Link — damit findest du
+        deinen Status auch auf einem anderen Gerät wieder.
+      </p>
+      {actions}
     </div>
   );
 }
