@@ -148,32 +148,39 @@ export function AddParticipantForm({
           <legend className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
             Aufstellung
           </legend>
-          {members.map((member, i) => (
-            <div key={i} className="flex flex-col gap-3 sm:flex-row">
-              <div className="flex flex-1 flex-col gap-1.5">
-                <Label htmlFor={`add-member-${i}`}>
-                  {i === 0 ? "Captain" : `Spieler ${i + 1}`}
-                  {i > 0 && " (optional)"}
-                </Label>
-                <Input
-                  id={`add-member-${i}`}
-                  value={member.name}
-                  onChange={(e) => updateMember(i, { name: e.target.value })}
-                  autoComplete="off"
-                  required={i === 0}
-                />
+          {members.map((member, i) => {
+            // Distinct label per row: three fields all reading "Gamertag" are
+            // indistinguishable to a screen reader.
+            const who = i === 0 ? "Captain" : `Spieler ${i + 1}`;
+            return (
+              <div key={i} className="flex flex-col gap-3 sm:flex-row">
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Label htmlFor={`add-member-${i}`}>
+                    {who}
+                    {i > 0 && " (optional)"}
+                  </Label>
+                  <Input
+                    id={`add-member-${i}`}
+                    value={member.name}
+                    onChange={(e) => updateMember(i, { name: e.target.value })}
+                    autoComplete="off"
+                    required={i === 0}
+                  />
+                </div>
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Label htmlFor={`add-member-tag-${i}`}>
+                    Gamertag {who} (optional)
+                  </Label>
+                  <Input
+                    id={`add-member-tag-${i}`}
+                    value={member.gamertag}
+                    onChange={(e) => updateMember(i, { gamertag: e.target.value })}
+                    autoComplete="off"
+                  />
+                </div>
               </div>
-              <div className="flex flex-1 flex-col gap-1.5">
-                <Label htmlFor={`add-member-tag-${i}`}>Gamertag (optional)</Label>
-                <Input
-                  id={`add-member-tag-${i}`}
-                  value={member.gamertag}
-                  onChange={(e) => updateMember(i, { gamertag: e.target.value })}
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </fieldset>
       )}
 
