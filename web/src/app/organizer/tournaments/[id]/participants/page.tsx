@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
 import { requireOrgTournament } from "@/lib/auth/org-tournament";
+import { AddParticipantForm } from "./add-participant-form";
 import { TYPE_LABELS } from "./participant-types";
 
 export const metadata: Metadata = {
@@ -93,6 +94,8 @@ export default async function ParticipantsPage({
           <div className="mb-4 font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
             {rows.length} Teilnehmer
           </div>
+
+          <AddParticipantForm tournamentId={id} />
 
           {rows.length === 0 ? (
             <p className="text-sm text-fg-muted">

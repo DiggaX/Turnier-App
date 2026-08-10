@@ -2,6 +2,7 @@
 
 import { friendlyDbError } from "@/lib/db-errors";
 import { requireStaff, type ActionResult } from "@/lib/auth/staff";
+import { validBirthdate } from "@/lib/consent";
 
 export async function updateParticipant(
   id: string,
@@ -67,6 +68,78 @@ export async function manualCheckIn(id: string, tournamentId: string): Promise<A
   if (error) {
     return { error: friendlyDbError(error, "Check-in fehlgeschlagen.") };
   }
+  return { ok: true };
+}
+
+/**
+ * Nachmeldung: add someone who turns up after registration closed.
+ *
+ * The public form at /t/[id]/register is bound to status='registration', so a
+ * latecomer used to be unreachable — the only way in was resetting the whole
+ * tournament's status by hand. Creates a walk-in without an account (no
+ * recovery link, no photo consent — both belong to the person, not the orga)
+ * and checks them in right away, since someone standing at the desk is by
+ * definition present.
+ *
+ * Note this does NOT touch the bracket. An already generated bracket has to be
+ * regenerated for the new entrant to get a match.
+ */
+export async function addParticipant(
+  tournamentId: string,
+  displayName: string,
+  birthdate: string,
+  gamertag: string | null,
+): Promise<ActionResult> {
+  const guard = await requireStaff();
+  if ("error" in guard) return guard;
+
+  const name = displayName?.trim();
+  if (!name) return { error: "Anzeigename ist erforderlich." };
+  if (!validBirthdate(birthdate?.trim() ?? "", new Date())) {
+    return { error: "Bitte ein gültiges Geburtsdatum eingeben." };
+  }
+
+  // team_size decides solo vs team; team members stay empty and can be filled
+  // in on the participant's page afterwards.
+  const { data: tournament } = await guard.supabase
+    .from("tournaments")
+    .select("id, team_size")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  if (!tournament) return { error: "Turnier wurde nicht gefunden." };
+
+  const { data: participant, error: insErr } = await guard.supabase
+    .from("participants")
+    .insert({
+      tournament_id: tournamentId,
+      user_id: null,
+      type: (tournament.team_size ?? 1) > 1 ? "team" : "solo",
+      display_name: name,
+      gamertag: gamertag?.trim() || null,
+      birthdate: birthdate.trim(),
+    })
+    .select("id")
+    .single();
+
+  if (insErr || !participant) {
+    return { error: friendlyDbError(insErr, "Teilnehmer konnte nicht angelegt werden.") };
+  }
+
+  // Separate step on purpose: check_in writes the audit row that says a human
+  // waved this person through. A failure here leaves a usable participant, so
+  // say what happened instead of pretending the whole thing failed.
+  const { error: checkInErr } = await guard.supabase.rpc("check_in", {
+    p_participant_id: participant.id,
+    p_method: "manual",
+  });
+  if (checkInErr) {
+    return {
+      error:
+        `${name} wurde angelegt, aber der Check-in ist fehlgeschlagen. ` +
+        "Bitte in der Teilnehmerliste manuell einchecken.",
+    };
+  }
+
   return { ok: true };
 }
 
