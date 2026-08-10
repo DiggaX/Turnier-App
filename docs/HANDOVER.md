@@ -409,6 +409,22 @@ viele Jahre in der Vergangenheit, und am Tresen kostet das jedes Mal mehrere Wis
     Nähe war Zufall. **Bitte nicht als geklärt weitertragen** — das ist genau der Fehler, den §10 dieser
     Datei als teuerste Angewohnheit nennt. Was bleibt und belastbar ist: der Fund selbst, dass er
     weitergeht, und die Detektionsmethode aus (a).
+
+    **(c) Dritter Nachtrag — die zweite Sitzung ist nachgewiesen, und damit fällt die Erklärung
+    „eigenes Werkzeug" weitgehend weg.** Kurz darauf lagen drei weitere 0-Byte-Dateien im Repo-Root:
+    `` 1` `` (20:36), `0` (20:38) und `` (`6e3e21c`…`015b759` `` (20:39). Die dritte ist **wörtlich
+    Zeile 8 dieser Datei bzw. von FORTSCHRITT.md** — Text, den in dieser Minute niemand geschrieben,
+    sondern nur *gelesen* hat. Im selben Moment standen zwei Quelldateien geändert im Arbeitsbaum, die
+    aus dieser Sitzung nicht stammen konnten (`participants/page.tsx` und `participants/[pid]/page.tsx`,
+    inhaltlich eine fertige Aufstellungs-Anzeige). **Es lief also nachweislich eine zweite Sitzung im
+    selben Arbeitsbaum** — wie schon am Vormittag, siehe die Notiz am Kopf von FORTSCHRITT.md.
+
+    Damit ordnet sich alles: die eigenen Repro-Versuche mussten scheitern, weil der Erzeuger ein
+    **anderer Prozess** ist. Wer die Ursache wirklich einkreisen will, braucht deshalb den Zeitstempel
+    **und** die Frage, welche Sitzung gerade lief — `find -size 0 -newermt '-2 minutes'` neben
+    `git status`, und zwar in **beiden** Sitzungen. ⚠️ **Und die praktische Konsequenz, die wichtiger ist
+    als die Ursache:** wer hier committet, muss `git add` mit expliziten Pfaden benutzen und vorher
+    `git status` lesen — sonst reißt man die halbfertige Arbeit der anderen Sitzung mit hinein.
 16. **Das Aufstellungs-Formular ist nie in einem Browser geöffnet worden.** Unit- und Komponententests
     sind grün (`add-participant-form.test.tsx`), die RLS ist gegen die Live-DB bewiesen, aber die
     Organizer-Seiten verlangen einen Login — den kann ein Agent nicht führen. Erster Handgriff für
