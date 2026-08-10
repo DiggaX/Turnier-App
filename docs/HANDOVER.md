@@ -184,6 +184,74 @@ im Einwilligungstext; fehlt sie, nennt der Satz nur den Namen. Der Slug bleibt `
 
 **Aktueller Datenstand:** DB wurde am 2026-08-07 komplett geleert und neu befüllt. Org **„Abenteuerinsel Fehmarn"** (slug bleibt `testverein-fehmarn`). Admins: `organizer@test.de` / `test1234` (nur Passwort-Login) und `rene.moellers@gmx.de` (Magic Link). Turniere: „Misson: Next Level EA Sports 2026" (Anmeldung offen), „Misson: Next Level Rocket League 2026" (Entwurf), „Sommer Cup 2026" (archiviert).
 
+### Neu am 2026-08-10 (Nachmeldung, Live-Steuerung ohne Scorekeeper, Regenerate-Riegel)
+
+Ausgelöst durch einen echten Vorfall: beim laufenden Turnier stand ein Junge an der Theke, der noch
+mitspielen wollte. Es gab **keinen Weg**, ihn einzutragen — `/t/[id]/register` gibt außerhalb von
+`status='registration'` 404, und auf `participants` existierte nur `participants_insert_self`. Der
+Notbehelf war, den Turnierstatus von Hand zurückzusetzen.
+
+**1. Nachmeldung** (`5e4c211`, Migration `20260810120000_participants_insert_staff.sql`).
+Auf der Organizer-Teilnehmerseite: Name, Geburtsdatum, optionaler Gamertag → angelegt und sofort
+per `check_in(…, 'manual')` eingecheckt.
+
+- ⚠️ **`user_id is null` in der Policy ist die Sicherheitsgrenze, keine Bequemlichkeit.** Der
+  Staff-Pfad legt ausschließlich kontenlose Walk-ins an; ohne diese Bedingung könnte ein
+  Staff-Mitglied eine Anmeldung auf eine **fremde** `auth.users`-Id schreiben. Wer diese Bedingung
+  je entfernt, öffnet genau das. Beide neuen Policies ziehen die Grenze an derselben Stelle.
+- Ein so angelegter Teilnehmer hat **keinen Recovery-Link und keine Fotoerlaubnis** — beides gehört
+  der Person, nicht der Orga. Steht auch im Formular.
+- Check-in läuft bewusst über das RPC statt über ein direktes `checked_in_at`, damit der
+  Audit-Eintrag (`method = 'manual'`) entsteht. Schlägt nur dieser Schritt fehl, existiert der
+  Teilnehmer trotzdem — die Meldung sagt das, statt Totalversagen vorzutäuschen.
+
+**2. Aufstellung bei Team-Turnieren** (`4651579` + `e634f7d`, Migration
+`20260810140000_team_members_insert_staff.sql`). Bei `team_size > 1` fragt das Formular eine Zeile
+pro Teamgröße ab, erste Zeile = Captain (daran hängt `is_captain`). Leere hintere Zeilen fallen
+raus, ein Team ganz ohne Spieler wird abgelehnt.
+
+- Grund: `team_members_write_owner` keyt auf `participants.user_id = auth.uid()`, ein Walk-in hat
+  kein Konto → die Aufstellung war für die Orga unerreichbar. **Live passiert:** zwei über das
+  Formular angelegte 3v3-Teams („Test", „Qqqq") standen mit null Spielern im Turnier.
+- ⚠️ **Migrations-Zeitstempel-Kollision:** diese Datei heißt `20260810140000_…` wie
+  `20260810140000_participant_link_writes.sql` aus der parallelen Auth-Session. Kosmetisch, weil
+  hier über MCP eingespielt wird (die DB-Versionen weichen ohnehin von den Dateinamen ab) — bei
+  einem `supabase db push` aber eine Stolperfalle.
+
+**3. Match starten/zählen ohne Scorekeeper** (`b3e625b`). Die Live-Steuerung wanderte aus
+`/score/[token]` nach `components/live-score-control.tsx` und wird jetzt **zweimal** benutzt: von
+der Scorekeeper-Seite und, eingeklappt unter dem QR, in der Organizer-Matchliste.
+
+- Läuft über dasselbe Match-Token, das die Seite ohnehin per `get_scorekeeper_tokens` lädt →
+  **keine neue Berechtigung, kein neues RPC.** Derselbe Link, nur auf einem Schirm, den die Orga
+  schon in der Hand hat.
+- Klappt automatisch auf, sobald das Match `live` ist.
+
+**4. Riegel gegen versehentliches Löschen** (`4bcc853`, `2e89b0f`, `0f6e032`). Nachmelden macht
+„Bracket neu generieren" zur Aktion **mitten im Turnier** — und `generateBracket` löscht alle
+Matches. Vorher stand davor nur ein generisches „Fortfahren?".
+
+- `generateBracket(id, { discardResults })` bricht ab, solange Arbeit im Bracket steckt. **Drei
+  Sorten**, alle gleich viel wert: `done`, `live`, und **`pending`-Matches mit Spielermeldungen**.
+  Die dritte ist die tückische — `match_reports` hängt per `on delete cascade` an der Match-Id, der
+  Verlust ist am Match-Status **nicht** zu sehen.
+- ⚠️ **Der Riegel sitzt in der Action, nicht im Knopf.** Ein Browser-Dialog ist Höflichkeit; jeder
+  künftige Aufrufer bekommt denselben Schutz. Gezählt werden **Matches, nicht Meldungen** — ein
+  Match, das beide Spieler gemeldet haben, ist ein Verlust, nicht zwei.
+- Der Wortlaut kommt aus `lostWork()` (`lib/bracket/regenerate-warning.ts`), damit Action und
+  Dialog nicht auseinanderlaufen und die deutschen Endungen **eine** Stelle haben: „1 gespieltes
+  Ergebnis, 1 laufendes Spiel und 2 gemeldete Ergebnisse ohne Freigabe **werden** …".
+
+**Verifiziert.** RLS beider Policies mit angenommener Rolle gegen die Live-DB bewiesen, jeweils in
+zurückgerollten Transaktionen: Organizer + Walk-in erlaubt; Nicht-Staff abgelehnt; Organizer auf
+fremde `user_id` abgelehnt; Organizer an die Aufstellung eines Teilnehmers **mit** Konto abgelehnt.
+Nachmeldung und Riegel hat der User am 2026-08-10 selbst live durchgeklickt und bestätigt.
+
+⚠️ **Beim Nachstellen von RLS-Ketten in SQL:** Teilnehmer und Aufstellung müssen in **getrennten
+Statements** eingefügt werden. Steckt beides in einer Anweisung (CTE), sieht die `exists`-Prüfung
+der Policy die eben angelegte Zeile nicht und der Insert scheitert — ein Artefakt des Testaufbaus,
+kein Policy-Fehler. Genau darauf bin ich erst hereingefallen.
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - **Multi-Tenant-Isolation:** `profiles.org_id` + `tournaments.org_id` + `public.current_org_id()` (SECURITY DEFINER). Staff-Write-RLS ist `is_staff() AND <org = current_org_id()>`. **Turnier-SELECT bleibt public**. `games` bleiben **global**. Organizer-Seiten 404'en fremde Turniere via `requireOrgTournament`.
 - **⚠️ SECURITY-DEFINER-RPCs umgehen RLS** → brauchen EXPLIZITE Guards. Neue schreibende Definer-RPCs: **immer `is_staff()`/`is_admin()` UND Org-Check**. Bei `my_sessions()`/`revoke_session()` ist die `auth.uid()`-Bedingung die Autorisierung — nicht entfernen.
@@ -275,6 +343,28 @@ im Einwilligungstext; fehlt sie, nennt der Satz nur den Namen. Der Slug bleibt `
     liefen parallel; welche es war, lässt sich nachträglich nicht sagen. **Nicht raten** — die
     Gegenmaßnahmen stehen ohnehin schon in §4: `git status` nach jedem Workflow, und Temporärdateien
     gehören ins Scratchpad, nie ins Repo.
+
+    **Nachtrag am selben Abend: es kamen zehn neue nach** (`'`, `(,`, `{,`, `0)`, `1`, `m.status`,
+    `web/'`, `web/)`, `` web/1` ``, `web/ACHTUNG`), zwei davon innerhalb weniger Minuten. Alle
+    gelöscht, jeweils einzeln auf „existiert, ist Datei, ist leer" geprüft, Quelldateiendungen
+    grundsätzlich ausgenommen. **Die Quelle produziert also weiter** — die Ursache ist damit weiter
+    offen, nicht erledigt. ⚠️ **`usage` liegt entgegen der Liste oben wieder (oder noch) da**, 0 Byte,
+    Zeitstempel 12:12; bewusst stehen gelassen, weil der Name als Platzhalter gemeint sein könnte und
+    er nicht nach Kommandobruchstück aussieht.
+16. **Das Aufstellungs-Formular ist nie in einem Browser geöffnet worden.** Unit- und Komponententests
+    sind grün (`add-participant-form.test.tsx`), die RLS ist gegen die Live-DB bewiesen, aber die
+    Organizer-Seiten verlangen einen Login — den kann ein Agent nicht führen. Erster Handgriff für
+    den nächsten Menschen: 3v3-Turnier → *Teilnehmer → Team nachmelden* → drei Zeilen müssen
+    erscheinen (Captain, Spieler 2, Spieler 3).
+17. **Kein e2e deckt die neuen Funktionen ab** — Nachmeldung, Live-Steuerung in der Matchliste und
+    der Regenerate-Riegel haben keine Spec. Der Riegel wäre der lohnendste: er ist die einzige Stelle,
+    an der ein Fehlklick unwiederbringlich Daten kostet, und ein Test dafür braucht nur ein Fixture
+    mit einem freigegebenen Ergebnis. ⚠️ Vorher §7.1 lesen — die Suite hat gerade eigene Probleme.
+18. **Die öffentliche Anmeldung nimmt weiterhin Geburtsdaten aus der Zukunft.** `validBirthdate()`
+    (`lib/consent.ts`) sichert nur den Nachmelde-Pfad ab. Beleg in Produktion: Teilnehmer „Moritz b."
+    im EA-Sports-Turnier trägt `2026-07-10`. Harmlos, solange niemand nach Alter auswertet — aber
+    `requiredConsentMethod()` hängt am Geburtsdatum, ein Erwachsener mit Tippfehler bekäme die
+    Unterschriftspflicht. Ein Aufruf in `register-client.tsx` würde reichen.
 
 16. **Fotoerlaubnis — was bewusst fehlt** (siehe §5): **kein Widerruf** (eine erteilte Erlaubnis lässt
     sich in der App nicht zurückziehen oder löschen — DSGVO-seitig der nächste ehrliche Handgriff),

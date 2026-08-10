@@ -1,6 +1,11 @@
 # Turnier-App — Fortschritt
 
-**Letzter Stand:** 2026-08-10 · Branch `main` @ `da825f0` · auf `origin/main` gepusht (`github.com/DiggaX/Turnier-App`)
+**Letzter Stand:** 2026-08-10 · Branch `main` @ `08fa197` · auf `origin/main` gepusht (`github.com/DiggaX/Turnier-App`)
+
+> Zwei Sitzungen liefen an diesem Tag **parallel** im selben Arbeitsbaum: Auth/Teilnehmer-Zugang
+> (`6e3e21c`…`015b759`, `b47a4b1`) und Nachmeldung/Live-Steuerung (`5e4c211`…`e634f7d`). Die
+> Commits liegen deshalb verzahnt in der Historie — beim Lesen der Reihenfolge nicht irritieren
+> lassen.
 
 ⚠️ **Diese Datei lag zwischen 2026-06-19 und 2026-08-10 brach**, während weitergearbeitet wurde
 (Archiv, Geräte-Kopplung, Handscanner, Fotoerlaubnis, Nachmeldung …). Der belastbare Verlauf dieser
@@ -30,6 +35,10 @@ ist ab „Session 2026-08-10" wieder lückenlos. **Bei Widersprüchen gilt HANDO
 | Supabase-Auth konfiguriert: Resend-SMTP, Recovery-Template cross-device, Anon-Limit 30→200/h | ✅ 2026-08-10 |
 | Blockierender „Zugang sichern"-Dialog nach der Anmeldung | ✅ 2026-08-10 |
 | Teilnehmer-Link schreibfähig: Check-in + Ergebnis melden vom geteilten Link | ✅ 2026-08-10 |
+| Nachmeldung ins laufende Turnier (Orga legt Walk-in an + checkt ein) | ✅ 2026-08-10 · vom User live bestätigt |
+| Aufstellung wird bei Team-Turnieren mit abgefragt (Captain + Spieler) | ✅ 2026-08-10 · Browser-Klick steht aus |
+| Match starten/zählen/beenden aus der Orga-Ansicht, ohne Scorekeeper | ✅ 2026-08-10 |
+| Riegel: „Bracket neu generieren" löscht keine Arbeit mehr unbemerkt | ✅ 2026-08-10 · vom User live bestätigt |
 | 393 Unit-Tests grün (waren 226) | ✅ 2026-08-10 |
 
 ---
@@ -47,6 +56,10 @@ ist ab „Session 2026-08-10" wieder lückenlos. **Bei Widersprüchen gilt HANDO
 | 10 | Magic-Link-Template weiter PKCE | 🟡 | Nur *Reset Password* wurde auf `token_hash` umgestellt. Magic Link bleibt an den anfordernden Browser gebunden — bewusst offen gelassen. |
 | 11 | `consent-step.tsx` doppelter Accessible-Name | 🟢 klein | `aria-label` + umschließendes `<Label>` ergibt gestotterte Screenreader-Ansage. Im neuen Dialog behoben, hier nicht. |
 | 12 | 🚨 Drei Auth-Schalter dürfen NICHT an | ⛔ **Dauerhinweis** | „Require current password when updating", „Secure password change", „Enable Captcha protection". Details HANDOVER §7 Punkt 12 — Captcha würde **jede Teilnehmer-Anmeldung** killen. |
+| 13 | Aufstellungs-Formular im Browser ansehen | 🟢 klein | Tests grün, RLS bewiesen, aber nie geöffnet — ein Agent kann sich nicht einloggen. 3v3-Turnier → Teilnehmer → „Team nachmelden" → drei Zeilen. HANDOVER §7.16 |
+| 14 | Kein e2e für Nachmeldung / Live-Steuerung / Riegel | 🟡 | Der Riegel wäre der lohnendste — einzige Stelle, an der ein Fehlklick unwiederbringlich Daten kostet. Vorher §7.1 lesen. HANDOVER §7.17 |
+| 15 | Öffentliche Anmeldung nimmt Geburtsdaten aus der Zukunft | 🟢 klein | `validBirthdate()` sichert nur den Nachmelde-Pfad. Beleg live: „Moritz b." trägt `2026-07-10`. Ein Aufruf in `register-client.tsx` reicht. HANDOVER §7.18 |
+| 16 | Müll-Dateien entstehen weiter | 🟡 | Am 2026-08-10 kamen zehn neue nach dem ersten Aufräumen; gelöscht, Ursache weiter unbekannt. `usage` (0 Byte) bewusst stehen gelassen. HANDOVER §7.15 |
 
 ---
 
@@ -110,10 +123,48 @@ Alle Specs gegen **localhost:3000 + LIVE-Supabase** (kein Test-DB). **20/20 grü
 
 Tiefen-Audit Multi-Tenant-Isolation + Token (auf User-Wunsch). **Token-Enumeration nicht möglich** — `qr_token` (`gen_random_uuid()`) + Invite-`code` (`crypto.randomUUID()`) sind zufällige UUIDs. **4 Cross-Org-PII-Lecks gefunden + geschlossen:** mehrere SELECT-Policies (`consents`, `team_members`, `check_ins`, `match_reports`, `push_subscriptions`), der `check_in`-qr_scan-RPC und die consent-signatures-Storage-Policy nutzten nacktes `is_staff()` (org-agnostisch). Migration `20260702090000_org_scope_staff_reads.sql` führt `is_staff_of_participant_org()` ein + scopt alle Staff-Branches auf `current_org_id()`. Live angewandt (per db2) + mit simulierten Rollen bewiesen (own sichtbar, fremde Org = 0). Nicht betroffen (korrekt isoliert): Turnier-/Match-/Teilnehmer-Writes, profiles, organizations, org_invites, confirm_match, report_match, member-RPCs, qr_token/PII-Reads. Offen optional: Leaked-Password-Protection (Dashboard-Toggle).
 
+## Session 2026-08-10 (später) — Nachmeldung, Live-Steuerung, Regenerate-Riegel
+
+Vollständig in **[HANDOVER.md §5](HANDOVER.md)** („Neu am 2026-08-10 (Nachmeldung, …)").
+
+**Auslöser war kein Ticket, sondern ein Junge an der Theke.** Mitten im laufenden Turnier wollte
+noch jemand mitspielen — und es gab schlicht keinen Weg, ihn einzutragen. Der Notbehelf an dem Abend:
+Turnierstatus von Hand auf `registration` zurücksetzen, anmelden lassen, Bracket neu generieren.
+
+**Was daraus gebaut wurde.** Vier Dinge, jedes aus dem vorigen entstanden:
+1. **Nachmeldung** (`5e4c211`) — Orga legt einen Walk-in an und checkt ihn ein. Brauchte eine
+   Insert-Policy, die es für Staff gar nicht gab.
+2. **Live-Steuerung ohne Scorekeeper** (`b3e625b`) — die Steuerung aus `/score/[token]` wurde geteilt
+   und liegt jetzt auch in der Matchliste. Kein neues RPC, keine neue Berechtigung.
+3. **Riegel gegen versehentliches Löschen** (`4bcc853`, `2e89b0f`, `0f6e032`) — weil Nachmelden
+   „Bracket neu generieren" zur Alltagsaktion mitten im Turnier macht, und das löschte bis dahin
+   kommentarlos alles.
+4. **Aufstellung bei Team-Turnieren** (`4651579`, `e634f7d`) — nachgereicht, nachdem zwei live über
+   das Formular angelegte 3v3-Teams mit null Spielern in der DB standen.
+
+**Wie verifiziert.** Nicht durch Behauptung: RLS beider neuen Policies mit **angenommener Rolle**
+gegen die Live-DB, jeweils in zurückgerollter Transaktion, inklusive der beiden Verbotsfälle
+(Nicht-Staff; Staff auf fremde `user_id`). Der Riegel wurde an einem eigens gebauten Testturnier
+gegen die echten Zahlen nachgezählt und der Wortlaut durch den **ausgelieferten** `lostWork()`
+gejagt, nicht aus dem Kopf zitiert. Nachmeldung und Riegel hat der User selbst live durchgeklickt.
+
+**Was gut war.** Der Riegel sitzt in der Action, nicht im Knopf — dadurch schützt er auch jeden
+künftigen Aufrufer. Und dreimal nachgefragt statt geraten, als der User „ne nix machen nix löschen"
+schrieb: die Antwort war in beide Richtungen lesbar, und es ging um Datenverlust.
+
+**Was schlecht war.** ⚠️ Beim ersten RLS-Test steckten Teilnehmer und Aufstellung in **einem**
+Statement — die Policy sah die eben angelegte Zeile nicht, und der Fehlschlag sah nach Policy-Bug
+aus. Testaufbau, nicht Code. Außerdem hatte ich ein Testturnier gebaut, dessen Zustand der User
+kurz darauf durch einen eigenen Klick verbrauchte; wer so etwas anlegt, sollte damit rechnen, dass
+parallel jemand daran arbeitet. Und ein Komponententest behauptete zuerst eine Fehlermeldung, die
+`required` im Browser gar nicht entstehen lässt.
+
 ## Nächster Schritt
 
 **Stand 2026-08-10.** Auth-Kette ist geschlossen und in Produktion bewiesen; die Teilnehmer kommen
-jetzt auch von einem zweiten Gerät an alles Nötige.
+jetzt auch von einem zweiten Gerät an alles Nötige. Die Turnierleitung kann seither außerdem
+nachmelden, Matches selbst starten und zählen — und „Bracket neu generieren" nimmt keine Arbeit
+mehr mit, ohne vorher zu sagen, welche.
 
 1. **Kleine Handgriffe:** #9 (irreführende Meldung nach abgelaufenem Recovery-Fenster), #11
    (doppelter Accessible-Name in `consent-step.tsx`).
@@ -122,5 +173,7 @@ jetzt auch von einem zweiten Gerät an alles Nötige.
 3. **Liegt unverändert:** #4 Live-Acceptance-Durchlauf ([ACCEPTANCE.md](ACCEPTANCE.md)), #3
    Push-Gerätetest, #7 Live-Score-Capture, sowie die 35 verwaisten Signatur-Objekte im
    `consent-signatures`-Storage (SQL-Delete blockiert, nur über Dashboard/Storage-API).
+5. **Neu offen aus der Nachmelde-Session:** #13 (Aufstellungs-Formular einmal im Browser ansehen),
+   #14 (kein e2e für die neuen Funktionen), #15 (Zukunftsdatum in der öffentlichen Anmeldung).
 4. ⚠️ **Vor jedem Anfassen der Auth-Einstellungen:** #12 lesen. Drei Schalter sehen dort nach
    Verbesserung aus und würden je einen Teil der App abschalten.
