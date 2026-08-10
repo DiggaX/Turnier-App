@@ -1,9 +1,13 @@
 /**
  * YYYY-MM-DD that is a real calendar date, not in the future, and after 1900.
  *
- * The public registration form leans on the browser's date input; the
- * organizer's Nachmeldung goes through a server action, where the string
- * arrives unchecked and `birthdate` is NOT NULL in the database.
+ * Both write paths call this: the organizer's Nachmeldung through its server
+ * action, and the public registration form through its zod schema. The public
+ * one is also why the rule exists a second time in the database — that page has
+ * no server action at all, it inserts into `participants` straight from the
+ * browser with the anon key, so this function is a courtesy to whoever is
+ * filling in the form rather than a guard. The guard is the CHECK constraint
+ * `participants_birthdate_check`, and it draws the same two lines.
  */
 export function validBirthdate(value: string, today: Date): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;

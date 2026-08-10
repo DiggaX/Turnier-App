@@ -13,6 +13,7 @@ import {
   STAFF_SESSION_MESSAGE,
 } from "@/lib/supabase/guest-session";
 import type { Database } from "@/lib/database.types";
+import { validBirthdate } from "@/lib/consent";
 import { friendlyDbError, isUniqueViolation } from "@/lib/db-errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,13 +39,16 @@ function buildSchema(teamSize: number) {
   const base = {
     displayName: z.string().trim().min(1, "Anzeigename erforderlich"),
     gamertag: z.string().trim().optional(),
+    // new Date() gehört in den Callback: die Uhr wird zur Prüfzeit gelesen,
+    // nicht beim Bauen des Schemas — sonst veraltet ein über Mitternacht
+    // offener Tab.
     birthdate: z
       .string()
       .min(1, "Geburtsdatum erforderlich")
-      .refine((v) => {
-        const d = new Date(v + "T00:00:00Z");
-        return !Number.isNaN(d.getTime()) && d.getTime() < Date.now();
-      }, "Bitte ein gültiges Datum in der Vergangenheit angeben"),
+      .refine(
+        (v) => validBirthdate(v, new Date()),
+        "Bitte ein gültiges Geburtsdatum eingeben.",
+      ),
   };
 
   if (teamSize > 1) {
