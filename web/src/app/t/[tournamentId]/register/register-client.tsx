@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -15,6 +15,7 @@ import {
 import type { Database } from "@/lib/database.types";
 import { validBirthdate } from "@/lib/consent";
 import { friendlyDbError, isUniqueViolation } from "@/lib/db-errors";
+import { BirthdateField } from "@/components/birthdate-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -370,7 +371,17 @@ export function RegisterClient({
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="birthdate">Geburtsdatum</Label>
-            <Input id="birthdate" type="date" {...register("birthdate")} />
+            <Controller
+              control={control}
+              name="birthdate"
+              render={({ field }) => (
+                <BirthdateField
+                  id="birthdate"
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+              )}
+            />
             {errors.birthdate && (
               <p className="text-sm text-destructive">
                 {errors.birthdate.message}

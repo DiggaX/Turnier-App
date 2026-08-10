@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { UserPlus } from "lucide-react";
 
+import { BirthdateField } from "@/components/birthdate-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -122,11 +123,10 @@ export function AddParticipantForm({
           <Label htmlFor="add-birthdate">
             {isTeam ? "Geburtsdatum Captain" : "Geburtsdatum"}
           </Label>
-          <Input
+          <BirthdateField
             id="add-birthdate"
-            type="date"
             value={birthdate}
-            onChange={(e) => setBirthdate(e.target.value)}
+            onChange={setBirthdate}
             required
           />
         </div>
