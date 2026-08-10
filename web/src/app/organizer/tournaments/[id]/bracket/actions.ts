@@ -133,19 +133,51 @@ function generatorFor(
  * participants, ordered by seed.
  *
  * Pipeline:
- *  1. Ensure every checked-in participant has a 1..N seed (assign by created_at
+ *  1. Refuse to discard released results unless the caller says to (see below).
+ *  2. Ensure every checked-in participant has a 1..N seed (assign by created_at
  *     for any missing) so the generator receives a clean sequence.
- *  2. Run the format's generator.
- *  3. DELETE existing matches, INSERT the generated rows, then for single-elim
+ *  3. Run the format's generator.
+ *  4. DELETE existing matches, INSERT the generated rows, then for single-elim
  *     wire `next_match_id`/`next_slot` and immediately advance byes.
- *  4. Flip the tournament to `running`.
+ *  5. Flip the tournament to `running`.
+ *
+ * `discardResults` exists because regenerating is now a mid-tournament action:
+ * adding a latecomer means pressing this button again, and the delete in step 4
+ * takes released results with it. The guard lives here rather than in the
+ * button so no caller can wipe a played round by accident — the browser dialog
+ * is a courtesy, this is the lock.
  */
 export async function generateBracket(
   tournamentId: string,
+  options?: { discardResults?: boolean },
 ): Promise<ActionResult> {
   const guard = await requireStaff();
   if ("error" in guard) return guard;
   const { supabase } = guard;
+
+  if (!options?.discardResults) {
+    const { count: decidedCount, error: decidedErr } = await supabase
+      .from("matches")
+      .select("id", { count: "exact", head: true })
+      .eq("tournament_id", tournamentId)
+      .eq("status", "done");
+
+    if (decidedErr) {
+      return {
+        error: friendlyDbError(decidedErr, "Matches konnten nicht geladen werden."),
+      };
+    }
+    if ((decidedCount ?? 0) > 0) {
+      return {
+        error:
+          decidedCount === 1
+            ? "Es gibt bereits 1 freigegebenes Ergebnis. Neu generieren würde " +
+              "es löschen — bitte ausdrücklich bestätigen."
+            : `Es gibt bereits ${decidedCount} freigegebene Ergebnisse. ` +
+              "Neu generieren würde sie löschen — bitte ausdrücklich bestätigen.",
+      };
+    }
+  }
 
   const { data: tournament, error: tErr } = await supabase
     .from("tournaments")

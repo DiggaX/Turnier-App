@@ -132,6 +132,11 @@ export default async function BracketPage({
     liveEndedAt: m.live_ended_at,
   }));
 
+  // Released results a regenerate would delete — named in the confirm dialog.
+  const decidedCount = (rawMatches ?? []).filter(
+    (m) => m.status === "done",
+  ).length;
+
   // Swiss-specific derived data (computed regardless of format; no-ops when empty).
   const swissMatches: SwissMatch[] = (rawMatches ?? []).map((m) => ({
     id: m.id,
@@ -396,7 +401,11 @@ export default async function BracketPage({
                 <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
                   Bracket neu generieren
                 </h2>
-                <GenerateButton tournamentId={id} regenerate />
+                <GenerateButton
+                  tournamentId={id}
+                  regenerate
+                  decidedCount={decidedCount}
+                />
               </section>
               </div>
             )}
