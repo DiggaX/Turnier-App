@@ -1,6 +1,8 @@
 # Turnier-App — Übergabe an den nächsten Agent
 
-**Stand:** 2026-08-10 · Branch `main` @ `b47a4b1` · **gepusht und live** unter https://turnier-app-opal.vercel.app (Push auf `main` deployt automatisch, siehe §3)
+**Stand:** 2026-08-10 · Branch `main` @ `da825f0` · **gepusht und live** unter https://turnier-app-opal.vercel.app (Push auf `main` deployt automatisch, siehe §3)
+
+Session-Protokoll der letzten Arbeit steht in **§11** (was gemacht, wie entschieden, was gut/schlecht lief).
 
 Lies zuerst diese Datei, dann `CLAUDE.md` (Regeln) und die Auto-Memory unter
 `C:\Users\Rene\.claude\projects\C--Users-Rene-Turnierapp\memory\` (MEMORY.md + die verlinkten Dateien).
@@ -345,3 +347,58 @@ dass das Supabase-Dashboard im Automatisierungsprofil abgemeldet war, während e
 des Users lief. `list_connected_browsers` zeigt, was wirklich verbunden ist. Und: **anmelden darf ich
 nicht** (Passwörter, Konto-Logins, API-Keys in Felder) — bei Dashboard-Aufgaben früh sagen, welcher
 Teil beim User bleibt, statt es am Ende als Überraschung zu liefern.
+
+---
+
+## 11. Protokoll — Session 2026-08-10 (Auth & Teilnehmer-Zugang)
+
+Chronologisch, damit nachvollziehbar bleibt **wie** entschieden wurde, nicht nur was.
+
+### Ausgangsfrage des Users
+Drei Fragen auf einmal: (1) Kann man sich nach einem Magic-Link auch mit Passwort anmelden, und unter
+welcher Adresse? (2) Kinder klicken am Fertig-Screen vorbei und verlieren ihren Zugang — sollte man
+das mit einem Dialog bestätigen lassen? (3) Eltern melden auf ihrem Handy an, das Kind steht aber
+allein am Turnier — kommt es an seinen Status?
+
+**Erste Erkenntnis: zwei der drei Sachen gab es schon.** `/login` hatte längst beide Formulare, und
+der Recovery-Link `?token=` funktionierte cross-device. Nur eben read-only, und ohne Passwort-Reset.
+Das hat den Zuschnitt der Arbeit bestimmt: nicht drei Features bauen, sondern **eine echte Lücke
+schließen (A), eine Warnung verbindlich machen (B), eine Grenze verschieben (C)**.
+
+### Ablauf
+| Phase | Was passierte |
+|---|---|
+| Bestandsaufnahme | Code gelesen statt geraten — ergab, dass B und C bereits zur Hälfte existierten |
+| Plan (A + B) | Plan-Modus, zwei Explore-Agents parallel (Auth-Fläche, UI-Inventar), dann ein Plan-Agent |
+| Rückfragen | Vier Entscheidungen dem User vorgelegt: Dialog-Ort, Dialog-Strenge, Mailversand, Cross-Device-Template |
+| Bau A + B | Commits `6e3e21c`, `3a324b5` — B bewusst **nicht** eingehängt, weil `register-client.tsx` fremde Arbeit trug |
+| Dashboard | SMTP/Template/Rate-Limit, teils vom User (API-Key), teils von mir |
+| Bau C | Umfang per Rückfrage geklärt, Migration `20260810140000`, Commit `015b759` |
+| Doku | §5/§7/§10 dieser Datei, Memory, danach dieses Protokoll |
+
+### Was gut war
+- **Erst lesen, dann planen.** Die Antwort „das gibt es schon, nur read-only" war mehr wert als jedes
+  Feature, das ich sonst doppelt gebaut hätte.
+- **Rückfragen an den Entscheidungspunkten**, nicht vorher und nicht hinterher. Der Umfang von C
+  (Check-in **und** Melden) war eine Risikoentscheidung des Users, keine Implementierungsfrage.
+- **Beweise statt Behauptungen.** Rollback-Transaktion für die Schreibpfade, Resend-Log für die Mail,
+  fremder Browser für Cross-Device. Jede dieser drei Prüfungen hat etwas gefunden oder widerlegt.
+- **Fremde Arbeit nicht mitgerissen.** Der Arbeitsbaum enthielt eine unfertige Fotoerlaubnis mit nicht
+  angewandter Migration. Statt „alles committen" nur die eigenen Dateien — und die Import-Auflösung
+  gegen den Index geprüft, um sicher zu sein, dass der Teilstand für sich baut.
+
+### Was schlecht war
+- **Drei Annahmen ungeprüft in Pläne geschrieben** (Leak-Schutz „ein Klick", `pkce_` nicht
+  cross-device, `git add` als Müll-Ursache). Alle drei fielen beim ersten Hinsehen. Zwei standen
+  schon als Empfehlung im Dokument, bevor sie geprüft waren — **das ist die teuerste Angewohnheit
+  dieser Session.**
+- **Zu spät gesagt, was ich nicht darf.** Dass Konto-Logins und API-Keys für mich gesperrt sind, kam
+  erst heraus, als der User „mach die drei Schritte" sagte. Das gehört in den Plan, nicht ans Ende.
+- **Screenshot statt `read_page`** beim Prüfen des Anmeldezustands — kostete eine Runde auf falscher
+  Fährte.
+- **Selbst Müll-Dateien produziert** und die Ursache dann falsch dokumentiert.
+
+### Was offen blieb (Details in §7)
+Leak-Schutz braucht Pro · Magic-Link-Template weiter PKCE · abgelaufenes Recovery-Fenster meldet sich
+irreführend (#13) · `consent-step.tsx` doppelter Accessible-Name (#14) · die drei Auth-Schalter, die
+niemand umlegen darf (#12).
