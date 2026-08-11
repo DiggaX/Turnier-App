@@ -85,18 +85,23 @@ export interface Database {
           mode: TournamentMode; status: TournamentStatus; starts_at: string | null;
           created_by: string | null; created_at: string; team_size: number;
           org_id: string; archived_at: string | null;
+          // Speisen die Wartezeit-Schaetzung auf "Mein Status" — Ansage der Orga,
+          // keine Messung. Siehe supabase/migrations/20260811100000.
+          match_duration_min: number; parallel_stations: number;
         };
         Insert: {
           id?: string; name: string; game_id: string; format: TournamentFormat;
           mode?: TournamentMode; status?: TournamentStatus; starts_at?: string | null;
           created_by?: string | null; created_at?: string; team_size?: number;
           org_id: string; archived_at?: string | null;
+          match_duration_min?: number; parallel_stations?: number;
         };
         Update: {
           id?: string; name?: string; game_id?: string; format?: TournamentFormat;
           mode?: TournamentMode; status?: TournamentStatus; starts_at?: string | null;
           created_by?: string | null; created_at?: string; team_size?: number;
           org_id?: string; archived_at?: string | null;
+          match_duration_min?: number; parallel_stations?: number;
         };
         Relationships: [
           { foreignKeyName: "tournaments_game_id_fkey"; columns: ["game_id"]; referencedRelation: "games"; referencedColumns: ["id"] },
