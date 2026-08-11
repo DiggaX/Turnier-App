@@ -1,8 +1,8 @@
 # Turnier-App — Übergabe an den nächsten Agent
 
-**Stand:** 2026-08-11 · Branch `main` @ `ff71519` · **gepusht und live** unter https://turnier-app-opal.vercel.app (Push auf `main` deployt automatisch, siehe §3)
+**Stand:** 2026-08-11 · Branch `main`, letzter Code-Commit `ff71519` (§16) · **gepusht und live** unter https://turnier-app-opal.vercel.app (Push auf `main` deployt automatisch, siehe §3)
 
-Session-Protokolle der letzten Arbeit stehen in **§11–§13** (was gemacht, wie entschieden, was gut/schlecht lief).
+Session-Protokolle der letzten Arbeit stehen in **§11–§16** (was gemacht, wie entschieden, was gut/schlecht lief).
 
 ⚠️ **Am 2026-08-11 liefen zwei Sitzungen parallel auf demselben Repo.** Vor dem Weiterarbeiten
 `git fetch` + `git log origin/main` — es kann Arbeit auf `main` liegen, die diese Datei noch nicht kennt.
@@ -675,14 +675,12 @@ Sieger) aber `matches` nicht direkt beschreiben (0 Zeilen).
 
 ### Neu offen aus dem Person/Team-Umbau (2026-08-11)
 
-24. 🔴 **`tournaments.team_size` lässt sich ändern, nachdem sich Leute angemeldet haben — und rechnet
-    nichts um.** `updateTournament` (`organizer/tournaments/actions.ts`, ~Z. 101–124) sperrt bei
-    vorhandenen Partien nur `game_id` und `format`, `team_size` **nicht einmal dann**. Der Typ einer
-    Anmeldung wird aber nur beim INSERT abgeleitet. Folge: 3 → 1 lässt die Personen als `player`
-    stehen (keine Wettkämpfer, im Baum stehen die Team-Zeilen), 1 → 3 lässt `solo`-Zeilen als
-    Einzelstarter im Baum — in beiden Fällen mischen sich Teams und Einzelspieler. **Riegel gehört in
-    die Server Action, nicht nur ins Formular.** Der User hat das nach dem Turnier eingeplant; eine
-    vorbereitete Aufgabe mit Fundstellen läuft bereits als eigene Session.
+24. ✅ **`tournaments.team_size` ist ab dem ersten Teilnehmer gesperrt** (`ff71519`, kein neuer
+    Migrationscode — reine Anwendungslogik). `updateTournament` zählt `participants` neben den
+    bestehenden Matches; gibt es welche, verlässt `team_size` den Patch, und bei einem abweichenden
+    Wert wird die Action mit einer deutschen Meldung abgelehnt (`TEAM_SIZE_LOCKED` in
+    `lib/tournament/lifecycle.ts`). Formular deaktiviert das Feld und zeigt dieselbe Konstante daneben.
+    528 Tests grün, Build grün, live. Details im Protokoll **§16**.
 25. 🟡 **Nicht durchgeklickt: Teams-Screen, Restspieler-Panel, Sammel-Freigabe.** Alle drei liegen
     hinter dem Orga-Login, das ein Agent nicht hat. Anmeldung und Team-Beitritt sind auf Produktion
     bewiesen (§5), diese drei nicht. **Besonders offen:** ob das Ziehen per Pointer-Events auf einem
@@ -1032,3 +1030,129 @@ mit Bestandszählung → anwenden → gegen `pg_policies`/`pg_proc`/`pg_constrai
    durchklicken. Das sind die letzten ungeprüften Wege im Turnierbetrieb.
 3. **§7 Punkt 29** — e2e-Zugangsdaten erneuern. Danach deckt `register-team.spec.ts` den Team-Beitritt
    dauerhaft ab, statt dass jemand ihn von Hand nachstellt.
+
+---
+
+## 15. Protokoll — Session 2026-08-11 (zwei Kinder auf einem Handy — nur Analyse, kein Code)
+
+Reine Klärungs-Session, kein Commit. Rene fragte, ob sich einstellen lässt, dass über dasselbe Handy
+zwei Kinder angemeldet werden können.
+
+### Ausgangsfrage des Users
+
+„kann man das einstellen noch das man über das selbe handy 2 Kinder anmelden kann"
+
+### Befund
+
+**Geht heute nicht, ist keine Einstellung, sondern eine harte DB-Sperre.** Ein Handy = eine anonyme
+Gast-Sitzung = ein `user_id`. Darauf liegt `unique (tournament_id, user_id)`
+(`20260617090000_registration_consent.sql:26`). Zweite Anmeldung mit derselben Sitzung läuft in den
+Unique-Violation-Fang in `register-client.tsx:235` („Du bist für dieses Turnier bereits angemeldet.").
+Seit dem Person/Team-Umbau (§14) prüft der Bildschirm `get_my_registration` sogar schon **vor** dem
+Formular und springt bei Treffer direkt zu `team`/`done` (`register-client.tsx:150`) — Kind 2 sieht
+das Formular für den zweiten Namen gar nicht erst.
+
+Heute umgehbar nur mit zweitem Gerät/Browser-Inkognito oder Nachmeldung durch die Orga
+(`addParticipant`, §5, „Neu am 2026-08-10").
+
+**Umbau skizziert, nicht gebaut** (User hat sich noch nicht für einen Weg entschieden):
+1. Constraint lockern auf `unique (tournament_id, user_id, display_name)` — verhindert weiter den
+   Doppelklick-/Reload-Unfall, aber erlaubt Geschwister mit unterschiedlichem Namen.
+2. `get_my_registration` müsste mehrere Zeilen liefern statt einer — der Bildschirm zeigt dann eine
+   Liste statt direkt zu springen.
+3. Button „Noch ein Kind anmelden" zurück ins Formular.
+4. Fehlertext bei 23505 anpassen.
+
+**Offener Haken, noch nicht durchdacht:** Team-Turniere. Zwei Geschwister an einem Konto, aber in
+zwei verschiedenen Teams — `get_my_team` und der Team-Schritt gehen bisher von **einer** Zeile pro
+User aus. Dort steckt der eigentliche Aufwand, nicht in der Constraint-Änderung.
+
+Zwei Wege vorgeschlagen und Rene zur Entscheidung vorgelegt:
+- **A (schlank):** immer erlaubt, kein Schalter.
+- **B:** pro Turnier ein Häkchen „Mehrfachanmeldung pro Gerät" unter *Organisation*.
+
+Empfehlung war A. **Rene hat sich noch nicht entschieden** — das ist der erste offene Punkt für den
+nächsten Schritt.
+
+### Was gut lief
+
+- **Explore-Agent statt selbst grep-Marathon.** Eine Runde hat Formular, Constraint, RPC und die
+  dokumentierte Lücke (`carry_over_participant`-Kommentar zu fehlender stabiler Personen-Kennung,
+  §5.1) sauber zusammengetragen — inklusive der Stelle, an der der Code selbst schon zugibt, dass es
+  keine stabile Wiedererkennung ohne `user_id` gibt.
+- **Vor der Antwort verifiziert statt geraten**, was `get_my_registration` genau zurückgibt (RPC-SQL
+  gelesen, nicht nur den Frontend-Aufruf) — sonst wäre der Umbauvorschlag an der falschen Stelle
+  angesetzt.
+
+### Was schlecht lief
+
+- **Fünf 0-Byte-Mülldateien im Repo-Root gefunden, die nicht aus dieser Session stammen** (`Bei`,
+  `Nach`, `` ` ``, `danach`, `sind`, plus eine mit kaputt kodiertem Emoji-Namen `ÔÜá´©Å`) — derselbe
+  Shell-Redirect-Unfall wie in §4/§14 dokumentiert, diesmal vermutlich aus einem parallelen
+  Terminal-Fenster desselben Nutzers, alle mit Zeitstempel von heute. Beim Aufräumen brauchte die
+  Emoji-Datei `git config core.quotepath false`, um den echten Dateinamen überhaupt lesbar zu machen
+  — `rm` mit der von `git status` gezeigten Escape-Schreibweise traf sie nicht. **Wieder derselbe
+  Rat wie in §4: mehrzeiligen/Sonderzeichen-Text nie roh in eine Shell-Zeile geben.** Alle entfernt,
+  `git status` jetzt sauber.
+
+### Was der Nächste zuerst tun sollte
+
+1. **Rene fragen: Weg A oder B** (oben) — ohne Antwort kein Migrationscode.
+2. Bei Entscheidung für B: Schalter-Ort ist vermutlich `/organizer/members` neben `allow_carry_over`
+   (§5.1) — gleiches UI-Muster, gleicher Freischalt-Stil.
+3. **Team-Fall zuerst klären, bevor die Migration geschrieben wird** — `get_my_team`/Team-Schritt auf
+   „mehrere Registrierungen pro User" umzustellen ist der größere Teil der Arbeit, nicht die
+   Constraint.
+
+---
+
+## 16. Protokoll — Session 2026-08-11 (team_size sperren, §7.24 abgearbeitet)
+
+Direkter Arbeitsauftrag, kein Brainstorming — Zuschnitt, Fundstellen und Ursache standen schon in
+§7.24 dieser Datei, vorbereitet von der vorigen Session als eigenständige Aufgabe.
+
+### Umsetzung
+- `updateTournament` zählt jetzt `participants` **parallel** zu den bestehenden `matches`. Gibt es
+  welche, verlässt `team_size` den Patch, und weicht der übergebene Wert vom gespeicherten ab, lehnt
+  die Action mit einer deutschen Meldung ab. Name, Modus und Start bleiben speicherbar — der Riegel
+  hängt am Wert, nicht am Formular.
+- Formular deaktiviert das Feld und zeigt denselben Satz daneben — **dieselbe Konstante**
+  (`TEAM_SIZE_LOCKED`), damit Oberfläche und Server nie auseinanderlaufen.
+- ⚠️ **Die Konstante musste nach `lib/tournament/lifecycle.ts`, nicht in `actions.ts`.** Ein
+  `"use server"`-Modul darf ausschließlich async Funktionen exportieren — ein `export const` daneben
+  löscht beim Build lautlos **alle** Exporte des Moduls, bis der Client-Import bricht. Der Build brach
+  genau daran, nicht am neuen Code.
+- ⚠️ **Der Übersichts-Zähler musste ein zweiter werden.** Der vorhandene `pCount`
+  (`organizer/tournaments/[id]/page.tsx`) zählt über `COMPETITOR_TYPES` — ein Spieler ohne Team steht
+  damit bei 0, das Feld wäre aktiv geblieben, und die Ablehnung wäre erst am Server gekommen, ohne dass
+  die Oberfläche sie je angekündigt hätte.
+- Sperre greift **ab dem ersten Teilnehmer, nicht erst ab Check-in** — begründet, nicht nur gewählt:
+  `type` wird beim INSERT gestanzt (§6) und danach nie mehr korrigiert. Schon die erste Anmeldung legt
+  fest, was nichts später zurücknimmt; Check-in wäre dieselbe Grenze, nur schwerer zu erklären.
+
+### Verifiziert
+528 Vitest-Tests grün (5 neue Fälle: Ablehnung mit deutscher Meldung, unveränderter Wert speichert
+trotzdem durch, ohne Teilnehmer schreibt der Wert weiter, RLS-blindes Turnier, Participants-Count-
+Fehler), `npm run build` grün. Commit `ff71519`, gepusht, live über den Auto-Deploy (§3).
+
+### Was teuer war
+Der Worktree hatte **kein `node_modules`** — bei einem frischen Worktree normal, hier zum ersten Mal
+aufgefallen. Eine Junction auf `web/node_modules` des Haupt-Repos schien der schnelle Weg, brach aber
+beim Build: Turbopack lehnt Symlinks ab, die außerhalb des eigenen Projektbaums liegen („Symlink …
+points out of the filesystem root"). Half nur ein echtes `npm ci` im Worktree. ⚠️ **Für künftige
+Worktrees merken:** die Junction spart Zeit beim Testen, sprengt aber `next build` mit Turbopack.
+
+`main` lief während der Session **zweimal** weiter (Theme-Aufhellung, dann Doku) — zweimal
+`git fetch` + `git rebase origin/main` statt Merge, und nach **jedem** Rebase Tests **und** Build
+erneut geprüft, nicht nur nach dem ersten.
+
+Beim Aufräumen danach zwei weitere leere Streudateien im Repo-Root (`benutzt`, `und`) — derselbe
+Shell-Redirect-Unfall, der in §4/§14/§15 schon mehrfach dokumentiert ist, diesmal aus einer deutschen
+PowerShell-Fehlermeldung, die als Dateiname interpretiert wurde. Entfernt.
+
+### Offen
+Der alte Worktree-Ordner (`.claude/worktrees/competent-lamarr-ca47aa`) ließ sich aus der laufenden
+Sitzung heraus nicht löschen — Windows hält ihn gesperrt, solange die Sitzung ihr eigenes
+Arbeitsverzeichnis dorthin zurücksetzt. Aus der Git-Worktree-Registrierung ist er raus
+(`git worktree remove`), das Verzeichnis selbst braucht ein `rm -rf` von außerhalb dieser Sitzung; der
+zugehörige Branch ist inhaltsgleich mit `main` und gefahrlos löschbar.
