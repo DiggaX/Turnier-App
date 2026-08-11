@@ -79,4 +79,22 @@ describe("resultContent", () => {
     });
     expect(detail).toContain("Fotoerlaubnis erteilt");
   });
+
+  /**
+   * Der Code vom letzten Turnier ist der häufigste Fehlscan, und er sah früher
+   * aus wie ein Erfolg — der Scan checkte still ins alte Turnier ein. Jetzt
+   * bleibt er rot und nennt Person und Turnier, damit an der Tür sofort klar
+   * ist, dass hier eine Anmeldung fehlt und kein Code kaputt ist.
+   */
+  it("names person and tournament when the code is from another one", () => {
+    const { tone, headline, detail } = resultContent({
+      kind: "otherTournament",
+      name: "Lena Fuchs",
+      tournament: "Mission: Next Level EA Sports 2026",
+    });
+    expect(tone).toBe("live");
+    expect(headline).toBe("Lena Fuchs");
+    expect(detail).toContain("Mission: Next Level EA Sports 2026");
+    expect(detail).toContain("nicht angemeldet");
+  });
 });

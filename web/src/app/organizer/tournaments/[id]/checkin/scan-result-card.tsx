@@ -12,6 +12,13 @@ export type ScanStatus =
   | { kind: "success"; name: string; photoConsent: boolean }
   | { kind: "already"; name: string; since: string; photoConsent: boolean }
   | { kind: "unknown" }
+  /**
+   * Gültiger QR, aber aus einem anderen Turnier derselben Organisation — der
+   * Klassiker: jemand kommt mit dem Code vom letzten Mal. Eigener Zustand, weil
+   * „nicht erkannt" hier falsch wäre und die Orga nach einem Anmeldeproblem
+   * suchen ließe, das es nicht gibt.
+   */
+  | { kind: "otherTournament"; name: string; tournament: string }
   | { kind: "error" };
 
 export type ResultTone = "lime" | "cyan" | "warn" | "live";
@@ -55,6 +62,12 @@ export function resultContent(status: Exclude<ScanStatus, { kind: "idle" }>): {
         tone: "live",
         headline: "QR nicht erkannt",
         detail: "Der Code gehört zu keinem Teilnehmer.",
+      };
+    case "otherTournament":
+      return {
+        tone: "live",
+        headline: status.name,
+        detail: `Gehört zu „${status.tournament}" — für dieses Turnier nicht angemeldet.`,
       };
     case "error":
       return {
@@ -105,6 +118,7 @@ const ICON: Record<
   success: CheckCircle2,
   already: AlertTriangle,
   unknown: XCircle,
+  otherTournament: XCircle,
   error: XCircle,
 };
 

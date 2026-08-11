@@ -125,7 +125,11 @@ const DEBOUNCE_MS = 2500;
 const ATTENDANCE_POLL_MS = 10_000;
 
 export function ScannerClient({ tournamentId }: ScannerClientProps) {
-  void tournamentId; // staff RLS already scopes participants; token lookup is global by qr_token
+  // tournamentId ist die Sicherung, nicht Zierde. Die RLS grenzt Staff auf die
+  // eigene Organisation ein — nicht auf dieses Turnier. Ein qr_token aus einem
+  // anderen Turnier derselben Organisation wurde deshalb gefunden, und check_in
+  // prüft nur die Organisation: der Scan lief grün durch und setzte die
+  // Anwesenheit im ALTEN Turnier. Am Einlass sah das aus wie ein Erfolg.
   const router = useRouter();
   const [supabase] = useState<SupabaseClient<Database>>(() => createClient());
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -293,12 +297,28 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         // Fotoerlaubnis vorliegt — genau danach wird am Einlass gefragt.
         const { data: participant, error: lookupErr } = await supabase
           .from("participants")
-          .select("id, display_name, checked_in_at, consents(id)")
+          .select(
+            "id, display_name, checked_in_at, tournament_id, consents(id), tournaments(name)",
+          )
           .eq("qr_token", token)
           .maybeSingle();
 
         if (lookupErr || !participant) {
           showStatus({ kind: "unknown" });
+          playScanSound("reject");
+          return;
+        }
+
+        // Bewusst weiterhin ohne Turnier-Filter gesucht: nur so lässt sich der
+        // häufigste Fall — jemand kommt mit dem Code vom letzten Turnier — beim
+        // Namen nennen, statt ihn als „nicht erkannt" auszugeben und die Orga
+        // nach einem Anmeldeproblem suchen zu lassen, das es nicht gibt.
+        if (participant.tournament_id !== tournamentId) {
+          showStatus({
+            kind: "otherTournament",
+            name: participant.display_name,
+            tournament: participant.tournaments?.name ?? "einem anderen Turnier",
+          });
           playScanSound("reject");
           return;
         }
