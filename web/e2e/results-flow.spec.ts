@@ -27,6 +27,8 @@ import {
   createFixtureTournament,
   getSingleFinal,
   type FixtureParticipant,
+  completeTeamStep,
+  fillRegistrationForm,
 } from "./fixtures";
 
 // The full results flow needs a staff session to seed/generate and to confirm.
@@ -70,16 +72,17 @@ test("a player reports via /me, the other via RPC, organizer confirms the winner
   const formPage = await formCtx.newPage();
   try {
     await formPage.goto(`/t/${id}/register`);
-    await formPage.getByLabel("Anzeigename").fill("RF-P1");
-    await formPage.getByLabel("Geburtsdatum").fill("2000-01-01");
-    const captain = formPage.getByLabel("Captain — Name");
-    if (await captain.isVisible()) await captain.fill("RF-P1");
-    await formPage
-      .getByRole("button", { name: /weiter zur fotoerlaubnis/i })
-      .click();
+    await fillRegistrationForm(formPage, {
+      displayName: "RF-P1",
+      birthdate: "2000-01-01",
+    });
     await formPage
       .getByRole("button", { name: /ohne fotoerlaubnis fortfahren/i })
       .click();
+    // Auf einem Teamturnier laege hier der Team-Schritt. Dieser Lauf braucht
+    // kein Team — er prueft Melden und Freigeben —, also der ehrliche Ausgang
+    // "noch kein Team" statt einer Attrappe.
+    await completeTeamStep(formPage);
     await expect(
       formPage.getByText(/anmeldung abgeschlossen/i),
     ).toBeVisible();

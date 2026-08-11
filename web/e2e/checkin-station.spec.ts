@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { completeTeamStep, fillRegistrationForm } from "./fixtures";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -32,21 +33,19 @@ test("station check-in from QR landing page", async ({ page }) => {
   await page.goto(`/t/${id}/register`);
 
   const displayName = `E2E Station ${Date.now()}`;
-  await page.getByLabel("Anzeigename").fill(displayName);
-  await page.getByLabel("Geburtsdatum").fill("2000-01-01");
-
-  // If the open tournament is team-based, a captain name is required.
-  const captain = page.getByLabel("Captain — Name");
-  if (await captain.isVisible()) {
-    await captain.fill(`${displayName} Captain`);
-  }
-
-  await page.getByRole("button", { name: /weiter zur fotoerlaubnis/i }).click();
+  await fillRegistrationForm(page, {
+    displayName: displayName,
+    birthdate: "2000-01-01",
+  });
 
   // Ohne Fotoerlaubnis weiter: der Check-in darf davon nicht abhängen.
   await page
     .getByRole("button", { name: /ohne fotoerlaubnis fortfahren/i })
     .click();
+
+  // Teamturnier: hier laege der Team-Schritt. Diese Specs brauchen kein
+  // Team, also der ehrliche Ausgang "noch kein Team".
+  await completeTeamStep(page);
 
   await expect(page.getByText(/anmeldung abgeschlossen/i)).toBeVisible();
 

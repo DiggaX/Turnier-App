@@ -66,8 +66,15 @@ export function JoinCodeCard({
   return (
     <div className="rounded-2xl border border-cyan/30 bg-cyan/[0.06] p-6">
       <SectionLabel className="mb-3">Euer Team-Code</SectionLabel>
+      {/*
+        data-testid, weil der Code sonst nur ueber sein Aussehen zu finden ist:
+        er hat keine Beschriftung, keine Rolle und keinen festen Text. Ein
+        e2e-Lauf, der zwei Teilnehmer zu einem Team zusammenbringt, muss ihn
+        auslesen koennen (siehe e2e/fixtures.ts, completeTeamStep).
+      */}
       <div
         ref={codeRef}
+        data-testid="join-code"
         className="select-all text-center font-display text-3xl font-bold uppercase tracking-[0.35em] text-ink sm:text-4xl"
       >
         {code}

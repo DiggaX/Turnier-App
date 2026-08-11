@@ -66,6 +66,69 @@ export async function getOrgId(client: SupabaseClient): Promise<string> {
   return data.org_id as string;
 }
 
+/**
+ * Fill the typed birthdate field. It is three inputs (TT / MM / JJJJ), not one
+ * date picker — see web/src/components/birthdate-field.tsx. The day field
+ * carries the "Geburtsdatum" label via htmlFor; the other two name themselves.
+ *
+ * The old `getByLabel("Geburtsdatum").fill("2000-01-01")` silently hit only the
+ * day box, which has maxLength={2}, so the form stayed invalid and the spec
+ * failed a step later with an unrelated message.
+ */
+export async function fillBirthdate(page: Page, iso: string): Promise<void> {
+  const [year, month, day] = iso.split("-");
+  await page.getByLabel("Geburtsdatum").fill(day);
+  await page.getByLabel("Monat").fill(month);
+  await page.getByLabel("Jahr").fill(year);
+}
+
+/**
+ * Fill the public registration form and move on to the photo consent.
+ *
+ * Since the person/team rework the form asks for ONE human — no captain name,
+ * no roster. On a team tournament the team is chosen after the consent, in its
+ * own step (see completeTeamStep).
+ */
+export async function fillRegistrationForm(
+  page: Page,
+  opts: { displayName: string; birthdate: string },
+): Promise<void> {
+  await page.getByLabel("Anzeigename").fill(opts.displayName);
+  await fillBirthdate(page, opts.birthdate);
+  await page.getByRole("button", { name: /weiter zur fotoerlaubnis/i }).click();
+}
+
+/**
+ * Get past the team step, which only appears on tournaments with team_size > 1.
+ *
+ * Specs that only care about registering, checking in or reporting do not need
+ * a team, so the default takes the "no team yet" exit — a first-class outcome,
+ * not a skip. Pass a name to found one instead; the join code is returned so a
+ * second participant can join it.
+ */
+export async function completeTeamStep(
+  page: Page,
+  teamName?: string,
+): Promise<string | null> {
+  const withoutTeam = page.getByRole("button", {
+    name: /ohne team fortfahren/i,
+  });
+  if (!(await withoutTeam.isVisible().catch(() => false))) {
+    return null; // solo tournament — there is no team step
+  }
+
+  if (!teamName) {
+    await withoutTeam.click();
+    return null;
+  }
+
+  await page.getByLabel("Teamname").fill(teamName);
+  await page.getByRole("button", { name: /^team gründen$/i }).click();
+  const code = await page.getByTestId("join-code").innerText();
+  await page.getByRole("button", { name: /^fertig$/i }).click();
+  return code.trim();
+}
+
 /** A registered + checked-in fixture participant with its own anon session. */
 export interface FixtureParticipant {
   id: string;
