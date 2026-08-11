@@ -293,15 +293,32 @@ begin
 end;
 $$;
 
+-- Zwei Trigger statt einem, und das ist keine Geschmacksfrage: in einer
+-- WHEN-Klausel gibt es kein tg_op — das ist eine plpgsql-Variable und nur im
+-- Funktionsrumpf sichtbar. Und OLD darf dort nicht vorkommen, wenn derselbe
+-- Trigger auch INSERT abdeckt (Postgres lehnt das beim Anlegen ab, 42703).
+-- Also der INSERT-Fall ohne OLD, der UPDATE-Fall mit.
+--
 -- Rekursion gibt es nicht: die Team-Zeile, die der Trigger schreibt, hat selbst
--- team_id is null und faellt in der WHEN-Klausel sofort heraus.
+-- team_id is null und faellt in beiden WHEN-Klauseln sofort heraus.
 drop trigger if exists trg_participants_team_ready on participants;
-create trigger trg_participants_team_ready
-  after insert or update on participants
+
+create trigger trg_participants_team_ready_ins
+  after insert on participants
+  for each row
+  when (new.team_id is not null and new.checked_in_at is not null)
+  execute function public.sync_team_ready();
+
+-- Nur wenn sich die Anwesenheit dieser Person wirklich geaendert hat. Sonst
+-- feuert der Trigger bei jeder Namenskorrektur mit, und eine von der Orga
+-- zurueckgenommene Team-Freigabe saesse danach stumm wieder da.
+drop trigger if exists trg_participants_team_ready_upd on participants;
+create trigger trg_participants_team_ready_upd
+  after update on participants
   for each row
   when (
     new.team_id is not null
     and new.checked_in_at is not null
-    and (tg_op = 'INSERT' or old.checked_in_at is distinct from new.checked_in_at)
+    and old.checked_in_at is distinct from new.checked_in_at
   )
   execute function public.sync_team_ready();
