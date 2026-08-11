@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -28,49 +28,40 @@ import { QrActions } from "@/components/qr-actions";
 import type { ConsentOrg } from "@/lib/consent-text";
 import { PhotoConsentStep } from "./consent-step";
 import { SaveAccessDialog } from "./save-access-dialog";
+import { TeamStep, type TeamState } from "./team-step";
 
-type Step = "form" | "consent" | "done";
+/**
+ * "loading" ist nicht Kosmetik: bevor feststeht, ob diese Sitzung hier schon
+ * angemeldet ist, darf das Formular nicht zu sehen sein. Sonst tippt jemand
+ * seine Daten ein zweiter Mal ein und laeuft in
+ * unique(tournament_id, user_id).
+ */
+type Step = "loading" | "form" | "consent" | "team" | "done";
 
-const memberSchema = z.object({
-  name: z.string().trim().min(1, "Name erforderlich"),
+/**
+ * Gefragt wird nach der PERSON — auch im Teamturnier. Der Teamname und die
+ * Mitspieler gehoeren nicht mehr hierher: sie entstehen im Team-Schritt, wo
+ * jeder Mitspieler seine eigene Anmeldung hat.
+ */
+const schema = z.object({
+  displayName: z.string().trim().min(1, "Anzeigename erforderlich"),
   gamertag: z.string().trim().optional(),
+  // new Date() gehört in den Callback: die Uhr wird zur Prüfzeit gelesen,
+  // nicht beim Bauen des Schemas — sonst veraltet ein über Mitternacht
+  // offener Tab.
+  birthdate: z
+    .string()
+    .min(1, "Geburtsdatum erforderlich")
+    .refine(
+      (v) => validBirthdate(v, new Date()),
+      "Bitte ein gültiges Geburtsdatum eingeben.",
+    ),
 });
-
-function buildSchema(teamSize: number) {
-  const base = {
-    displayName: z.string().trim().min(1, "Anzeigename erforderlich"),
-    gamertag: z.string().trim().optional(),
-    // new Date() gehört in den Callback: die Uhr wird zur Prüfzeit gelesen,
-    // nicht beim Bauen des Schemas — sonst veraltet ein über Mitternacht
-    // offener Tab.
-    birthdate: z
-      .string()
-      .min(1, "Geburtsdatum erforderlich")
-      .refine(
-        (v) => validBirthdate(v, new Date()),
-        "Bitte ein gültiges Geburtsdatum eingeben.",
-      ),
-  };
-
-  if (teamSize > 1) {
-    return z.object({
-      ...base,
-      captainName: z.string().trim().min(1, "Name des Captains erforderlich"),
-      captainGamertag: z.string().trim().optional(),
-      members: z.array(memberSchema),
-    });
-  }
-
-  return z.object(base);
-}
 
 type FormValues = {
   displayName: string;
   gamertag?: string;
   birthdate: string;
-  captainName?: string;
-  captainGamertag?: string;
-  members?: { name: string; gamertag?: string }[];
 };
 
 interface RegisterClientProps {
@@ -92,8 +83,8 @@ export function RegisterClient({
   // Single-flight anonymous sign-in. The sign-in runs on the first call to
   // ensureSession() (always from an event handler), NEVER during render: under
   // React Strict Mode the render phase runs twice in dev, which would otherwise
-  // create two anonymous users whose tokens diverge between the participant and
-  // team_members inserts and break RLS.
+  // create two anonymous users, and the second one would own a session the
+  // freshly written participant row does not belong to.
   const signInRef = useRef<Promise<string> | null>(null);
 
   const ensureSession = useCallback((): Promise<string> => {
@@ -104,35 +95,103 @@ export function RegisterClient({
     return signInRef.current;
   }, [supabase]);
 
-  // A signed-in staff/organizer account must not register as a guest — see
-  // ensureGuestSession. That guard runs at submit time; this read-only check
-  // (never a sign-in, so Strict Mode's double effect is harmless) surfaces it
-  // before the form is filled in.
   const [accountSession, setAccountSession] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!cancelled && session && !isGuestUser(session.user)) {
-        setAccountSession(true);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase]);
-
-  const [step, setStep] = useState<Step>("form");
+  const [step, setStep] = useState<Step>("loading");
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [participantId, setParticipantId] = useState<string | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
   const [birthdate, setBirthdate] = useState<string>("");
   const [displayName, setDisplayName] = useState<string>("");
+  const [team, setTeam] = useState<TeamState | null>(null);
   // Gates the success screen until the participant confirms they saved their
-  // QR/link. Not persisted: `step` is transient state, a reload lands back on
-  // the form, and a second submit is refused by unique(tournament_id, user_id) —
-  // so this dialog can only ever be reached once per registration.
+  // QR/link. Not persisted, and it does not need to be: a reload lands back on
+  // the step the DB says we are on, and the dialog is only shown right after
+  // the registration was written.
   const [accessSaved, setAccessSaved] = useState(false);
+
+  /**
+   * Wo stehen wir? Genau zwei Dinge werden hier beantwortet, und beide vor dem
+   * ersten Pixel Formular:
+   *
+   *  1. Ein angemeldetes Orga-Konto darf sich nicht als Gast anmelden — siehe
+   *     ensureGuestSession. Der Riegel greift beim Absenden; diese Abfrage
+   *     zeigt es, bevor jemand alles eintippt.
+   *  2. Ist diese Gast-Sitzung hier schon angemeldet? Bisher war `step`
+   *     fluechtiger React-State: nach einem Neuladen — und ein Handy laedt beim
+   *     Wechsel in den Chat neu — landete man wieder auf dem Formular, und der
+   *     zweite Versuch scheiterte an unique(tournament_id, user_id). Wer den
+   *     Team-Code weitergeben wollte, kam nicht mehr an ihn heran.
+   *
+   * Ohne Sitzung wird gar nicht erst gefragt: angemeldet sein kann nur, wer
+   * eine hat, und ein anonymer Login nur fuers Nachsehen wuerde fuer jeden
+   * Besucher der Seite einen Auth-User anlegen.
+   *
+   * Nur Lesen, kein Login — Strict Modes doppelter Effekt ist damit harmlos.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled) return;
+
+      if (session && !isGuestUser(session.user)) {
+        setAccountSession(true);
+        return;
+      }
+      if (!session) {
+        setStep("form");
+        return;
+      }
+
+      const { data } = await supabase.rpc("get_my_registration", {
+        p_tournament_id: tournament.id,
+      });
+      if (cancelled) return;
+
+      const reg = data?.[0];
+      if (!reg) {
+        setStep("form");
+        return;
+      }
+
+      // qr_token steht nicht in get_my_registration — dort hat es nichts zu
+      // suchen. Die eigene Zeile ist ueber participants_select_owner_or_staff
+      // lesbar (user_id = auth.uid()).
+      const { data: row } = await supabase
+        .from("participants")
+        .select("qr_token")
+        .eq("id", reg.participant_id)
+        .maybeSingle();
+      if (cancelled) return;
+
+      setParticipantId(reg.participant_id);
+      setDisplayName(reg.display_name);
+      if (row) setQrToken(row.qr_token);
+      setTeam(
+        reg.team_id
+          ? {
+              id: reg.team_id,
+              name: reg.team_name ?? "",
+              joinCode: reg.join_code,
+              isCaptain: reg.is_captain,
+            }
+          : null,
+      );
+      // Die Fotoerlaubnis wird nicht nachgeholt: sie ist freiwillig, und ob sie
+      // erteilt wurde, ist von hier aus nicht zu sehen. Wer wiederkommt, kommt
+      // wegen seines Teams oder seines QR.
+      setStep(isTeam ? "team" : "done");
+      setAccessSaved(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, tournament.id, isTeam]);
 
   const {
     register,
@@ -140,20 +199,12 @@ export function RegisterClient({
     control,
     formState: { errors },
   } = useForm<FormValues>({
-    resolver: zodResolver(buildSchema(teamSize)),
+    resolver: zodResolver(schema),
     defaultValues: {
       displayName: "",
       gamertag: "",
       birthdate: "",
-      captainName: "",
-      captainGamertag: "",
-      members: [],
     },
-  });
-
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: "members",
   });
 
   async function onSubmit(values: FormValues) {
@@ -167,7 +218,11 @@ export function RegisterClient({
         .insert({
           tournament_id: tournament.id,
           user_id: uid,
-          type: isTeam ? "team" : "solo",
+          // Ein Mensch, kein Wettkaempfer. Die Team-Zeile entsteht erst im
+          // Team-Schritt, ueber create_team — hier ginge sie auch gar nicht
+          // mehr durch: der Trigger aus 20260811092000 verlangt, dass `type`
+          // zur Teamgroesse des Turniers passt.
+          type: isTeam ? "player" : "solo",
           display_name: values.displayName,
           gamertag: values.gamertag?.trim() ? values.gamertag.trim() : null,
           birthdate: values.birthdate,
@@ -186,38 +241,6 @@ export function RegisterClient({
             "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
           ),
         );
-      }
-
-      if (isTeam) {
-        const rows = [
-          {
-            participant_id: participant.id,
-            name: values.captainName!.trim(),
-            gamertag: values.captainGamertag?.trim()
-              ? values.captainGamertag.trim()
-              : null,
-            is_captain: true,
-          },
-          ...(values.members ?? [])
-            .filter((m) => m.name.trim().length > 0)
-            .map((m) => ({
-              participant_id: participant.id,
-              name: m.name.trim(),
-              gamertag: m.gamertag?.trim() ? m.gamertag.trim() : null,
-              is_captain: false,
-            })),
-        ];
-        const { error: mErr } = await supabase
-          .from("team_members")
-          .insert(rows);
-        if (mErr) {
-          throw new Error(
-            friendlyDbError(
-              mErr,
-              "Die Team-Mitglieder konnten nicht gespeichert werden. Bitte versuche es erneut.",
-            ),
-          );
-        }
       }
 
       setParticipantId(participant.id);
@@ -255,6 +278,24 @@ export function RegisterClient({
               </p>
             </div>
           </div>
+
+          {isTeam && team && (
+            <div className="rounded-2xl border border-cyan/30 bg-cyan/[0.06] p-6">
+              <SectionLabel className="mb-2">Dein Team</SectionLabel>
+              <p className="font-display text-lg font-bold uppercase tracking-wide text-ink">
+                {team.name}
+              </p>
+              {team.joinCode && (
+                <p className="mt-2 text-sm text-fg-muted">
+                  Team-Code{" "}
+                  <span className="font-display text-base font-bold tracking-[0.25em] text-ink">
+                    {team.joinCode}
+                  </span>{" "}
+                  — den geben deine Mitspieler bei ihrer eigenen Anmeldung ein.
+                </p>
+              )}
+            </div>
+          )}
 
           {qrToken && (
             <>
@@ -296,6 +337,21 @@ export function RegisterClient({
     );
   }
 
+  if (step === "team") {
+    return (
+      <TeamStep
+        supabase={supabase}
+        tournamentId={tournament.id}
+        teamSize={teamSize}
+        initialTeam={team}
+        onDone={(chosen) => {
+          setTeam(chosen);
+          setStep("done");
+        }}
+      />
+    );
+  }
+
   if (step === "consent" && participantId) {
     return (
       <PhotoConsentStep
@@ -305,7 +361,7 @@ export function RegisterClient({
         participantName={displayName}
         org={org}
         getUid={ensureSession}
-        onDone={() => setStep("done")}
+        onDone={() => setStep(isTeam ? "team" : "done")}
       />
     );
   }
@@ -336,13 +392,24 @@ export function RegisterClient({
     );
   }
 
+  if (step === "loading") {
+    return (
+      <ParticipantShell
+        eyebrow={`/ ${tournament.name} / Register`}
+        heading="Anmeldung"
+      >
+        <p className="text-sm text-fg-muted">Einen Moment…</p>
+      </ParticipantShell>
+    );
+  }
+
   return (
     <ParticipantShell
       eyebrow={`/ ${tournament.name} / Register`}
       heading="Anmeldung"
       subheading={
         isTeam
-          ? `Team-Anmeldung (Teamgröße ${teamSize}).`
+          ? `Du meldest dich selbst an — dein Team (${teamSize} Spieler) gründest oder wählst du gleich danach.`
           : "Einzel-Anmeldung."
       }
     >
@@ -388,83 +455,6 @@ export function RegisterClient({
               </p>
             )}
           </div>
-
-          {isTeam && (
-            <fieldset className="flex flex-col gap-4 rounded-xl border border-line bg-surface-2/60 p-4">
-              <legend className="px-1 font-display text-[10px] font-medium uppercase tracking-[0.18em] text-cyan">
-                Team
-              </legend>
-
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="captainName">Captain — Name</Label>
-                <Input id="captainName" {...register("captainName")} />
-                {errors.captainName && (
-                  <p className="text-sm text-destructive">
-                    {errors.captainName.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="captainGamertag">
-                  Captain — Gamertag (optional)
-                </Label>
-                <Input
-                  id="captainGamertag"
-                  {...register("captainGamertag")}
-                />
-              </div>
-
-              <div className="flex flex-col gap-3">
-                {fields.map((field, index) => (
-                  <div
-                    key={field.id}
-                    className="flex flex-col gap-2.5 rounded-lg border border-line bg-bg/40 p-3"
-                  >
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor={`members.${index}.name`}>
-                        Mitglied {index + 1} — Name
-                      </Label>
-                      <Input
-                        id={`members.${index}.name`}
-                        {...register(`members.${index}.name` as const)}
-                      />
-                      {errors.members?.[index]?.name && (
-                        <p className="text-sm text-destructive">
-                          {errors.members[index]?.name?.message}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor={`members.${index}.gamertag`}>
-                        Mitglied {index + 1} — Gamertag (optional)
-                      </Label>
-                      <Input
-                        id={`members.${index}.gamertag`}
-                        {...register(`members.${index}.gamertag` as const)}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => remove(index)}
-                    >
-                      Mitglied entfernen
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => append({ name: "", gamertag: "" })}
-                >
-                  Mitglied hinzufügen
-                </Button>
-              </div>
-            </fieldset>
-          )}
 
           {serverError && (
             <p className="text-sm text-destructive" role="alert">
