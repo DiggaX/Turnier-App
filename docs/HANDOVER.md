@@ -1,8 +1,11 @@
 # Turnier-App — Übergabe an den nächsten Agent
 
-**Stand:** 2026-08-10 · Branch `main` @ `da825f0` · **gepusht und live** unter https://turnier-app-opal.vercel.app (Push auf `main` deployt automatisch, siehe §3)
+**Stand:** 2026-08-11 · Branch `main` @ `ff71519` · **gepusht und live** unter https://turnier-app-opal.vercel.app (Push auf `main` deployt automatisch, siehe §3)
 
-Session-Protokoll der letzten Arbeit steht in **§11** (was gemacht, wie entschieden, was gut/schlecht lief).
+Session-Protokolle der letzten Arbeit stehen in **§11–§13** (was gemacht, wie entschieden, was gut/schlecht lief).
+
+⚠️ **Am 2026-08-11 liefen zwei Sitzungen parallel auf demselben Repo.** Vor dem Weiterarbeiten
+`git fetch` + `git log origin/main` — es kann Arbeit auf `main` liegen, die diese Datei noch nicht kennt.
 
 Lies zuerst diese Datei, dann `CLAUDE.md` (Regeln) und die Auto-Memory unter
 `C:\Users\Rene\.claude\projects\C--Users-Rene-Turnierapp\memory\` (MEMORY.md + die verlinkten Dateien).
@@ -15,7 +18,7 @@ Ein **Multi-Tenant-Esports-Turnier-SaaS**. Firmen (Organisationen) registrieren 
 ## 2. Stack
 - **Frontend/Backend:** Next.js **16.2.9** (App Router) im Unterordner **`web/`**. Vercel Root Directory = `web`. ⚠️ Next 16 hat Breaking Changes ggü. Trainingsdaten: async `params`/`searchParams`/`cookies()`/`headers()`, Middleware heißt `proxy.ts`, Turbopack-Build. **Vor Next-Code: `web/node_modules/next/dist/docs/` lesen** (steht auch in `web/AGENTS.md`).
 - **DB/Auth:** Supabase (Postgres + RLS + Anonymous Auth + Storage + Realtime). Projekt-Ref **`zqhdbygopftretjtlods`**.
-- **UI:** Tailwind v4 + shadcn/ui (button/badge/card/checkbox/input/label/table — **kein Select**, nutze native `<select>`). Dark-Esports-Design: BG `#07090c`, surface `#10141c`, lime `#c5f72e`, cyan `#1fd1e3`, live-red `#ff3b5c`; Fonts Space Grotesk (variabel) + Chakra Petch.
+- **UI:** Tailwind v4 + shadcn/ui (button/badge/card/checkbox/input/label/table — **kein Select**, nutze native `<select>`). Dark-Esports-Design: BG `#11161f`, surface `#1b2029`, muted/secondary `#242b38`, lime `#c5f72e`, cyan `#1fd1e3`, live-red `#ff3b5c`; Fonts Space Grotesk (variabel) + Chakra Petch. ⚠️ Die drei Grauwerte sind am 2026-08-11 aufgehellt worden (vorher `#07090c` / `#10141c` / `#161c27`) — wer alte Hex-Werte aus älteren Abschnitten dieser Datei kopiert, baut den alten Look wieder ein.
 - **Forms:** react-hook-form + zod. **Tests:** Vitest (**405** Unit-Tests grün) + Playwright (e2e geschrieben, s.u.).
 - ⚠️ **UI-Primitive sind Base UI (`@base-ui/react`), NICHT Radix.** `components.json` steht auf `base-nova`, ein `@radix-ui/*`-Paket existiert nirgends. Polymorphie über `render={…}` statt `asChild`, Zustände über `data-checked`/`data-open` statt `data-state`. Wer nach shadcn-Gewohnheit Radix-Code schreibt, baut gegen eine Bibliothek, die nicht da ist.
 
@@ -351,6 +354,31 @@ Tür, die das darf, und sie ist absichtlich schmal:
 Idempotenz, `type='player'` bei Teamturnier), verboten mit `22023` (Schalter aus, `draft`, `finished`,
 archiviert, Team-Zeile, Quelle ohne Konto), `P0002` (unbekannt/fremde Org), `42501` (Gast, `anon`).
 Dazu gegengeprüft: ein direkter Insert mit fremder Konto-Id scheitert **weiterhin** an der RLS.
+
+### Neu am 2026-08-11 (Palette aufgehellt) — `5e11b9f`, live
+
+Rene: „geht das ohne das laufende Turnier kaputtzumachen?" — ja, es sind ausschließlich Farbwerte,
+kein DB-, Auth- oder Turnier-Code. Die Seite stand auf `#07090c`, nah genug an Schwarz, dass Karten
+auf einem Hallenbildschirm keine Kante gegen den Hintergrund hatten.
+
+| Token | vorher | jetzt |
+|---|---|---|
+| `--color-bg` / `--background` | `#07090c` | `#11161f` |
+| `--color-surface` / `--card` / `--popover` | `#10141c` | `#1b2029` |
+| `--color-surface-2` / `--sidebar` | `#0a0d12` | `#151a23` |
+| `--muted` / `--secondary` | `#161c27` | `#242b38` |
+| `--primary-foreground` / `--sidebar-primary-foreground` (Tinte auf Lime) | `#07090c` | `#11161f` |
+
+- ⚠️ **Alle Flächen mussten mitwandern, nicht nur der Hintergrund.** Hebt man nur `--background` an,
+  liegt die Seite über der Card (`#10141c`) und die Hierarchie Seite < Card < Muted kippt.
+- ⚠️ **Zwei Streifenmuster hatten die alten Grauwerte hartkodiert** statt über Tokens zu gehen:
+  `web/src/app/t/[tournamentId]/page.tsx` und `web/src/app/learn/_components/tournaments.tsx`
+  (`repeating-linear-gradient`). Ein reiner `globals.css`-Edit hätte sie stehen lassen. **Bei der
+  nächsten Farbänderung wieder nach rohen Hex-Werten greppen**, nicht nur die Tokens ändern.
+- Der Light-Mode-`:root`-Block ist absichtlich unberührt — die App läuft immer unter `.dark`.
+- Akzente (Lime/Cyan/Live-Rot) unverändert; Weiß auf `#11161f` bleibt weit über WCAG-AA.
+- **Verifiziert** über die Live-Domain: `getComputedStyle(document.body).backgroundColor` liefert dort
+  `rgb(17, 22, 31)`, keine Konsolenfehler.
 
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - **Multi-Tenant-Isolation:** `profiles.org_id` + `tournaments.org_id` + `public.current_org_id()` (SECURITY DEFINER). Staff-Write-RLS ist `is_staff() AND <org = current_org_id()>`. **Turnier-SELECT bleibt public**. `games` bleiben **global**. Organizer-Seiten 404'en fremde Turniere via `requireOrgTournament`.
@@ -741,3 +769,49 @@ Stand der Parallelsitzung gegengeprüft, bevor er abgeschickt wurde.
    genau eine Ausnahme gibt und woran sie hängt (am Token, nicht an einer Id).
 3. Bei Migrationen: **Dateinamen UND `list_migrations` vergleichen**, die beiden Reihen stimmen nicht
    überein.
+
+---
+
+## 13. Protokoll — Session 2026-08-11 (Hintergrund aufgehellt)
+
+Kurze Sitzung, eine Frage, ein Commit (`5e11b9f`). Details der Werte in §5.
+
+### Ausgangsfrage des Users
+
+> „können wir die Background Farbe von der Webseite heller stellen, geht das ohne das laufende
+> Turnier kaputt zu machen?"
+
+Die zweite Hälfte ist die eigentliche Frage. Antwort: ja — Design-Tokens sind CSS, sie berühren weder
+DB noch Auth noch Turnier-Logik. Ein laufendes Turnier kann daran nicht scheitern.
+
+### Wie vorgegangen
+
+1. `globals.css` gelesen, **bevor** irgendwas geändert wurde — dort hängt die ganze Palette an einem
+   `@theme inline`-Block plus einem `.dark`-Block, die teils dieselben Werte doppelt führen
+   (`--color-bg` und `--background` sind zwei Variablen mit demselben Hex).
+2. Alle Flächen um denselben Betrag angehoben statt nur den Hintergrund (Begründung in §5).
+3. Nach rohen Hex-Werten im ganzen `web/` gegreppt — das förderte die zwei Streifen-Gradienten und
+   ein übersehenes `--sidebar-primary-foreground` zutage.
+4. Am laufenden Dev-Server gegengelesen, nach dem Push noch einmal gegen die Live-Domain.
+
+### Was gut war
+
+- **Der Grep nach Hex-Werten.** Ohne ihn wären zwei Seiten mit dem alten Streifenmuster stehen
+  geblieben — sichtbar erst auf der Turnierseite, also genau dort, wo es auffällt.
+- **Nicht nur `--background` angefasst.** Der Einzeiler wäre der kürzere Diff gewesen und hätte die
+  Flächen-Hierarchie zerstört.
+- **Gegen die Live-Domain gemessen**, nicht gegen `localhost` — der Deploy ist das, was Rene sieht.
+
+### Was schlecht war
+
+- **Der Dev-Server dieser Sitzung startete dreimal nicht**, weil aus einer anderen Sitzung bereits
+  einer auf Port 3000 lief (`Another next dev server is already running`) — Next erlaubt nur einen
+  pro Verzeichnis. Erst nach dem dritten Fehlschlag im Log nachgesehen. **Läuft der Preview nicht an:
+  sofort die Server-Ausgabe lesen, nicht neu starten.** Verifiziert wurde am fremden Server auf 3000.
+- **`vercel list_deployments` gab 403** (Token hat keinen Zugriff auf den Scope
+  `moellersrene-3676s-projects`). Der Deploy ließ sich nur indirekt über die Live-Domain bestätigen.
+
+### Nebenbei aufgeräumt
+
+Die 0-Byte-Datei `web/{,` aus dem 2026-08-10er Shell-Unfall (§4) gelöscht — leer, untracked, kein
+Inhalt verloren. Die zehn Geschwister waren schon weg.
