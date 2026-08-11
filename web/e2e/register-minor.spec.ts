@@ -42,21 +42,36 @@ test("minor registration + drawn signature photo consent", async ({ page }) => {
   });
   await expect(pad).toBeVisible();
 
-  // Draw on the canvas with mouse events across its bounding box.
-  const box = await pad.boundingBox();
-  if (!box) throw new Error("Signature pad has no bounding box");
-  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.5);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.3, {
-    steps: 10,
+  // Auf dem Feld unterschreiben.
+  //
+  // Die Zeigerereignisse werden direkt auf dem Canvas ausgeloest statt ueber
+  // page.mouse: dessen Koordinaten sind fensterbezogen, das Feld liegt weit
+  // unten auf einer langen Seite, und zwischen boundingBox() und dem ersten
+  // Klick kann sich die Seite noch verschieben — dann landet der Strich neben
+  // dem Feld und der Lauf scheitert spaeter mit "Bitte unterschreiben", ohne
+  // dass irgendwo steht, warum. Hier wird aus dem Rechteck des Elements
+  // gerechnet, das kann nicht danebengehen.
+  await pad.evaluate((canvas: HTMLCanvasElement) => {
+    const r = canvas.getBoundingClientRect();
+    const at = (fx: number, fy: number) => ({
+      clientX: r.left + r.width * fx,
+      clientY: r.top + r.height * fy,
+    });
+    const fire = (type: string, fx: number, fy: number) =>
+      canvas.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          pointerId: 1,
+          pointerType: "mouse",
+          isPrimary: true,
+          buttons: type === "pointerup" ? 0 : 1,
+          ...at(fx, fy),
+        }),
+      );
+    fire("pointerdown", 0.2, 0.5);
+    for (let i = 1; i <= 10; i++) fire("pointermove", 0.2 + i * 0.06, 0.5 - i * 0.02);
+    fire("pointerup", 0.8, 0.3);
   });
-  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.7, {
-    steps: 10,
-  });
-  await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.4, {
-    steps: 10,
-  });
-  await page.mouse.up();
 
   await page
     .getByLabel("Name des Erziehungsberechtigten")

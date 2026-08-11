@@ -113,8 +113,16 @@ export async function completeTeamStep(
   const withoutTeam = page.getByRole("button", {
     name: /ohne team fortfahren/i,
   });
-  if (!(await withoutTeam.isVisible().catch(() => false))) {
-    return null; // solo tournament — there is no team step
+  const done = page.getByText(/anmeldung abgeschlossen/i);
+
+  // Erst abwarten, welcher der beiden Bildschirme kommt. isVisible() wartet
+  // NICHT — direkt nach dem Absenden der Fotoerlaubnis ist noch keiner von
+  // beiden da, die Antwort waere also immer "kein Team-Schritt", und der
+  // Aufrufer liefe in eine Erwartung, die nie eintritt.
+  await expect(withoutTeam.or(done).first()).toBeVisible();
+
+  if (!(await withoutTeam.isVisible())) {
+    return null; // Einzelturnier — es gibt keinen Team-Schritt
   }
 
   if (!teamName) {

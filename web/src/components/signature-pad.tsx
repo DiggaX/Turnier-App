@@ -43,7 +43,20 @@ export const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(
         const ctx = getCtx();
         if (!canvas || !ctx) return;
 
-        canvas.setPointerCapture(e.pointerId);
+        // setPointerCapture wirft NotFoundError, wenn der Zeiger nicht als aktiv
+        // gilt — das passiert bei synthetisch erzeugten Ereignissen und je nach
+        // Eingabegeraet auch im echten Betrieb. Stand der Aufruf ungefangen vor
+        // `isDrawing = true`, brach der Handler an dieser Stelle ab: das Feld
+        // nahm dann keinen einzigen Strich mehr an, und der Nutzer bekam beim
+        // Absenden nur "Bitte unterschreiben." zu sehen, ohne dass irgendwo ein
+        // Fehler auftauchte. Ohne Capture funktioniert das Zeichnen weiterhin,
+        // solange der Zeiger ueber dem Feld bleibt — das Capture ist Komfort,
+        // keine Voraussetzung.
+        try {
+          canvas.setPointerCapture(e.pointerId);
+        } catch {
+          // bewusst still: siehe oben
+        }
         isDrawing.current = true;
 
         const rect = canvas.getBoundingClientRect();

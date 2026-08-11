@@ -45,7 +45,12 @@ test("solo adult registration + checkbox photo consent", async ({ page }) => {
   // Nothing ticked, no address: granting stays disabled.
   await expect(finishButton).toBeDisabled();
 
-  await page.getByRole("checkbox", { name: /fotoerlaubnis erteilen/i }).click();
+  // Die Checkbox heisst nicht "Fotoerlaubnis erteilen" — so heisst der Knopf
+  // darunter. Ihr zugaenglicher Name IST der Einwilligungstext: das Label
+  // umschliesst sie, ein zusaetzliches aria-label waere ein zweiter Name und
+  // wurde in ad71491 bewusst entfernt. Auf diesem Schritt gibt es genau eine
+  // Checkbox, also wird sie ueber ihre Rolle geholt.
+  await page.getByRole("checkbox").click();
   await page.getByLabel("Name (zur Bestätigung)").fill(displayName);
   await page.getByLabel("Wohnhaft (Anschrift)").fill("Teststraße 1, 23769 Fehmarn");
 
