@@ -124,10 +124,15 @@ export function BirthdateField({
     if (digits.length === max) next?.current?.focus();
   }
 
-  /** Einstellige Eingabe auffüllen: „7" ist der 07., nicht der 70. */
-  function padOnBlur(field: "day" | "month") {
-    const v = parts[field];
-    if (v.length === 1) commit({ ...parts, [field]: v.padStart(2, "0") });
+  /**
+   * Einstellige Eingabe auffüllen: „7" ist der 07., nicht der 70.
+   *
+   * Der Wert kommt aus dem Feld selbst, nicht aus `parts`. Die zweite Ziffer
+   * lässt den Fokus weiterspringen, und das blur feuert noch im selben Ereignis
+   * — `parts` steht dann erst bei der ersten Ziffer. Aus „05" wurde so „00".
+   */
+  function padOnBlur(field: "day" | "month", raw: string) {
+    if (raw.length === 1) commit({ ...parts, [field]: raw.padStart(2, "0") });
   }
 
   /** Rücktaste im leeren Feld springt zurück, statt ins Leere zu laufen. */
@@ -163,7 +168,7 @@ export function BirthdateField({
         required={required}
         value={parts.day}
         onChange={(e) => handleInput("day", e.target.value, 2, monthRef)}
-        onBlur={() => padOnBlur("day")}
+        onBlur={(e) => padOnBlur("day", e.target.value)}
         className={`${box} w-14`}
       />
       <span aria-hidden className="text-fg-dim">
@@ -181,7 +186,7 @@ export function BirthdateField({
         required={required}
         value={parts.month}
         onChange={(e) => handleInput("month", e.target.value, 2, yearRef)}
-        onBlur={() => padOnBlur("month")}
+        onBlur={(e) => padOnBlur("month", e.target.value)}
         onKeyDown={(e) => handleKeyDown(e, "month", dayRef)}
         className={`${box} w-14`}
       />

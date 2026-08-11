@@ -105,6 +105,24 @@ describe("BirthdateField", () => {
     expect(screen.getByTestId("iso").textContent).toBe("2013-04-10");
   });
 
+  // Der Sprung ins nächste Feld löst ein blur aus, während die zweite Ziffer
+  // noch nicht gerendert ist. Wurde dabei die erste Ziffer aufgefüllt, stand am
+  // Ende "00" statt "05" — und zwar für jeden Monat und Tag unter dem zehnten.
+  it("behält die führende Null, wenn der Fokus weiterspringt", () => {
+    render(<Harness />);
+
+    day().focus();
+    fireEvent.change(day(), { target: { value: "0" } });
+    fireEvent.change(day(), { target: { value: "05" } });
+    fireEvent.change(month(), { target: { value: "0" } });
+    fireEvent.change(month(), { target: { value: "05" } });
+    fireEvent.change(year(), { target: { value: "2015" } });
+
+    expect(day()).toHaveValue("05");
+    expect(month()).toHaveValue("05");
+    expect(screen.getByTestId("iso").textContent).toBe("2015-05-05");
+  });
+
   it("füllt eine einstellige Eingabe beim Verlassen auf", () => {
     renderField();
 
