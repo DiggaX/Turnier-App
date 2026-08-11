@@ -97,4 +97,49 @@ describe("resultContent", () => {
     expect(detail).toContain("Mission: Next Level EA Sports 2026");
     expect(detail).toContain("nicht angemeldet");
   });
+
+  /**
+   * Dasselbe Ereignis, anderer Ausgang: ist die Übernahme freigeschaltet, wird
+   * aus der Ablehnung eine Frage. Der Ton trägt das — Bernstein statt Rot — und
+   * das Fragezeichen ist der Unterschied, der an der Tür ankommt.
+   */
+  it("asks instead of refusing when the carry-over is on", () => {
+    const { tone, headline, detail } = resultContent({
+      kind: "carryOverOffer",
+      name: "Lena Fuchs",
+      tournament: "Mission: Next Level EA Sports 2026",
+      token: "irrelevant-für-den-text",
+    });
+    expect(tone).toBe("warn");
+    expect(headline).toBe("Lena Fuchs");
+    expect(detail).toContain("Mission: Next Level EA Sports 2026");
+    expect(detail).toContain("?");
+  });
+
+  // Die Fotoerlaubnis wird nie mitkopiert. Dass sie fehlt, muss auf der Karte
+  // stehen — danach fragen Fotografen, und ein blosses "Eingecheckt" verschwiege
+  // es genauso wie die Tatsache, dass gerade eine Anmeldung entstanden ist.
+  it("says a carried-over person has no photo consent", () => {
+    const { tone, headline, detail } = resultContent({
+      kind: "carriedOver",
+      name: "Lena Fuchs",
+    });
+    expect(tone).toBe("lime");
+    expect(headline).toBe("Lena Fuchs");
+    expect(detail).toContain("Übernommen");
+    expect(detail).toContain("keine Fotoerlaubnis");
+  });
+
+  // Die Begründung kommt aus der Datenbankfunktion und ist für den Tresen
+  // geschrieben — sie muss unverändert durchkommen.
+  it("passes the reason through unchanged", () => {
+    const { tone, detail } = resultContent({
+      kind: "carryOverFailed",
+      reason: "Die Uebernahme ist fuer diese Organisation nicht freigeschaltet.",
+    });
+    expect(tone).toBe("live");
+    expect(detail).toBe(
+      "Die Uebernahme ist fuer diese Organisation nicht freigeschaltet.",
+    );
+  });
 });

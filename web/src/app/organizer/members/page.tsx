@@ -37,7 +37,7 @@ export default async function MembersPage() {
 
   const { data: org } = await supabase
     .from("organizations")
-    .select("name, slug, address")
+    .select("name, slug, address, allow_carry_over")
     .eq("id", profile.org_id)
     .maybeSingle();
 
@@ -78,7 +78,12 @@ export default async function MembersPage() {
             Organisation
           </h1>
           {org && (
-            <OrgSettings name={org.name} slug={org.slug} address={org.address} />
+            <OrgSettings
+              name={org.name}
+              slug={org.slug}
+              address={org.address}
+              allowCarryOver={org.allow_carry_over ?? false}
+            />
           )}
           <DeviceLinking
             sessions={(sessions ?? []) as SessionRow[]}

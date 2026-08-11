@@ -61,6 +61,34 @@ export async function setOrgAddress(address: string): Promise<ActionResult> {
   return { ok: true };
 }
 
+/**
+ * Darf am Einlass jemand mit dem QR-Code eines früheren Turniers übernommen
+ * werden? Aus heißt: der Scanner zeigt einen fremden Code nur an.
+ *
+ * ⚠️ Diese Aktion ist nicht der Schutz, sondern nur der Weg dorthin.
+ * `carry_over_participant()` liest `allow_carry_over` selbst — eine Bedingung,
+ * die nur in der Oberfläche steht, ist keine.
+ */
+export async function setOrgCarryOver(enabled: boolean): Promise<ActionResult> {
+  const guard = await requireAdmin();
+  if ("error" in guard) return guard;
+  const { supabase, orgId } = guard;
+
+  const { error } = await supabase
+    .from("organizations")
+    .update({ allow_carry_over: enabled })
+    .eq("id", orgId);
+  if (error) {
+    return {
+      error: friendlyDbError(
+        error,
+        "Einstellung konnte nicht gespeichert werden (nur Admin).",
+      ),
+    };
+  }
+  return { ok: true };
+}
+
 export async function createInvite(role: "organizer" | "referee"): Promise<ActionResult> {
   const guard = await requireAdmin();
   if ("error" in guard) return guard;

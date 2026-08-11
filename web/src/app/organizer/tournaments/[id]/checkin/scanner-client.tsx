@@ -15,6 +15,7 @@ import type {
 import { createClient } from "@/lib/supabase/client";
 import type { CheckinMethod, Database } from "@/lib/database.types";
 import { playScanSound } from "@/lib/scan-feedback";
+import { Button } from "@/components/ui/button";
 
 import { ScanDiagnostics } from "./scan-diagnostics";
 import { ScanResultCard, type ScanStatus } from "./scan-result-card";
@@ -277,11 +278,43 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
   const lastTokenRef = useRef<string | null>(null);
   const lastAtRef = useRef<number>(0);
   const busyRef = useRef(false);
+  /**
+   * Solange eine Übernahme zur Entscheidung steht, wird kein Scan angenommen —
+   * auch kein neuer. Der Code liegt sonst noch im Bild und feuert alle
+   * DEBOUNCE_MS erneut, und der Nächste in der Schlange würde die offene Frage
+   * wegdrücken. Am Tresen wird eine Sache nach der anderen erledigt.
+   */
+  const pendingRef = useRef(false);
+  /**
+   * Ob die Organisation die Übernahme erlaubt. Wird NICHT beim Mounten geladen:
+   * ein setState in einem Effect ist in diesem Projekt ein Lint-Fehler, und der
+   * Wert wird ohnehin erst gebraucht, wenn ein fremder Code auftaucht — also
+   * beim ersten Mal von dort aus geholt und dann gemerkt.
+   *
+   * Er entscheidet nur, ob ein Knopf erscheint. Die Regel selbst steht in
+   * carry_over_participant(); eine Bedingung nur in der Oberfläche wäre keine.
+   */
+  const carryOverAllowedRef = useRef<boolean | null>(null);
+  /** Der Kanal, über den der Scan kam — der Check-in soll ihn ehrlich nennen. */
+  const pendingMethodRef = useRef<CheckinMethod>("camera_scan");
+
+  const carryOverAllowed = useCallback(async (): Promise<boolean> => {
+    if (carryOverAllowedRef.current !== null) return carryOverAllowedRef.current;
+    const { data } = await supabase
+      .from("tournaments")
+      .select("organizations(allow_carry_over)")
+      .eq("id", tournamentId)
+      .maybeSingle();
+    // Im Zweifel aus: lieber die alte Anzeige als ein Knopf, der nur scheitert.
+    const allowed = data?.organizations?.allow_carry_over ?? false;
+    carryOverAllowedRef.current = allowed;
+    return allowed;
+  }, [supabase, tournamentId]);
 
   const handleToken = useCallback(
     async (token: string, method: CheckinMethod) => {
       const now = Date.now();
-      if (busyRef.current) return;
+      if (busyRef.current || pendingRef.current) return;
       if (
         lastTokenRef.current === token &&
         now - lastAtRef.current < DEBOUNCE_MS
@@ -298,7 +331,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         const { data: participant, error: lookupErr } = await supabase
           .from("participants")
           .select(
-            "id, display_name, checked_in_at, tournament_id, consents(id), tournaments(name)",
+            "id, display_name, checked_in_at, tournament_id, user_id, type, consents(id), tournaments(name)",
           )
           .eq("qr_token", token)
           .maybeSingle();
@@ -314,12 +347,36 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         // Namen nennen, statt ihn als „nicht erkannt" auszugeben und die Orga
         // nach einem Anmeldeproblem suchen zu lassen, das es nicht gibt.
         if (participant.tournament_id !== tournamentId) {
-          showStatus({
-            kind: "otherTournament",
-            name: participant.display_name,
-            tournament: participant.tournaments?.name ?? "einem anderen Turnier",
-          });
-          playScanSound("reject");
+          const tournament =
+            participant.tournaments?.name ?? "einem anderen Turnier";
+
+          // Die Vorprüfung deckt nur ab, was hier ohnehin schon vorliegt, damit
+          // kein Knopf erscheint, der bloß scheitern kann. Alle übrigen Regeln
+          // (Status, Archiv, Organisation, Geburtsdatum, Rennen zweier Türen)
+          // bleiben im RPC und melden sich als carryOverFailed.
+          const offerbar =
+            participant.user_id !== null &&
+            participant.type !== "team" &&
+            (await carryOverAllowed());
+
+          if (offerbar) {
+            pendingRef.current = true;
+            pendingMethodRef.current = method;
+            showStatus({
+              kind: "carryOverOffer",
+              name: participant.display_name,
+              tournament,
+              token,
+            });
+            playScanSound("already"); // eine Frage, keine Ablehnung
+          } else {
+            showStatus({
+              kind: "otherTournament",
+              name: participant.display_name,
+              tournament,
+            });
+            playScanSound("reject");
+          }
           return;
         }
 
@@ -372,7 +429,73 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
         busyRef.current = false;
       }
     },
-    [supabase, showStatus, router],
+    [supabase, showStatus, router, tournamentId, carryOverAllowed],
+  );
+
+  /** „Abbrechen" auf der Übernahme-Karte: zurück auf Bereit, Scanner frei. */
+  const cancelCarryOver = useCallback(() => {
+    pendingRef.current = false;
+    // Denselben Code sofort wieder annehmen — sonst müsste man 2,5 Sekunden
+    // warten, um es sich anders zu überlegen.
+    lastTokenRef.current = null;
+    setStatus({ kind: "idle" });
+  }, []);
+
+  /**
+   * Übernehmen und einchecken. Zwei Aufrufe, bewusst getrennt: der Check-in
+   * läuft über den bewiesenen Pfad samt `check_ins`-Eintrag, und scheitert nur
+   * er, existiert die Anmeldung trotzdem — die Meldung sagt das, statt
+   * Totalversagen vorzutäuschen.
+   */
+  const confirmCarryOver = useCallback(
+    async (token: string, name: string) => {
+      busyRef.current = true;
+      try {
+        const { data, error } = await supabase.rpc("carry_over_participant", {
+          p_qr_token: token,
+          p_tournament_id: tournamentId,
+        });
+
+        const row = data?.[0];
+        if (error || !row) {
+          // Nur unsere eigenen Meldungen durchreichen. Alles andere könnte
+          // Schema oder Constraint-Namen an den Tresen tragen.
+          const reason =
+            error?.code === "22023" || error?.code === "P0002"
+              ? error.message
+              : "Übernahme fehlgeschlagen. Bitte nochmal versuchen.";
+          showStatus({ kind: "carryOverFailed", reason });
+          playScanSound("reject");
+          return;
+        }
+
+        const { error: rpcErr } = await supabase.rpc("check_in", {
+          p_participant_id: row.participant_id,
+          p_method: pendingMethodRef.current,
+        });
+        if (rpcErr) {
+          showStatus({
+            kind: "carryOverFailed",
+            reason:
+              "Angelegt, aber der Check-in hat nicht geklappt. Bitte in der Liste einchecken.",
+          });
+          playScanSound("reject");
+          return;
+        }
+
+        showStatus({ kind: "carriedOver", name });
+        playScanSound("success");
+        router.refresh();
+      } catch {
+        showStatus({ kind: "error" });
+        playScanSound("reject");
+      } finally {
+        pendingRef.current = false;
+        busyRef.current = false;
+        lastTokenRef.current = null;
+      }
+    },
+    [supabase, tournamentId, showStatus, router],
   );
 
   const onScan = useCallback(
@@ -382,6 +505,30 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
     },
     [handleToken],
   );
+
+  // Nur der wartende Zustand trägt Knöpfe; alle anderen Karten laufen ab.
+  const carryOverActions =
+    status.kind === "carryOverOffer" ? (
+      <>
+        <Button
+          type="button"
+          size="lg"
+          onClick={() => void confirmCarryOver(status.token, status.name)}
+          className="font-display text-xs font-bold uppercase tracking-wider"
+        >
+          Übernehmen &amp; einchecken
+        </Button>
+        <Button
+          type="button"
+          size="lg"
+          variant="ghost"
+          onClick={cancelCarryOver}
+          className="font-display text-xs font-bold uppercase tracking-wider"
+        >
+          Abbrechen
+        </Button>
+      </>
+    ) : undefined;
 
   const onError = useCallback((error: IScannerError) => {
     setCameraError(cameraErrorMessage(error.kind));
@@ -486,6 +633,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
               nonce={statusNonce}
               onExpire={() => setStatus({ kind: "idle" })}
               variant="overlay"
+              actions={carryOverActions}
             />
           </div>
           <Scanner
@@ -517,6 +665,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
           status={status}
           nonce={statusNonce}
           onExpire={() => setStatus({ kind: "idle" })}
+          actions={carryOverActions}
         />
       )}
 

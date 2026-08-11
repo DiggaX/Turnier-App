@@ -4,18 +4,20 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { renameOrg, setOrgAddress } from "./actions";
+import { renameOrg, setOrgAddress, setOrgCarryOver } from "./actions";
 
 type Props = {
   name: string;
   slug: string;
   address: string | null;
+  allowCarryOver: boolean;
 };
 
-export function OrgSettings({ name, slug, address }: Props) {
+export function OrgSettings({ name, slug, address, allowCarryOver }: Props) {
   const router = useRouter();
   const [value, setValue] = useState(name);
   const [pending, startTransition] = useTransition();
@@ -26,6 +28,12 @@ export function OrgSettings({ name, slug, address }: Props) {
   const [addressPending, startAddressTransition] = useTransition();
   const [addressError, setAddressError] = useState<string | null>(null);
   const [addressSaved, setAddressSaved] = useState(false);
+
+  // Kein Speichern-Knopf: ein Häkchen hat keinen "tippt noch"-Zustand, bei dem
+  // man auf das Absenden warten müsste. Optimistisch setzen, bei Fehler zurück.
+  const [carryOver, setCarryOver] = useState(allowCarryOver);
+  const [carryOverPending, startCarryOverTransition] = useTransition();
+  const [carryOverError, setCarryOverError] = useState<string | null>(null);
 
   const dirty = value.trim() !== name && value.trim().length > 0;
   const addressDirty = addressValue.trim() !== (address ?? "").trim();
@@ -39,6 +47,20 @@ export function OrgSettings({ name, slug, address }: Props) {
         setError(res.error);
       } else {
         setSaved(true);
+        router.refresh();
+      }
+    });
+  }
+
+  function handleCarryOver(next: boolean) {
+    setCarryOverError(null);
+    setCarryOver(next);
+    startCarryOverTransition(async () => {
+      const res = await setOrgCarryOver(next);
+      if ("error" in res) {
+        setCarryOver(!next); // zurückdrehen, sonst zeigt der Haken etwas Falsches
+        setCarryOverError(res.error);
+      } else {
         router.refresh();
       }
     });
@@ -148,6 +170,37 @@ export function OrgSettings({ name, slug, address }: Props) {
         {addressSaved && !addressError && (
           <p className="text-sm text-lime" role="status">
             Gespeichert ✓
+          </p>
+        )}
+      </div>
+
+      <div className="mt-6 flex flex-col gap-2 border-t border-line pt-6">
+        {/* Kein aria-label: das umschließende Label benennt die Checkbox bereits,
+            und Base UI setzt zusätzlich aria-labelledby — beides zusammen ergibt
+            eine gestotterte Ansage. */}
+        <Label className="items-start gap-3">
+          <Checkbox
+            checked={carryOver}
+            disabled={carryOverPending}
+            onCheckedChange={handleCarryOver}
+          />
+          <span className="leading-snug">
+            QR-Codes früherer Turniere am Einlass zulassen
+          </span>
+        </Label>
+
+        <p className="text-xs text-fg-muted">
+          Kommt jemand mit dem Code vom letzten Mal, kann die Turnierleitung ihn
+          in das laufende Turnier übernehmen und sofort einchecken. Name,
+          Gamertag und Geburtsdatum werden kopiert — die{" "}
+          <strong>Fotoerlaubnis nicht</strong>, die gilt nur für das Turnier,
+          für das sie erteilt wurde. Ohne Häkchen zeigt der Scanner einen
+          fremden Code lediglich an.
+        </p>
+
+        {carryOverError && (
+          <p className="text-sm text-destructive" role="alert">
+            {carryOverError}
           </p>
         )}
       </div>
