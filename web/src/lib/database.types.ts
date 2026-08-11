@@ -15,7 +15,17 @@ export type TournamentFormat =
   | "groups_playoffs";
 export type TournamentMode = "lan" | "online" | "hybrid";
 export type TournamentStatus = "draft" | "registration" | "running" | "finished";
-export type ParticipantType = "solo" | "team";
+/**
+ * Wer antritt, entscheidet AUSSCHLIESSLICH dieser Typ — nicht `team_id`.
+ *
+ *   Wettkaempfer (steht im Spielplan): "solo" | "team"
+ *   Mensch       (ist eine Person):    "solo" | "player"
+ *
+ * Ein "player" ohne Team traegt team_id NULL und ist trotzdem kein Wettkaempfer.
+ * Genau daran haengen die anon-Sichtbarkeit (Klarnamen von Kindern) und die
+ * Bracket-Quelle; siehe supabase/migrations/20260811092000.
+ */
+export type ParticipantType = "solo" | "team" | "player";
 export type ConsentGrantor = "self" | "guardian";
 // "qr_scan" is the historical value both readers wrote before they were told
 // apart; rows from that era keep it.
@@ -96,24 +106,28 @@ export interface Database {
       participants: {
         Row: {
           id: string; tournament_id: string; user_id: string | null; type: ParticipantType;
-          display_name: string; gamertag: string | null; birthdate: string;
+          display_name: string; gamertag: string | null; birthdate: string | null;
           seed: number | null; checked_in_at: string | null; created_at: string;
           qr_token: string;
+          team_id: string | null; is_captain: boolean; join_code: string | null;
         };
         Insert: {
           id?: string; tournament_id: string; user_id?: string | null; type?: ParticipantType;
-          display_name: string; gamertag?: string | null; birthdate: string;
+          display_name: string; gamertag?: string | null; birthdate?: string | null;
           seed?: number | null; checked_in_at?: string | null; created_at?: string;
           qr_token?: string;
+          team_id?: string | null; is_captain?: boolean; join_code?: string | null;
         };
         Update: {
           id?: string; tournament_id?: string; user_id?: string | null; type?: ParticipantType;
-          display_name?: string; gamertag?: string | null; birthdate?: string;
+          display_name?: string; gamertag?: string | null; birthdate?: string | null;
           seed?: number | null; checked_in_at?: string | null; created_at?: string;
           qr_token?: string;
+          team_id?: string | null; is_captain?: boolean; join_code?: string | null;
         };
         Relationships: [
-          { foreignKeyName: "participants_tournament_id_fkey"; columns: ["tournament_id"]; referencedRelation: "tournaments"; referencedColumns: ["id"] }
+          { foreignKeyName: "participants_tournament_id_fkey"; columns: ["tournament_id"]; referencedRelation: "tournaments"; referencedColumns: ["id"] },
+          { foreignKeyName: "participants_team_id_fkey"; columns: ["team_id"]; referencedRelation: "participants"; referencedColumns: ["id"] }
         ];
       };
       team_members: {
@@ -207,9 +221,11 @@ export interface Database {
         ];
       };
       match_reports: {
-        Row: { id: string; match_id: string; reported_by: string; score_a: number; score_b: number; created_at: string };
-        Insert: { id?: string; match_id: string; reported_by: string; score_a: number; score_b: number; created_at?: string };
-        Update: { id?: string; match_id?: string; reported_by?: string; score_a?: number; score_b?: number; created_at?: string };
+        // reported_by ist der WETTKAEMPFER (bei Teams die Team-Zeile),
+        // reported_by_person der Mensch, der zuletzt getippt hat.
+        Row: { id: string; match_id: string; reported_by: string; reported_by_person: string | null; score_a: number; score_b: number; created_at: string };
+        Insert: { id?: string; match_id: string; reported_by: string; reported_by_person?: string | null; score_a: number; score_b: number; created_at?: string };
+        Update: { id?: string; match_id?: string; reported_by?: string; reported_by_person?: string | null; score_a?: number; score_b?: number; created_at?: string };
         Relationships: [
           { foreignKeyName: "match_reports_match_id_fkey"; columns: ["match_id"]; referencedRelation: "matches"; referencedColumns: ["id"] },
           { foreignKeyName: "match_reports_reported_by_fkey"; columns: ["reported_by"]; referencedRelation: "participants"; referencedColumns: ["id"] }
@@ -303,6 +319,64 @@ export interface Database {
       report_match: {
         Args: { p_match_id: string; p_score_a: number; p_score_b: number };
         Returns: undefined;
+      };
+      // --- Teams: alle SECURITY DEFINER, nur fuer authenticated freigegeben.
+      // Siehe supabase/migrations/20260811093000_team_rpcs.sql.
+      create_team: {
+        Args: { p_tournament_id: string; p_name: string };
+        Returns: { team_id: string; join_code: string }[];
+      };
+      join_team: {
+        Args: { p_tournament_id: string; p_code: string };
+        Returns: { team_id: string; team_name: string }[];
+      };
+      leave_team: {
+        Args: { p_tournament_id: string };
+        Returns: undefined;
+      };
+      rename_team: {
+        Args: { p_tournament_id: string; p_name: string };
+        Returns: undefined;
+      };
+      remove_from_team: {
+        Args: { p_tournament_id: string; p_member_id: string };
+        Returns: undefined;
+      };
+      disband_team: {
+        Args: { p_tournament_id: string };
+        Returns: undefined;
+      };
+      /**
+       * Beantwortet den Anmeldebildschirm vollstaendig. Null Zeilen heisst
+       * "nicht angemeldet"; eine Zeile mit team_id === null heisst "angemeldet,
+       * aber noch kein Team".
+       */
+      get_my_registration: {
+        Args: { p_tournament_id: string };
+        Returns: {
+          participant_id: string;
+          display_name: string;
+          participant_typ: ParticipantType;
+          checked_in: boolean;
+          team_id: string | null;
+          team_name: string | null;
+          join_code: string | null;
+          is_captain: boolean;
+          team_size: number;
+          members_count: number | null;
+          team_ready: boolean | null;
+        }[];
+      };
+      get_my_team: {
+        Args: { p_tournament_id: string };
+        Returns: {
+          member_id: string;
+          member_name: string;
+          member_gamertag: string | null;
+          member_is_captain: boolean;
+          member_checked_in: boolean;
+          member_is_me: boolean;
+        }[];
       };
       confirm_match: {
         Args: { p_match_id: string; p_score_a: number; p_score_b: number };

@@ -1,0 +1,24 @@
+-- Ein dritter Teilnehmer-Typ: 'player' — der Mensch in einem Team.
+--
+-- Bisher kannte participant_type nur 'solo' und 'team'. Bei einem 3on3 war die
+-- eine angemeldete Zeile das Team, und die Mitspieler waren blosse Zeichenketten
+-- in team_members: ohne Geburtsdatum, ohne Fotoerlaubnis, ohne eigenen Zugang.
+-- Fuer Minderjaehrige auf Turnierfotos ist das die falsche Ablage.
+--
+-- Kuenftig ist jeder Mensch eine eigene participants-Zeile. Das Team bleibt die
+-- Zeile, die im Turnierbaum steht (deshalb wird matches nicht angefasst), und
+-- die Menschen haengen ueber participants.team_id daran.
+--
+-- Diese Datei enthaelt AUSSCHLIESSLICH das Hinzufuegen des Enum-Werts, und das
+-- ist Absicht, kein Versehen. Postgres verbietet die Verwendung eines frisch
+-- hinzugefuegten Enum-Werts in derselben Transaktion (SQLSTATE 55P04), und jeder
+-- apply_migration-Aufruf ist genau eine Transaktion. Wer hier auch nur ein
+-- `where type = 'player'` danebenstellt, laesst die komplette Migration
+-- zurueckrollen. Dasselbe Muster liegt schon zweimal im Ordner:
+-- 20260808060000_checkin_scan_channel.sql und 20260808090000_manual_checkin.sql
+-- legen ihre checkin_method-Werte ebenfalls isoliert an.
+--
+-- Aus demselben Grund formulieren die Folgemigrationen ihre Praedikate ueber
+-- `team_id is null` (Wettkaempfer) statt ueber den Typ — der Typ ist Beschriftung
+-- fuer die Oberflaeche, die Zuordnung ist die Wahrheit.
+alter type participant_type add value if not exists 'player';
