@@ -42,9 +42,9 @@ export interface Database {
   public: {
     Tables: {
       organizations: {
-        Row: { id: string; name: string; slug: string; address: string | null; created_at: string };
-        Insert: { id?: string; name: string; slug: string; address?: string | null; created_at?: string };
-        Update: { id?: string; name?: string; slug?: string; address?: string | null; created_at?: string };
+        Row: { id: string; name: string; slug: string; address: string | null; created_at: string; allow_carry_over: boolean };
+        Insert: { id?: string; name: string; slug: string; address?: string | null; created_at?: string; allow_carry_over?: boolean };
+        Update: { id?: string; name?: string; slug?: string; address?: string | null; created_at?: string; allow_carry_over?: boolean };
         Relationships: [];
       };
       profiles: {
@@ -471,6 +471,10 @@ export interface Database {
       check_in_via_token: {
         Args: { p_qr_token: string };
         Returns: undefined;
+      };
+      carry_over_participant: {
+        Args: { p_qr_token: string; p_tournament_id: string };
+        Returns: { participant_id: string; created: boolean }[];
       };
       report_match_via_token: {
         Args: {
