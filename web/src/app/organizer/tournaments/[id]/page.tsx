@@ -59,15 +59,19 @@ export default async function TournamentOverviewPage({
   // Gezaehlt werden WETTKAEMPFER: „12 Teilnehmer" muss bei einem Team-Turnier
   // die Zahl der Teams sein, sonst steht auf der Uebersicht die Zahl der Kinder
   // und die Orga plant mit der falschen Groesse.
-  const [{ count: pCount }, { count: mCount }, { data: games }] = await Promise.all([
-    supabase
-      .from("participants")
-      .select("id", { count: "exact", head: true })
-      .eq("tournament_id", id)
-      .in("type", COMPETITOR_TYPES),
-    supabase.from("matches").select("id", { count: "exact", head: true }).eq("tournament_id", id),
-    supabase.from("games").select("id, name, team_size").order("name"),
-  ]);
+  const [{ count: pCount }, { count: anyCount }, { count: mCount }, { data: games }] =
+    await Promise.all([
+      supabase
+        .from("participants")
+        .select("id", { count: "exact", head: true })
+        .eq("tournament_id", id)
+        .in("type", COMPETITOR_TYPES),
+      // Fuer die Teamgroessen-Sperre zaehlt JEDE Zeile, auch ein Spieler ohne
+      // Team: sein Typ haengt schon an der aktuellen Teamgroesse.
+      supabase.from("participants").select("id", { count: "exact", head: true }).eq("tournament_id", id),
+      supabase.from("matches").select("id", { count: "exact", head: true }).eq("tournament_id", id),
+      supabase.from("games").select("id, name, team_size").order("name"),
+    ]);
   const hasMatches = (mCount ?? 0) > 0;
 
   return (
@@ -124,6 +128,7 @@ export default async function TournamentOverviewPage({
                 startsAt: tournament.starts_at,
               }}
               canEditStructure={canEditStructure(tournament.status, hasMatches)}
+              canEditTeamSize={(anyCount ?? 0) === 0}
             />
           </section>
         </div>

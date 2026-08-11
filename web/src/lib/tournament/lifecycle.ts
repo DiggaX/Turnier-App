@@ -16,6 +16,13 @@ export function canEditStructure(
   return !hasMatches;
 }
 
+/**
+ * Why the team size is locked. Shown next to the disabled field and returned by
+ * updateTournament, damit Formular und Server dieselbe Begruendung nennen.
+ */
+export const TEAM_SIZE_LOCKED =
+  "Teamgröße kann nicht geändert werden — Teilnehmer sind schon angemeldet. Zum Ändern erst alle entfernen.";
+
 /** Display label for a team size: "Solo" for 1, otherwise "NvN". */
 export function teamLabel(teamSize: number): string {
   return teamSize > 1 ? `${teamSize}v${teamSize}` : "Solo";

@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TEAM_SIZE_LOCKED } from "@/lib/tournament/lifecycle";
 import { FORMAT_OPTIONS, MODE_OPTIONS, SELECT_CLASS } from "../options";
 import { updateTournament } from "../actions";
 
@@ -36,10 +37,12 @@ export function EditTournamentForm({
   games,
   tournament,
   canEditStructure,
+  canEditTeamSize,
 }: {
   games: { id: string; name: string; team_size: number }[];
   tournament: TournamentData;
   canEditStructure: boolean;
+  canEditTeamSize: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -148,8 +151,10 @@ export function EditTournamentForm({
           id="edit-teamSize"
           type="number"
           min={1}
+          disabled={!canEditTeamSize}
           {...register("teamSize", { valueAsNumber: true })}
         />
+        {!canEditTeamSize && <p className="text-xs text-fg-dim">{TEAM_SIZE_LOCKED}</p>}
         {errors.teamSize && (
           <p className="text-xs text-live">{errors.teamSize.message}</p>
         )}

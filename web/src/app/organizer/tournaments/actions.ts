@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import type { Database, TournamentFormat, TournamentMode, TournamentStatus } from "@/lib/database.types";
 import { friendlyDbError } from "@/lib/db-errors";
 import { requireOrganizerOrAdmin, type ActionResult } from "@/lib/auth/staff";
-import { nextStatus } from "@/lib/tournament/lifecycle";
+import { nextStatus, TEAM_SIZE_LOCKED } from "@/lib/tournament/lifecycle";
 
 const FORMATS: TournamentFormat[] = [
   "single_elim",
@@ -81,7 +81,16 @@ export type UpdateTournamentInput = {
   startsAt: string | null;
 };
 
-/** Update editable fields. game/format only change while no matches exist. */
+/**
+ * Update editable fields. game/format only change while no matches exist,
+ * team_size only while nobody is registered.
+ *
+ * Der Teilnehmer-Typ ('solo' vs. 'player') wird beim INSERT aus team_size
+ * abgeleitet und ist danach ein geschuetztes Feld — wer die Teamgroesse spaeter
+ * umstellt, bekommt einen Baum aus Teams UND Einzelspielern. Deshalb greift die
+ * Sperre ab dem ERSTEN Teilnehmer, nicht erst ab dem ersten Check-in: schon die
+ * erste Anmeldung legt einen Typ fest, den nichts mehr korrigiert.
+ */
 export async function updateTournament(
   input: UpdateTournamentInput,
 ): Promise<ActionResult> {
@@ -103,24 +112,52 @@ export async function updateTournament(
     return { error: "Teamgröße muss mindestens 1 sein." };
   }
 
-  const { count: matchCount, error: matchCountErr } = await supabase
-    .from("matches")
-    .select("id", { count: "exact", head: true })
-    .eq("tournament_id", input.id);
-  if (matchCountErr) {
-    return { error: friendlyDbError(matchCountErr, "Turnier konnte nicht aktualisiert werden.") };
+  const [
+    { count: matchCount, error: matchCountErr },
+    { count: participantCount, error: participantCountErr },
+  ] = await Promise.all([
+    supabase.from("matches").select("id", { count: "exact", head: true }).eq("tournament_id", input.id),
+    supabase.from("participants").select("id", { count: "exact", head: true }).eq("tournament_id", input.id),
+  ]);
+  if (matchCountErr || participantCountErr) {
+    return {
+      error: friendlyDbError(
+        matchCountErr ?? participantCountErr,
+        "Turnier konnte nicht aktualisiert werden.",
+      ),
+    };
   }
   const hasMatches = (matchCount ?? 0) > 0;
+  const hasParticipants = (participantCount ?? 0) > 0;
 
   const patch: Database["public"]["Tables"]["tournaments"]["Update"] = {
     name,
     mode: input.mode as TournamentMode,
-    team_size: teamSize,
     starts_at: input.startsAt || null,
   };
   if (!hasMatches) {
     patch.game_id = input.gameId;
     patch.format = input.format as TournamentFormat;
+  }
+  if (hasParticipants) {
+    // Der Riegel sitzt hier, nicht nur im Formular: ein deaktiviertes Feld
+    // haelt niemanden auf, der die Action direkt aufruft.
+    const { data: current, error: currentErr } = await supabase
+      .from("tournaments")
+      .select("team_size")
+      .eq("id", input.id)
+      .maybeSingle();
+    if (currentErr) {
+      return { error: friendlyDbError(currentErr, "Turnier konnte nicht aktualisiert werden.") };
+    }
+    if (!current) {
+      return { error: "Turnier nicht gefunden oder keine Berechtigung." };
+    }
+    if (current.team_size !== teamSize) {
+      return { error: TEAM_SIZE_LOCKED };
+    }
+  } else {
+    patch.team_size = teamSize;
   }
 
   const { error, count } = await supabase

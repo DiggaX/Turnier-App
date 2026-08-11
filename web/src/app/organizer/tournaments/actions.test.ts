@@ -203,6 +203,52 @@ const validUpdateInput = {
 };
 
 describe("updateTournament", () => {
+  /**
+   * Mock the two head-counts (matches, participants) plus the tournaments row.
+   * Defaults: no matches, no participants, update succeeds with one row.
+   */
+  function setupUpdate(
+    opts: {
+      matches?: { count: number | null; error?: unknown };
+      participants?: { count: number | null; error?: unknown };
+      currentTeamSize?: number | null;
+      update?: { error: unknown; count: number | null };
+    } = {},
+  ) {
+    const captured: { patch?: Record<string, unknown> } = {};
+    const headCount = (r?: { count: number | null; error?: unknown }) => ({
+      select: () => ({
+        eq: () => Promise.resolve({ count: r?.count ?? 0, error: r?.error ?? null }),
+      }),
+    });
+    setupStaff((table: string) => {
+      if (table === "matches") return headCount(opts.matches);
+      if (table === "participants") return headCount(opts.participants);
+      if (table === "tournaments") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({
+                  data:
+                    opts.currentTeamSize === undefined || opts.currentTeamSize === null
+                      ? null
+                      : { team_size: opts.currentTeamSize },
+                  error: null,
+                }),
+            }),
+          }),
+          update: (patch: Record<string, unknown>) => {
+            captured.patch = patch;
+            return { eq: () => Promise.resolve(opts.update ?? { error: null, count: 1 }) };
+          },
+        };
+      }
+      return {};
+    });
+    return captured;
+  }
+
   beforeEach(() => {
     mockRedirect.mockReset();
     setupStaff(() => ({}));
@@ -246,18 +292,15 @@ describe("updateTournament", () => {
 
   // (6) Matches count query error returns friendly message
   it("returns friendly error when matches count query fails", async () => {
-    setupStaff((table: string) => {
-      if (table === "matches") {
-        return {
-          select: () => ({
-            count: "exact",
-            head: true,
-            eq: () => Promise.resolve({ count: null, error: { code: "08006", message: "timeout" } }),
-          }),
-        };
-      }
-      return {};
-    });
+    setupUpdate({ matches: { count: null, error: { code: "08006", message: "timeout" } } });
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament(validUpdateInput);
+    expect(result).toEqual({ error: "Turnier konnte nicht aktualisiert werden." });
+  });
+
+  // (6b) Same for the participants count — it decides the team-size lock
+  it("returns friendly error when participants count query fails", async () => {
+    setupUpdate({ participants: { count: null, error: { code: "08006", message: "timeout" } } });
     const { updateTournament } = await import("./actions");
     const result = await updateTournament(validUpdateInput);
     expect(result).toEqual({ error: "Turnier konnte nicht aktualisiert werden." });
@@ -265,25 +308,7 @@ describe("updateTournament", () => {
 
   // (7) Successful update with no existing matches returns { ok: true }
   it("returns ok:true when update succeeds", async () => {
-    setupStaff((table: string) => {
-      if (table === "matches") {
-        return {
-          select: () => ({
-            count: "exact",
-            head: true,
-            eq: () => Promise.resolve({ count: 0, error: null }),
-          }),
-        };
-      }
-      if (table === "tournaments") {
-        return {
-          update: () => ({
-            eq: () => Promise.resolve({ error: null, count: 1 }),
-          }),
-        };
-      }
-      return {};
-    });
+    setupUpdate();
     const { updateTournament } = await import("./actions");
     const result = await updateTournament(validUpdateInput);
     expect(result).toEqual({ ok: true });
@@ -291,25 +316,7 @@ describe("updateTournament", () => {
 
   // (8) Zero-count silent-success — RLS blocked the write without error
   it("returns error when 0 rows were updated (RLS silent block)", async () => {
-    setupStaff((table: string) => {
-      if (table === "matches") {
-        return {
-          select: () => ({
-            count: "exact",
-            head: true,
-            eq: () => Promise.resolve({ count: 0, error: null }),
-          }),
-        };
-      }
-      if (table === "tournaments") {
-        return {
-          update: () => ({
-            eq: () => Promise.resolve({ error: null, count: 0 }),
-          }),
-        };
-      }
-      return {};
-    });
+    setupUpdate({ update: { error: null, count: 0 } });
     const { updateTournament } = await import("./actions");
     const result = await updateTournament(validUpdateInput);
     expect(result).toEqual({ error: "Turnier nicht gefunden oder keine Berechtigung." });
@@ -317,29 +324,50 @@ describe("updateTournament", () => {
 
   // (9) DB error returns friendly message
   it("returns friendly error when update fails", async () => {
-    setupStaff((table: string) => {
-      if (table === "matches") {
-        return {
-          select: () => ({
-            count: "exact",
-            head: true,
-            eq: () => Promise.resolve({ count: 0, error: null }),
-          }),
-        };
-      }
-      if (table === "tournaments") {
-        return {
-          update: () => ({
-            eq: () =>
-              Promise.resolve({ error: { code: "08006", message: "fail" }, count: null }),
-          }),
-        };
-      }
-      return {};
-    });
+    setupUpdate({ update: { error: { code: "08006", message: "fail" }, count: null } });
     const { updateTournament } = await import("./actions");
     const result = await updateTournament(validUpdateInput);
     expect(result).toEqual({ error: "Turnier konnte nicht gespeichert werden." });
+  });
+
+  // (10) Team size is locked once anybody is registered. Der Teilnehmer-Typ
+  // ('solo'/'player') haengt an der Teamgroesse zum Zeitpunkt der Anmeldung und
+  // laesst sich danach nicht mehr korrigieren — ein spaeterer Wechsel mischt
+  // Teams und Einzelspieler im selben Baum.
+  it("rejects a team size change while participants exist", async () => {
+    setupUpdate({ participants: { count: 3 }, currentTeamSize: 1 });
+    const { updateTournament } = await import("./actions");
+    const { TEAM_SIZE_LOCKED } = await import("@/lib/tournament/lifecycle");
+    const result = await updateTournament({ ...validUpdateInput, teamSize: 5 });
+    expect(result).toEqual({ error: TEAM_SIZE_LOCKED });
+    expect(TEAM_SIZE_LOCKED).toMatch(/Teamgröße/);
+  });
+
+  // (10b) Unchanged team size saves fine — the lock guards the value, not the form
+  it("saves other fields when the team size is unchanged", async () => {
+    const captured = setupUpdate({ participants: { count: 3 }, currentTeamSize: 2 });
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament({ ...validUpdateInput, teamSize: 2 });
+    expect(result).toEqual({ ok: true });
+    expect(captured.patch).not.toHaveProperty("team_size");
+    expect(captured.patch?.name).toBe("Winter Cup Updated");
+  });
+
+  // (10c) Without participants the team size still changes
+  it("writes a new team size while nobody is registered", async () => {
+    const captured = setupUpdate({ participants: { count: 0 } });
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament({ ...validUpdateInput, teamSize: 5 });
+    expect(result).toEqual({ ok: true });
+    expect(captured.patch?.team_size).toBe(5);
+  });
+
+  // (10d) Participants exist but the tournament row is unreadable (RLS)
+  it("errors when the current team size cannot be read", async () => {
+    setupUpdate({ participants: { count: 3 }, currentTeamSize: null });
+    const { updateTournament } = await import("./actions");
+    const result = await updateTournament({ ...validUpdateInput, teamSize: 5 });
+    expect(result).toEqual({ error: "Turnier nicht gefunden oder keine Berechtigung." });
   });
 });
 
