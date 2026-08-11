@@ -325,6 +325,15 @@ export interface Database {
         Args: { p_match_id: string; p_score_a: number; p_score_b: number };
         Returns: undefined;
       };
+      /**
+       * Die eigene Partie starten, ohne Scorekeeper-Token. Ohne p_qr_token
+       * entscheidet die Sitzung, mit Token der Link-Modus. Nur starten —
+       * zaehlen und beenden bleiben beim Scorekeeper.
+       */
+      start_match_as_player: {
+        Args: { p_match_id: string; p_qr_token?: string | null };
+        Returns: undefined;
+      };
       // --- Teams: alle SECURITY DEFINER, nur fuer authenticated freigegeben.
       // Siehe supabase/migrations/20260811093000_team_rpcs.sql.
       create_team: {

@@ -203,7 +203,45 @@ export function MatchReportCard({
   );
   const [reported, setReported] = useState<MyReport | null>(report);
   const [submitting, setSubmitting] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Der Server ist die Wahrheit; `started` deckt nur die Spanne zwischen
+  // erfolgreicher RPC und dem naechsten Realtime-Refresh ab.
+  const running = match.status === "live" || started;
+
+  /**
+   * Die Partie starten, wenn kein Scorekeeper da ist.
+   *
+   * Das ist mehr als Kosmetik: erst eine laufende Partie sagt der Warteschlange
+   * aller anderen, dass hier gerade gespielt wird. Ohne Start zaehlen sie diese
+   * Partie weiter als wartend und bekommen eine Schaetzung, die eine Partie zu
+   * lang ist.
+   *
+   * Zaehlen und Beenden bleiben beim Scorekeeper — das Ergebnis meldet ihr
+   * unten, und meldet ihr beide dasselbe, gewinnt eure Einigkeit ohnehin vor
+   * jedem Scorekeeper-Vorschlag.
+   */
+  async function handleStart() {
+    setError(null);
+    setStarting(true);
+    try {
+      const { error: rpcErr } = await supabase.rpc("start_match_as_player", {
+        p_match_id: match.id,
+        ...(linkToken ? { p_qr_token: linkToken } : {}),
+      });
+      if (rpcErr) {
+        setError(reportError(rpcErr));
+        return;
+      }
+      setStarted(true);
+    } catch (e) {
+      setError(reportError(e));
+    } finally {
+      setStarting(false);
+    }
+  }
 
   async function handleReport() {
     setError(null);
@@ -251,6 +289,31 @@ export function MatchReportCard({
       <p className="mb-4 font-display text-base font-semibold text-ink">
         vs {match.opponentName}
       </p>
+
+      {running ? (
+        <div
+          className="mb-4 rounded-xl border border-live/40 bg-live/[0.08] px-4 py-3 text-sm text-live"
+          role="status"
+        >
+          Läuft gerade.
+        </div>
+      ) : (
+        <div className="mb-4 flex flex-col gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleStart()}
+            disabled={starting || submitting}
+            className="h-12 font-display text-sm font-bold uppercase tracking-wider"
+          >
+            {starting ? "Wird gestartet…" : "Partie starten"}
+          </Button>
+          <p className="text-xs text-fg-muted">
+            Nur nötig, wenn kein Scorekeeper zählt — dann sehen die anderen, dass
+            ihr spielt.
+          </p>
+        </div>
+      )}
 
       {reported && (
         <div
