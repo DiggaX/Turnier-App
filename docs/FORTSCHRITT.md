@@ -1,7 +1,12 @@
 # Turnier-App — Fortschritt
 
-**Letzter Stand:** 2026-08-10 · Branch `main` @ `07a37b4` · gepusht und deployt
+**Letzter Stand:** 2026-08-11 · Branch `main` @ `f7cbf95` · gepusht und deployt
 (`turnier-app-opal.vercel.app`; Push auf `main` deployt automatisch, siehe HANDOVER §3)
+
+⚠️ **Am 2026-08-11 lief durchgehend eine zweite Sitzung im selben Arbeitsbaum** („3on3 Eff-State
+Team Management"): elf Migrationen, Teilnehmer-Modell umgebaut (Person und Team sind jetzt getrennte
+Zeilen), Team-Flow, Free Agents. Deren Arbeit und meine liegen verzahnt in der Historie.
+**Bei Migrationen gilt: Dateinamen und `list_migrations` stimmen NICHT überein.**
 
 > Zwei Sitzungen liefen an diesem Tag **parallel** im selben Arbeitsbaum: Auth/Teilnehmer-Zugang
 > (`6e3e21c`…`015b759`, `b47a4b1`) und Nachmeldung/Live-Steuerung (`5e4c211`…`e634f7d`). Die
@@ -43,7 +48,10 @@ ist ab „Session 2026-08-10" wieder lückenlos. **Bei Widersprüchen gilt HANDO
 | Geburtsdatum: `validBirthdate()` in beiden Pfaden + CHECK auf `participants.birthdate` | ✅ live 2026-08-10 |
 | Checkbox der Fotoerlaubnis wird vom eigenen Wortlaut benannt (a11y) | ✅ live 2026-08-10 |
 | Geburtsdatum wird getippt (TT/MM/JJJJ) statt im Kalender gesucht — beide Formulare | ✅ 2026-08-10 · im Browser durchgetippt |
-| 405 Unit-Tests grün (waren 226) | ✅ 2026-08-10 |
+| Anschrift dreigeteilt (Straße · PLZ · Ort), Ort füllt sich aus der PLZ | ✅ live 2026-08-11 |
+| Scanner checkt nicht mehr ins falsche Turnier ein | ✅ live 2026-08-11 |
+| Übernahme am Einlass: QR vom letzten Turnier → übernommen + eingecheckt | ✅ live 2026-08-11 · Schalter unter *Organisation*, **Browser-Klick steht aus** |
+| 522 Unit-Tests grün (waren 226) | ✅ 2026-08-11 |
 
 ---
 
@@ -64,6 +72,10 @@ ist ab „Session 2026-08-10" wieder lückenlos. **Bei Widersprüchen gilt HANDO
 | 14 | Kein e2e für Nachmeldung / Live-Steuerung / Riegel | 🟡 | Der Riegel wäre der lohnendste — einzige Stelle, an der ein Fehlklick unwiederbringlich Daten kostet. Vorher §7.1 lesen. HANDOVER §7.17 |
 | 15 | Geburtsdatum-Prüfung doppelt gepflegt | ✅ **fertig** | ⚠️ Hieß vorher „nimmt Geburtsdaten aus der Zukunft", Beleg „Moritz b." (`2026-07-10`) — **beides falsch**: die `refine()` lehnt Zukunft seit `1bbcfe4` ab, und jenes Datum lag bei Anlage in der Vergangenheit. Echt war die schwächere Kopie und dass der öffentliche Pfad **ohne Server-Action** mit dem Anon-Key schreibt. Jetzt `validBirthdate()` im Formular + CHECK auf `participants.birthdate`. HANDOVER §7.18 |
 | 16 | Müll-Dateien entstehen weiter | 🟡 | Am 2026-08-10 kamen zehn neue nach dem ersten Aufräumen, abends noch `` web/1900-01-01` `` — gelöscht, Ursache weiter unbekannt (zwei Repro-Versuche gescheitert). ⚠️ **`git status` sieht nicht alle:** `design-refs/s.trim()` liegt seit 2026-06-16 in einem ignorierten Ordner. Suchen mit `find -size 0`. HANDOVER §7.15 |
+| 17 | Übernahme nie im Browser durchgeklickt | 🟡 **wichtigster Punkt** | DB-Seite vollständig bewiesen, Klickweg nicht — Scanner liegt hinter dem Login. **Der Durchlauf, der zählt:** denselben alten QR zweimal scannen, es darf keine zweite Zeile geben. HANDOVER §7.19 |
+| 18 | Kein e2e für die Übernahme | 🟡 | Braucht zwei Turniere und eine Quelle mit Konto. Es ist der Pfad, der eine fremde Konto-Id schreibt. HANDOVER §7.20 |
+| 19 | Referee-Pfad nur simuliert bewiesen | 🟢 klein | Es existiert kein Profil mit Rolle `referee`. Sobald einer angelegt ist: einmal wirklich scannen lassen. HANDOVER §7.21 |
+| 20 | `allow_carry_over` steht auf `true` | 🟢 | Vom User zum Test gesetzt. Wenn turnierübergreifende Codes nicht dauerhaft gelten sollen: Haken unter *Organisation* raus. HANDOVER §7.23 |
 
 ---
 
@@ -163,20 +175,53 @@ kurz darauf durch einen eigenen Klick verbrauchte; wer so etwas anlegt, sollte d
 parallel jemand daran arbeitet. Und ein Komponententest behauptete zuerst eine Fehlermeldung, die
 `required` im Browser gar nicht entstehen lässt.
 
+## Session 2026-08-11 — Anschrift, Scanner-Riegel, Übernahme
+
+Vollständiges Protokoll in **[HANDOVER.md §12](HANDOVER.md)**. Kurzfassung:
+
+**Was gemacht wurde.** Drei Dinge, jedes aus dem vorigen entstanden. Die **Anschrift** wurde
+dreigeteilt, damit Autofill am Handy überhaupt greift, und der Ort füllt sich aus der PLZ — über eine
+eigene Route, damit nur die Postleitzahl das Gerät verlässt. Beim Nachsehen für die Übernahme fiel
+auf, dass der **Scanner ins falsche Turnier eincheckte**: ein alter QR lief grün durch und setzte die
+Anwesenheit im alten Turnier. Und schließlich die **Übernahme** selbst.
+
+**Wie verifiziert.** Jeder Schreibpfad in zurückgerollten Transaktionen mit angenommener Rolle, auf
+**SQLSTATE** geprüft statt auf „hat gefehlert" — inklusive der Gegenprobe, dass ein direkter Insert
+mit fremder Konto-Id weiterhin an der RLS scheitert. Beide Regressionstests wurden einmal
+zurückgebaut, um zu sehen, dass sie wirklich rot werden.
+
+**Was gut war.** Die Beweise haben gearbeitet: der Scanner-Riegel entstand nur, weil ich beim
+Nachsehen über einen falschen Kommentar stolperte; die `RETURN QUERY`-Falle (zweiter Aufruf lieferte
+zwei Zeilen) fiel beim Idempotenz-Test auf, nicht beim Lesen. Und bei 22 fremden Dateien im
+Arbeitsbaum wurde jeder Commit mit expliziten Pfaden gebaut.
+
+**Was schlecht war.** ⚠️ Zwei Behauptungen standen in Plänen, bevor sie geprüft waren, und beide
+fielen um — „`organizations` trägt Spalten-Grants" (es sind Tabellen-Grants) und der Phantom-Bug #15.
+Bei der ersten hatte ein Explore-Agent mir zugestimmt; **zwei übereinstimmende Quellen sind kein
+Beweis, wenn beide raten.** Dazu ging ein echter Fehler raus, den die Parallelsitzung fand
+(`1dbfbdb`): eine getippte `05` wurde zur `00`, weil `padOnBlur` aus dem State statt aus dem Ereignis
+las. Und mein Migrations-Zeitstempel kollidierte, weil ich ihn aus der DB ableitete statt aus den
+Dateinamen.
+
+---
+
 ## Nächster Schritt
 
-**Stand 2026-08-10.** Auth-Kette ist geschlossen und in Produktion bewiesen; die Teilnehmer kommen
-jetzt auch von einem zweiten Gerät an alles Nötige. Die Turnierleitung kann seither außerdem
-nachmelden, Matches selbst starten und zählen — und „Bracket neu generieren" nimmt keine Arbeit
-mehr mit, ohne vorher zu sagen, welche.
+**Stand 2026-08-11.** Alles aus dieser Sitzung ist deployt. Die Übernahme am Einlass ist
+freigeschaltet (`allow_carry_over = true`) und in der Datenbank vollständig bewiesen — **im Browser
+aber noch nicht durchgeklickt.**
 
-1. **Kleine Handgriffe:** #9 (irreführende Meldung nach abgelaufenem Recovery-Fenster).
-2. **Vom User zu entscheiden:** #10 (Magic-Link ebenfalls cross-device?), #8 (Pro-Plan wegen
-   Leak-Schutz — reine Kostenfrage).
-3. **Liegt unverändert:** #4 Live-Acceptance-Durchlauf ([ACCEPTANCE.md](ACCEPTANCE.md)), #3
-   Push-Gerätetest, #7 Live-Score-Capture, sowie die 35 verwaisten Signatur-Objekte im
-   `consent-signatures`-Storage (SQL-Delete blockiert, nur über Dashboard/Storage-API).
-5. **Neu offen aus der Nachmelde-Session:** #13 (Aufstellungs-Formular einmal im Browser ansehen),
-   #14 (kein e2e für die neuen Funktionen).
-4. ⚠️ **Vor jedem Anfassen der Auth-Einstellungen:** #12 lesen. Drei Schalter sehen dort nach
+1. 🟡 **Zuerst:** #17 — Übernahme einmal wirklich am Gerät. Der Durchlauf, der zählt: denselben alten
+   QR **zweimal** scannen. Es darf keine zweite Zeile entstehen.
+2. **Kleine Handgriffe:** #9 (irreführende Meldung nach abgelaufenem Recovery-Fenster), #19 (Referee
+   anlegen und den Pfad echt prüfen).
+3. **Vom User zu entscheiden:** #20 (soll `allow_carry_over` dauerhaft an bleiben?), #10 (Magic-Link
+   cross-device?), #8 (Pro-Plan wegen Leak-Schutz — reine Kostenfrage).
+4. **Liegt unverändert:** #4 Live-Acceptance ([ACCEPTANCE.md](ACCEPTANCE.md)), #3 Push-Gerätetest,
+   #7 Live-Score-Capture, #13 Aufstellungs-Formular ansehen, #14/#18 fehlende e2e, sowie die
+   verwaisten Signatur-Objekte im `consent-signatures`-Storage.
+5. ⚠️ **Vor jedem Anfassen der Auth-Einstellungen:** #12 lesen. Drei Schalter sehen dort nach
    Verbesserung aus und würden je einen Teil der App abschalten.
+6. ⚠️ **Vor jedem Anfassen von `participants_insert_staff`:** HANDOVER §5.1 lesen. Die
+   `user_id IS NULL`-Grenze hat seit dem 2026-08-11 genau **eine** gebilligte Ausnahme, und sie hängt
+   am Besitz des QR-Codes, nicht an einer Id.

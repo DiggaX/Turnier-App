@@ -276,6 +276,81 @@ viele Jahre in der Vergangenheit, und am Tresen kostet das jedes Mal mehrere Wis
   sich nach jedem angelegten Walk-in; ohne diese Übernahme stünde beim nächsten noch das Geburtsdatum
   des vorigen in den Kästchen — ein Fehler, den am Tresen niemand bemerkt. Als Effect gebaut wäre es
   zusätzlich ein Lint-Fehler (`react-hooks/set-state-in-effect`) und ein zweiter Renderdurchlauf.
+- ⚠️ **`padOnBlur` liest aus dem Ereignis, nicht aus dem State** (Fix `1dbfbdb`, von der parallelen
+  Sitzung gefunden). Die zweite Ziffer lässt den Fokus weiterspringen, das `blur` feuert noch im
+  selben Ereignis — `parts` steht dann erst bei der ersten Ziffer. Aus einer getippten `05` wurde so
+  `00`, und zwar für **jeden** Tag und Monat unter dem zehnten. Wer hier auf `parts[field]`
+  zurückbaut, baut den Fehler neu.
+
+### Neu am 2026-08-11 (Anschrift, und der QR vom letzten Turnier)
+
+**Anschrift dreigeteilt** (`ca1f6fe`): Straße+Nr · PLZ · Ort statt einer Zeile, plus `/api/plz`.
+Der unterschätzte Teil ist die Aufteilung selbst — ein einzelnes Feld mit `autocomplete="street-address"`
+bieten Handys kaum je zum Ausfüllen an; mit `address-line1` / `postal-code` / `address-level2` greift
+die gespeicherte Adresse. Nach fünf Ziffern füllt sich der Ort über die **eigene** Route, damit das
+Gerät der Eltern nie mit einem fremden Dienst spricht; hinaus geht nur die Postleitzahl, durchgelassen
+von `/^\d{5}$/`. `consents.address` bleibt **eine** Zeile — keine Migration, alte Einträge unberührt.
+Drei Vorsichtsmaßnahmen: ein getippter Ort wird nie überschrieben, bei mehreren Orten zu einer PLZ
+wird nichts geraten (Auswahlliste), und ein nicht erreichbarer Dienst ist **kein Fehler** — eine
+Anmeldung darf nicht an einem fremden Server hängen.
+
+**Scanner checkte ins falsche Turnier ein** (`584be78`). Der Lookup traf nur auf `qr_token`, ohne
+Turnier-Filter, und `check_in` prüft nur die **Organisation**. Ein alter QR lief damit **grün** durch
+und setzte die Anwesenheit im **alten** Turnier — an der Tür sah das aus wie ein Erfolg, die Person
+stand aber auf keiner Liste. Bewiesen in zurückgerollter Transaktion. ⚠️ Die Lücke war kein Versehen:
+`void tournamentId` trug den Kommentar „staff RLS already scopes participants". Tut sie nicht — sie
+grenzt auf die Organisation ein, und hier gehört alles einer.
+
+**Übernahme am Einlass** (`3e5e392`, `f7cbf95`, Migrationen `20260811140000` + `20260811141000`).
+Wer mit dem Code vom letzten Turnier kommt, wird übernommen statt neu angemeldet: Name, Gamertag,
+Geburtsdatum werden kopiert, die Person ist sofort eingecheckt. Details in §5.1 unten.
+
+### 5.1 Übernahme — die gebilligte Ausnahme zur `user_id IS NULL`-Grenze
+
+⚠️ **Lies das, bevor du `participants_insert_staff` anfasst.** Weiter oben steht, dass die Bedingung
+`user_id IS NULL` die Grenze ist, die Staff daran hindert, Anmeldungen auf **fremde** Konten zu
+schreiben. Diese Policy ist **unverändert**. Seit dem 2026-08-11 existiert daneben genau **eine**
+Tür, die das darf, und sie ist absichtlich schmal:
+
+`carry_over_participant(p_qr_token uuid, p_tournament_id uuid)` — SECURITY DEFINER.
+
+- **Der Token ist der Parameter, nicht die Teilnehmer-Id, und das ist das ganze Sicherheitsargument.**
+  Staff darf jede Teilnehmer-Id der eigenen Organisation lesen; ein Id-Parameter wäre genau das Loch,
+  das die Policy bewacht — man könnte für jeden je Angemeldeten eine Anmeldung erzeugen, ohne dass
+  die Person da ist. Der `qr_token` ist das, was jemand physisch dabeihat. **Wer den Parameter je auf
+  eine Id umstellt, reißt die Grenze ein.**
+- **Freischaltung nötig:** `organizations.allow_carry_over`, Standard **aus**, Haken unter
+  *Organisation*. Die Funktion liest ihn selbst — eine Bedingung nur in der Oberfläche wäre keine.
+- **`is_staff()`, also inklusive `referee`** — am Scanner steht der Schiedsrichter. Bewusst weiter als
+  die seit `referee_reduced_rights` auf `is_organizer()` gezogenen Schreibrechte. Der Referee kann per
+  direktem UPDATE ohnehin nur `checked_in_at` ändern; die Übernahme läuft über zwei DEFINER-Funktionen,
+  daran scheitert sie nicht.
+- **Statusgrenzen:** hinein nur `registration` und `running`, nicht archiviert. Absichtlich weiter als
+  `assert_team_phase` (nur `registration`) — jenes bewacht Selbstbedienung, wo der Anmeldeschluss das
+  Produkt ist; hier steht Staff an der Tür, wo der Anmeldeschluss das **Problem** ist. **Keine
+  Inkonsistenz zum Reparieren.** Heraus: jeder Status, auch `finished` und archiviert — das
+  letztjährige Turnier ist der Hauptfall.
+- ⚠️ **`type` setzt die Funktion selbst.** `guard_participant_protected_fields()` prüft `current_user`;
+  innerhalb eines DEFINER-Aufrufs ist das `postgres`, der Wächter kehrt früh zurück und erzwingt
+  **nichts**. Der Ausdruck ist wörtlich derselbe wie im Trigger.
+- **Nicht kopiert:** `seed`, `checked_in_at`, `team_id`/`is_captain`/`join_code`, `qr_token` (unique,
+  ginge gar nicht) — und die **Fotoerlaubnis**. Letzteres ist der wichtigste Punkt: eine Einwilligung
+  gilt für das Turnier, für das sie erteilt wurde. Mitkopiert ließe sie den Nachweis-Ausdruck später
+  eine Zustimmung behaupten, die es nie gab.
+- **Idempotent** über `on conflict (tournament_id, user_id) do nothing`; der zweite Scan desselben
+  alten QR liefert dieselbe Zeile mit `created = false`. ⚠️ **`RETURN QUERY` beendet die Funktion
+  nicht** — ohne das `return;` im Zweig danach kämen zwei Zeilen zurück und der Client läse „gerade
+  neu angelegt". Genau so war es zuerst, gefunden beim Beweisen.
+- **Quellen ohne Konto sind ausgeschlossen** (frühere Walk-ins): ohne `user_id` gibt es nichts, woran
+  ein zweiter Scan sie wiedererkennt, und der Token ist unique, also nicht kopierbar. Die Meldung
+  verweist auf die Nachmeldung.
+- **Fremde Organisation und unbekannter Token geben dieselbe Meldung** — sonst wird der Scanner zum
+  Orakel darüber, wer anderswo im System existiert.
+
+**Bewiesen** in zurückgerollten Transaktionen, auf SQLSTATE geprüft: erlaubt (inkl. Referee, inkl.
+Idempotenz, `type='player'` bei Teamturnier), verboten mit `22023` (Schalter aus, `draft`, `finished`,
+archiviert, Team-Zeile, Quelle ohne Konto), `P0002` (unbekannt/fremde Org), `42501` (Gast, `anon`).
+Dazu gegengeprüft: ein direkter Insert mit fremder Konto-Id scheitert **weiterhin** an der RLS.
 
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - **Multi-Tenant-Isolation:** `profiles.org_id` + `tournaments.org_id` + `public.current_org_id()` (SECURITY DEFINER). Staff-Write-RLS ist `is_staff() AND <org = current_org_id()>`. **Turnier-SELECT bleibt public**. `games` bleiben **global**. Organizer-Seiten 404'en fremde Turniere via `requireOrgTournament`.
@@ -463,6 +538,25 @@ viele Jahre in der Vergangenheit, und am Tresen kostet das jedes Mal mehrere Wis
     EA-Sports-Turnier: Linus Augsten, Maxi, Nico, Supermats1). Der Ausdruck zeigt für sie „wohnhaft —"
     und den Alt-Satz. Nicht nachträglich auffüllen — was nicht erhoben wurde, wurde nicht erhoben.
 
+### Neu offen aus dem 2026-08-11
+
+19. 🟡 **Die Übernahme ist nie im Browser durchgeklickt worden.** Datenbankseite ist vollständig
+    bewiesen (§5.1), Wortlaute und Countdown-Pause sind getestet — der Klickweg an der Tür nicht: der
+    Scanner liegt hinter dem Login, und ein Agent kann sich nicht anmelden. **Der eine Durchlauf, der
+    zählt:** denselben alten QR zweimal hintereinander scannen. Es darf **keine** zweite Zeile
+    entstehen. Genau dafür wird die Konto-Id mitkopiert, und genau das kann still falsch sein.
+20. 🟡 **Kein e2e für die Übernahme.** Es bräuchte zwei Turniere und eine Quelle mit Konto —
+    aufwendiger als die bisherigen Fixtures, aber es ist der Pfad, der eine fremde Konto-Id schreibt.
+21. 🟢 **Der Referee-Pfad ist nur simuliert bewiesen.** Es existiert kein einziges Profil mit Rolle
+    `referee` (drei Admins, ein Organizer). Für den Beweis wurde in einer zurückgerollten Transaktion
+    ein Organizer herabgestuft. Sobald ein echter Schiedsrichter angelegt ist, einmal wirklich scannen
+    lassen.
+22. 🟢 **Übernahme ohne Konto ist nicht möglich** und das ist eine bewusste Grenze, kein Bug (§5.1).
+    Wer sie aufheben will, muss zuerst beantworten, was der alte QR danach tun soll — der Token ist
+    unique, kopieren geht nicht.
+23. 🟡 **`allow_carry_over` steht seit dem 2026-08-11 auf `true`** (vom User zum Test gesetzt). Wenn
+    turnierübergreifende Codes nicht dauerhaft gelten sollen: Haken unter *Organisation* wieder raus.
+
 ## 8. Datei-Landkarte
 - `web/src/app/` — Routen. Öffentlich: `page.tsx`, `o/[slug]/`, `t/[tournamentId]/{,register,me,board,checkin-station}`. Auth: `(auth)/login`, `(auth)/signup`, `auth/confirm/route.ts`, `link/[token]/route.ts` (Geräte-Kopplung). Organizer: `organizer/`, `games`, `members` (Org-Name + Geräte + Mitglieder), `tournaments/[id]/{,bracket,matches,participants,checkin,station}`. Scorekeeper: `score/[token]/`.
 - `web/src/lib/` — `bracket/`, `swiss/`, `groups/`, `standings.ts`, `tournament/lifecycle.ts`, `org/`, `auth/{staff,org-tournament,device-pairing,device-label}.ts`, `supabase/{server,client,public,admin}.ts`, `format-date.ts`, `hardware-scan.ts`, `scan-feedback.ts`, `push/`, `station/`, `db-errors.ts`, `database.types.ts`.
@@ -471,6 +565,8 @@ viele Jahre in der Vergangenheit, und am Tresen kostet das jedes Mal mehrere Wis
 - **Zugang-sichern (neu 2026-08-10):** `web/src/components/ui/alert-dialog.tsx` (Base-UI-Wrapper), `web/src/app/t/[tournamentId]/register/save-access-dialog.tsx` (+ Test), `web/src/components/qr-actions.tsx` (`variant="bare"` + exportiertes `participantRecoveryUrl`, damit angezeigte und kopierte URL nicht auseinanderlaufen).
 - `supabase/migrations/` — alle live angewandt. Neu: `20260807170000_tournament_archive.sql`, `20260807200000_device_pairing.sql`, `20260808060000_checkin_scan_channel.sql`, `20260810090000_photo_consent_optional.sql`, `20260810120000_participants_insert_staff.sql`, `20260810140000_participant_link_writes.sql`.
 - **Geburtsdatum-Feld (neu 2026-08-10):** `web/src/components/birthdate-field.tsx` (+ Test) — drei Zahlenfelder statt Kalender, gibt `YYYY-MM-DD` heraus. Benutzt von `t/[tournamentId]/register/register-client.tsx` (über RHF-`Controller`) und `organizer/tournaments/[id]/participants/add-participant-form.tsx` (kontrolliert). Reine Logik exportiert: `partsToIso`, `partsFromText`.
+- **Anschriftsfeld (neu 2026-08-11):** `web/src/components/address-field.tsx` (+ Test) — Straße/PLZ/Ort, gibt **eine** Zeile heraus; reine Logik `partsToAddress`, `partsFromAddress`. Dazu die Route `web/src/app/api/plz/route.ts` (Proxy auf openplzapi, nur die PLZ verlässt das Haus). Benutzt in `t/[tournamentId]/register/consent-step.tsx`.
+- **Übernahme am Einlass (neu 2026-08-11):** `supabase/migrations/20260811140000_org_carry_over_switch.sql` + `…141000_carry_over_participant.sql` (Begründung der Ausnahme steht im Kopf der zweiten und in §5.1); Oberfläche in `organizer/tournaments/[id]/checkin/scanner-client.tsx` (`carryOverAllowed`, `confirmCarryOver`, `pendingRef`) und `…/scan-result-card.tsx` (Zustände `carryOverOffer` / `carriedOver` / `carryOverFailed`, `awaitsDecision`, `actions`-Prop); Schalter in `organizer/members/{actions.ts,org-settings.tsx,page.tsx}` (`setOrgCarryOver`).
 - **Fotoerlaubnis (neu 2026-08-10):** `web/src/lib/consent-text.ts` (+ Test) — Wortlaut, Legacy-Fallback; `web/src/app/t/[tournamentId]/register/consent-step.tsx` (`PhotoConsentStep`, optional); `web/src/components/brand/photo-consent-chip.tsx`; Ausdruck unter `web/src/app/organizer/tournaments/[id]/consents/` (`page.tsx` + `print-button.tsx`).
 - `docs/superpowers/{specs,plans}/` — Designs + Pläne. `docs/DEPLOY.md` — Deploy/Setup-Notizen.
 - Brain (Obsidian, NICHT im Repo): `C:\Users\Rene\Documents\Zweites-Gehirn\02 Projekte\Turnier-App\`.
@@ -582,3 +678,66 @@ Leak-Schutz braucht Pro · Magic-Link-Template weiter PKCE · abgelaufenes Recov
 irreführend (#13) · `consent-step.tsx` doppelter Accessible-Name (#14, seit 2026-08-10 erledigt) ·
 die drei Auth-Schalter, die
 niemand umlegen darf (#12).
+
+---
+
+## 12. Protokoll — Session 2026-08-11 (Geburtsdatum, Anschrift, Übernahme am Einlass)
+
+⚠️ **Diese Sitzung lief die ganze Zeit parallel zu einer zweiten** im selben Arbeitsbaum („3on3
+Eff-State Team Management"). Die hat an einem Tag elf Migrationen angewandt und das Teilnehmer-Modell
+umgebaut. Wer die Historie liest, findet die Commits verzahnt — und wichtiger: **der Boden bewegte
+sich während der Arbeit.** Zwei Migrationen kamen mitten in meiner Planung dazu.
+
+### Was gebaut wurde
+
+| Was | Commit |
+|---|---|
+| Geburtsdatum-Prüfung entdoppelt + CHECK auf `participants.birthdate` | `c7d2f28` |
+| Doppelter Accessible-Name in der Fotoerlaubnis + erster Test für den Schritt | `ad71491` |
+| Geburtsdatum wird getippt (TT · MM · JJJJ), beide Formulare | `07a37b4` |
+| Anschrift dreigeteilt, Ort aus der PLZ über eigene Route | `ca1f6fe` |
+| Scanner checkt nicht mehr ins falsche Turnier ein | `584be78` |
+| Übernahme am Einlass (DB + Oberfläche) | `3e5e392`, `f7cbf95` |
+
+### Wie vorgegangen
+
+Bestand messen statt annehmen — und zwar **gegen die Live-DB**, nicht gegen den Code. Für die
+Übernahme: Frage-für-Frage-Interview mit dem User über den Entscheidungsbaum (Grundmodell → Konto-Id
+→ Schalter → Teamturnier → Fotoerlaubnis → Bedienung), erst danach ein Plan, und der Plan gegen den
+Stand der Parallelsitzung gegengeprüft, bevor er abgeschickt wurde.
+
+### Was gut war
+
+- **Jeder Beweis hat etwas gefunden oder widerlegt.** Der Scanner-Riegel entstand nur, weil ich beim
+  Nachsehen für die Übernahme über `void tournamentId` gestolpert bin. Die `RETURN QUERY`-Falle fiel
+  beim zurückgerollten Idempotenz-Test auf, nicht beim Lesen. Die Doppelbenennung im Geburtsdatum-Feld
+  meldeten die vorhandenen Formulartests.
+- **Gegenprobe bei jedem Regressionstest.** Aria-Fix und Countdown-Pause wurden je einmal
+  zurückgebaut, um zu sehen, dass der Test wirklich rot wird. Ein Test, der nie rot war, beweist nichts.
+- **Fremde Arbeit nicht mitgerissen.** Bei 22 geänderten Dateien der anderen Sitzung wurde jeder
+  Commit mit expliziten Pfaden gebaut und der Diff der eigenen Dateien vorher angesehen.
+
+### Was schlecht war
+
+- ⚠️ **Zwei Behauptungen standen im Plan, bevor sie geprüft waren, und beide fielen um.**
+  (1) „`organizations` trägt Spalten-Grants" — falsch, es sind Tabellen-Grants; meine zwei `grant`-Zeilen
+  waren wirkungslos, und der Migrationskopf behauptete zunächst das Gegenteil. Erst nach dem Anwenden
+  gemessen. (2) `#15` in der Doku beschrieb einen Bug, den es nie gab. **Ein Explore-Agent hatte die
+  erste Behauptung bestätigt** — zwei übereinstimmende Quellen sind kein Beweis, wenn beide raten.
+- **Ein echter Fehler ging raus und wurde von der anderen Sitzung gefunden** (`1dbfbdb`): `padOnBlur`
+  las aus dem State statt aus dem Ereignis, dadurch wurde aus einer getippten `05` eine `00` — für
+  jeden Tag und Monat unter dem zehnten. Meine zehn Tests deckten den Fall nicht ab, weil sie den
+  Fokussprung und das `blur` nie im selben Ereignis auslösten.
+- **Migrations-Zeitstempel kollidiert** (`20260811120000` doppelt vergeben). Ich hatte den nächsten
+  freien Stempel aus der **DB** abgeleitet; die Parallelsitzung vergibt sie nach **Dateinamen**, und
+  beide Reihen laufen auseinander. Umbenannt auf `140000`/`141000`.
+- **Eine `localhost`-Orga-Session abgemeldet**, um an den Fotoerlaubnis-Schritt zu kommen. Vorher
+  gefragt, aber es war fremder Zustand.
+
+### Was der Nächste zuerst tun sollte
+
+1. **§7.19** — die Übernahme einmal wirklich durchklicken, besonders der doppelte Scan.
+2. **§5.1 lesen, bevor irgendjemand `participants_insert_staff` anfasst.** Dort steht, warum es jetzt
+   genau eine Ausnahme gibt und woran sie hängt (am Token, nicht an einer Id).
+3. Bei Migrationen: **Dateinamen UND `list_migrations` vergleichen**, die beiden Reihen stimmen nicht
+   überein.
