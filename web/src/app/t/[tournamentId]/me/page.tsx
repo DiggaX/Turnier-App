@@ -1,12 +1,31 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { MeClient, type CurrentMatch } from "./me-client";
 
-/** A match row with the opponent display names embedded for resolution. */
-type RawOpenMatch = {
+import { createClient } from "@/lib/supabase/server";
+import { createPublicClient } from "@/lib/supabase/public";
+import type { MatchStatus, TournamentStatus } from "@/lib/database.types";
+import {
+  queueStatus,
+  type Pacing,
+  type QueueMatch,
+} from "@/lib/queue/wait-estimate";
+
+import { MeClient } from "./me-client";
+import type { MyMatch, MyReport } from "./my-matches";
+import type { TeamInfo } from "./team-card";
+
+/** A match row with the side display names embedded, as PostgREST returns it. */
+type RawMatch = {
   id: string;
+  round: number;
+  slot: number;
+  status: MatchStatus;
   participant_a_id: string | null;
   participant_b_id: string | null;
+  score_a: number | null;
+  score_b: number | null;
+  live_score_a: number | null;
+  live_score_b: number | null;
+  live_ended_at: string | null;
   a: { display_name: string } | null;
   b: { display_name: string } | null;
 };
@@ -62,8 +81,9 @@ export default async function MePage(props: {
         display_name: row.display_name,
         qr_token: row.qr_token,
         checked_in_at: row.checked_in_at,
-        // Der Token-Weg braucht sie nicht: das offene Match kommt hier aus
-        // get_open_match_by_qr_token, das den Wettkaempfer selbst aufloest.
+        // Die RPC liefert kein team_id. Der Wettkaempfer wird deshalb unten
+        // aus dem offenen Match aufgeloest, das get_open_match_by_qr_token
+        // liefert — dort hat die Datenbank coalesce(team_id, id) schon getan.
         team_id: null,
         consents: row.has_consent ? [{ id: "via-token" }] : [],
       };
@@ -75,79 +95,143 @@ export default async function MePage(props: {
     redirect(`/t/${tournamentId}/register`);
   }
 
-  // The participant's current open match in this tournament: both slots filled,
-  // not yet decided, and they are on one of the two sides.
-  let currentMatch: CurrentMatch | null = null;
+  // AB HIER der anon-Client. Eine angemeldete Sitzung liest participants ueber
+  // participants_select_owner_or_staff und sieht damit GENAU EINE Zeile: die
+  // eigene. Der Gegnername aus dem Join waere fuer jeden eingeloggten Spieler
+  // null, also ueberall "Gegner". participants_select_public_board haengt an
+  // der Rolle anon und gibt die Wettkaempfer-Namen frei — dieselben, die auf
+  // dem Live-Board stehen. Siehe den Kommentar in lib/supabase/public.ts.
+  const publicDb = await createPublicClient();
+
+  // Taktung + Status. tournaments ist public-read, gilt also auch im Link-Modus.
+  const { data: pacingRow } = await publicDb
+    .from("tournaments")
+    .select("status, match_duration_min, parallel_stations")
+    .eq("id", tournamentId)
+    .maybeSingle();
+
+  const pacing: Pacing = {
+    matchDurationMin: pacingRow?.match_duration_min ?? 12,
+    parallelStations: pacingRow?.parallel_stations ?? 1,
+  };
+  const tournamentStatus: TournamentStatus = pacingRow?.status ?? "draft";
+
+  // Alle Partien des Turniers — matches ist public-read, das trägt beide Modi.
+  // Gebraucht werden sie ohnehin doppelt: für die eigene Liste UND für die
+  // Warteschlange, die die fremden Partien davor zählt.
+  const { data: rawMatches } = await publicDb
+    .from("matches")
+    .select(
+      "id, round, slot, status, participant_a_id, participant_b_id, " +
+        "score_a, score_b, live_score_a, live_score_b, live_ended_at, " +
+        "a:participant_a_id(display_name), b:participant_b_id(display_name)",
+    )
+    .eq("tournament_id", tournamentId)
+    .order("round", { ascending: true })
+    .order("slot", { ascending: true })
+    .overrideTypes<RawMatch[]>();
+
+  const matchRows = rawMatches ?? [];
+
+  const queueMatches: QueueMatch[] = matchRows.map((m) => ({
+    id: m.id,
+    round: m.round,
+    slot: m.slot,
+    status: m.status,
+    participantAId: m.participant_a_id,
+    participantBId: m.participant_b_id,
+  }));
+
+  // Mensch -> Wettkaempfer. Mit Sitzung ist das coalesce(team_id, id); über den
+  // Link fehlt team_id, dann liefert die RPC die Seite im offenen Match — und
+  // die Seite IST der Wettkaempfer.
+  let competitorId = participant.team_id ?? participant.id;
+  let tokenReport: MyReport | null = null;
 
   if (viaToken && token) {
-    // One RPC instead of the two queries below. matches is publicly readable,
-    // but match_reports is not — its policy wants p.user_id = auth.uid(), and in
-    // link mode there is no such session. Without the definer path an already
-    // submitted score would never load, and every visit would show an empty
-    // form as if nothing had been reported.
+    // Eine RPC statt zweier Abfragen. matches ist zwar öffentlich lesbar,
+    // match_reports aber nicht — dessen Policy will p.user_id = auth.uid(), und
+    // im Link-Modus gibt es diese Sitzung nicht. Ohne den Definer-Weg würde ein
+    // bereits gemeldeter Score nie geladen.
     const { data: row } = await supabase
       .rpc("get_open_match_by_qr_token", { p_qr_token: token })
       .maybeSingle();
     if (row) {
-      currentMatch = {
-        matchId: row.match_id,
-        opponentName: row.opponent_name,
-        mySide: row.my_side === "a" ? "a" : "b",
-        myReport:
-          row.report_score_a !== null && row.report_score_b !== null
-            ? { score_a: row.report_score_a, score_b: row.report_score_b }
-            : null,
-      };
+      const openMatch = matchRows.find((m) => m.id === row.match_id);
+      const side =
+        row.my_side === "a" ? openMatch?.participant_a_id : openMatch?.participant_b_id;
+      if (side) competitorId = side;
+      if (row.report_score_a !== null && row.report_score_b !== null) {
+        tokenReport = { score_a: row.report_score_a, score_b: row.report_score_b };
+      }
     }
-  } else if (!viaToken) {
-    // Im Spielplan steht der WETTKAEMPFER: bei einem Team-Mitglied die
-    // Team-Zeile, sonst die eigene. coalesce(team_id, id) — wer hier die eigene
-    // Zeile sucht, findet als Team-Spieler nie ein Match. Der Token-Weg ist in
-    // der Datenbank schon so repariert, der Sitzungs-Weg hier war es nicht.
-    const competitorId = participant.team_id ?? participant.id;
+  }
 
-    const { data: rawMatch } = await supabase
-      .from("matches")
-      .select(
-        "id, participant_a_id, participant_b_id, " +
-          "a:participant_a_id(display_name), b:participant_b_id(display_name)",
-      )
-      .eq("tournament_id", tournamentId)
-      .in("status", ["pending", "live"])
-      .not("participant_a_id", "is", null)
-      .not("participant_b_id", "is", null)
-      .or(
-        `participant_a_id.eq.${competitorId},participant_b_id.eq.${competitorId}`,
-      )
-      .order("round", { ascending: true })
-      .order("slot", { ascending: true })
-      .limit(1)
-      .maybeSingle()
-      .overrideTypes<RawOpenMatch>();
+  const queue = queueStatus(queueMatches, competitorId, pacing);
 
-    if (rawMatch) {
+  const myMatches: MyMatch[] = matchRows
+    .filter(
+      (m) =>
+        m.participant_a_id === competitorId || m.participant_b_id === competitorId,
+    )
+    .map((m) => {
       const mySide: "a" | "b" =
-        rawMatch.participant_a_id === competitorId ? "a" : "b";
-      const opponentName =
-        (mySide === "a"
-          ? rawMatch.b?.display_name
-          : rawMatch.a?.display_name) ?? "Gegner";
-
-      // Die eigene Meldung zu diesem Match. match_reports.reported_by ist der
-      // WETTKAEMPFER — die Meldung eines Team-Mitglieds ist die Meldung des
-      // Teams, und genau die soll den anderen im Team angezeigt werden.
-      const { data: myReport } = await supabase
-        .from("match_reports")
-        .select("score_a, score_b")
-        .eq("match_id", rawMatch.id)
-        .eq("reported_by", competitorId)
-        .maybeSingle();
-
-      currentMatch = {
-        matchId: rawMatch.id,
-        opponentName,
+        m.participant_a_id === competitorId ? "a" : "b";
+      return {
+        id: m.id,
+        round: m.round,
+        status: m.status,
         mySide,
-        myReport: myReport ?? null,
+        opponentName:
+          (mySide === "a" ? m.b?.display_name : m.a?.display_name) ?? "Gegner",
+        scoreA: m.score_a,
+        scoreB: m.score_b,
+        liveScoreA: m.live_score_a,
+        liveScoreB: m.live_score_b,
+        liveEndedAt: m.live_ended_at,
+      };
+    });
+
+  // Die eigene Meldung zur nächsten offenen Partie. match_reports.reported_by
+  // ist der WETTKAEMPFER — die Meldung eines Teammitglieds ist die Meldung des
+  // Teams, und genau die soll den anderen im Team angezeigt werden.
+  const openMatchId = queue.kind === "none" ? null : queue.matchId;
+  let myReport: MyReport | null = tokenReport;
+
+  if (!viaToken && openMatchId) {
+    const { data } = await supabase
+      .from("match_reports")
+      .select("score_a, score_b")
+      .eq("match_id", openMatchId)
+      .eq("reported_by", competitorId)
+      .maybeSingle();
+    myReport = data ?? null;
+  }
+
+  // Team + Beitritts-Code. Beides hängt an auth.uid(), geht also nur mit
+  // Sitzung. Nach Anmeldeschluss ruft /register notFound() — ohne diese Karte
+  // gäbe es danach keinen Weg mehr an den Code.
+  let team: TeamInfo | null = null;
+
+  if (!viaToken && user) {
+    const [{ data: reg }, { data: members }] = await Promise.all([
+      supabase.rpc("get_my_registration", { p_tournament_id: tournamentId }),
+      supabase.rpc("get_my_team", { p_tournament_id: tournamentId }),
+    ]);
+    const registration = reg?.[0];
+    if (registration?.team_id && registration.team_name) {
+      team = {
+        name: registration.team_name,
+        // Nach Anmeldeschluss ist der Code wertlos und nur noch ein Leck.
+        joinCode:
+          tournamentStatus === "registration" ? registration.join_code : null,
+        members: (members ?? []).map((m) => ({
+          id: m.member_id,
+          name: m.member_name,
+          isCaptain: m.member_is_captain,
+          checkedIn: m.member_checked_in,
+          isMe: m.member_is_me,
+        })),
       };
     }
   }
@@ -155,9 +239,13 @@ export default async function MePage(props: {
   return (
     <MeClient
       participant={participant}
-      currentMatch={currentMatch}
       tournamentId={tournamentId}
       viaToken={viaToken}
+      matches={myMatches}
+      queue={queue}
+      openMatchId={openMatchId}
+      myReport={myReport}
+      team={team}
     />
   );
 }
