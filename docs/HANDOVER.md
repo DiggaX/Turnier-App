@@ -380,7 +380,95 @@ auf einem Hallenbildschirm keine Kante gegen den Hintergrund hatten.
 - **Verifiziert** über die Live-Domain: `getComputedStyle(document.body).backgroundColor` liefert dort
   `rgb(17, 22, 31)`, keine Konsolenfehler.
 
+### Neu am 2026-08-11 (Person/Team-Umbau: jeder Spieler ist ein Mensch) — `d025e41`…`2fececb`, live
+
+Auslöser war eine Frage zu einem 3on3: „was, wenn man kein Team gründet — kann man Spieler später
+zusammenschließen?" Ging beides nicht. Der Code kannte nur `team_size > 1` → Team-Formular mit
+Pflicht-Captain, und die Mitspieler waren **reine Zeichenketten in `team_members`**: kein
+Geburtsdatum, keine Fotoerlaubnis, keine Unterschrift. Minderjährige Mitspieler landeten ohne
+Einwilligung auf Turnierfotos. Das war der eigentliche Grund für den Umbau, nicht der Komfort.
+
+**Jetzt ist jeder Mensch eine eigene `participants`-Zeile.** Das Team bleibt die Zeile, die im
+Turnierbaum steht — deshalb wurden `matches`, die Formate und das Board **nicht angefasst**.
+
+| Sorte | `type` | `team_id` | `user_id` | `join_code` |
+|---|---|---|---|---|
+| Team (tritt an) | `team` | NULL | NULL | gesetzt |
+| Person in/ohne Team | `player` | Team **oder NULL** | eigener Auth-User | NULL |
+| Einzelstarter | `solo` | NULL | eigener Auth-User | NULL |
+
+Neue Anmeldung: eine Person angeben → Fotoerlaubnis → **Team-Schritt** mit drei gleichrangigen Wegen
+(gründen + Code teilen, per Code beitreten, bewusst ohne Team weiter). Wiedereinstieg läuft über
+`get_my_registration` — Neuladen landet nicht mehr auf dem Formular, wo der zweite Versuch an
+`unique(tournament_id, user_id)` starb.
+
+Dazu: Orga-**Teams-Screen** (`/organizer/tournaments/[id]/teams`, Zuordnung per Pointer-Events **und**
+Auswahlfeld), **Restspieler-Panel** vor der Bracket-Erzeugung, **Warteschlange** auf „Mein Status"
+(„noch 2 Spiele vor dir ≈ 20 Min", aus `tournaments.match_duration_min` × `parallel_stations`),
+**Sammel-Freigabe** für alle einigen Partien, und eine **echte Schiedsrichter-Rolle**.
+
+**Elf Migrationen, alle live:** `20260811090000` (Enum `player`) · `091000` (Spalten + Constraints) ·
+`092000` (Policies + drei Trigger) · `093000` (neun Team-RPCs) · `094000` (Umzug aus `team_members`) ·
+`095000` (Wettkämpfer-Auflösung in den Melde-Funktionen) · `100000`/`101000` (Taktung + Realtime auf
+`match_reports`) · `110000` (Schiri reduziert) · `120000` (`match_reports_select` über den
+Wettkämpfer) · `130000` (`start_match_as_player`).
+
+⚠️ **Die drei Fallen, die es beim Bauen fast gerissen hätten** — alle live in zurückgerollten
+Transaktionen belegt, nicht theoretisch:
+
+1. **Der Schutz-Trigger war ein No-op.** Erster Entwurf: `security definer` **und**
+   `current_user = 'postgres'` als Tür für die eigenen RPCs. In einer DEFINER-Funktion ist
+   `current_user` **immer** der Eigentümer → Bedingung ausnahmslos wahr, der ganze Feldschutz toter
+   Code. Ein Gast konnte per PATCH `team_id`, `is_captain` und `seed` frei setzen. Lösung:
+   Guard als **INVOKER**, die eine Leseoperation in einen kleinen DEFINER-Helfer
+   (`participant_team_target_ok`). Eine INVOKER-Funktion **innerhalb** einer DEFINER-Funktion erbt
+   deren Rolle — deshalb stimmt es in beide Richtungen.
+2. **„Wettkämpfer = `team_id is null`" ist falsch.** Ein Spieler *ohne* Team hat ebenfalls NULL, und
+   ein gelöschtes Team setzt `team_id` seiner Mitglieder auf NULL. Beides hätte Menschen in den
+   Turnierbaum gestellt **und** ihre Klarnamen über den Anon-Key freigegeben. Es entscheidet
+   **ausschließlich `type`** (siehe §6).
+3. **`tg_op` gibt es in einer Trigger-`WHEN`-Klausel nicht**, und `OLD` darf dort nicht stehen, wenn
+   derselbe Trigger `INSERT` abdeckt (42703). Deshalb zwei Trigger `…_ready_ins` / `…_ready_upd`.
+   Aufgefallen erst beim Anwenden, weil die Probe den Trigger **ohne** `WHEN` angelegt hatte —
+   **immer genau das proben, was auch angewandt wird.**
+
+Zwei Folgeschäden des Umbaus, dabei gefunden und behoben: ein **Teamspieler sah seine eigene
+Ergebnismeldung nie** (`match_reports_select` prüfte gegen die eigene Zeile, im Match steht aber die
+Team-Zeile → `120000`), und **`/me` zeigte jedem eingeloggten Spieler überall „Gegner"**, weil eine
+angemeldete Sitzung per RLS nur die *eigene* `participants`-Zeile sieht (gemessen: 1 sichtbar als
+`authenticated`, 17 als `anon`) — Matches werden dort jetzt über `createPublicClient()` gelesen.
+
+**Nebenbei repariert:** das **Unterschriftsfeld nahm unter Umständen gar keinen Strich an**.
+`canvas.setPointerCapture()` wirft `NotFoundError`, wenn der Zeiger nicht als aktiv gilt, und stand
+ungefangen **vor** `isDrawing = true` — warf es, brach der Handler dort ab, und der Elternteil sah
+beim Absenden nur „Bitte unterschreiben." ohne jeden Hinweis. Jetzt in `try/catch`; Capture ist
+Komfort, keine Voraussetzung.
+
+**Auf Produktion durchgespielt** (zwei getrennte Gast-Sitzungen, echter Browser): anmelden → Team
+gründen → Code → zweites Fenster → beitreten mit **kleingeschriebenem** Code → beide im selben Team,
+Gründer Captain. Datenbankseitig gegengeprüft: Team-Zeile ohne Konto und ohne Geburtsdatum, beide
+Menschen als `player` mit eigenem Geburtsdatum, **keine Person als Wettkämpfer**. Ebenso belegt:
+`anon` sieht 22 von 26 Zeilen (die vier Kinder unsichtbar), eine Person lässt sich nicht in den
+Spielplan schreiben, ein Schiedsrichter kann freigeben (`confirm_match` → `done 10:8`, richtiger
+Sieger) aber `matches` nicht direkt beschreiben (0 Zeilen).
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
+- ⚠️ **Wer antritt, entscheidet `participants.type` — NIEMALS `team_id`.** Wettkämpfer =
+  `type in ('solo','team')`, Mensch = `type in ('solo','player')`. Ein `player` ohne Team trägt
+  `team_id` NULL und ist trotzdem kein Wettkämpfer. Konstanten: `COMPETITOR_TYPES` / `PERSON_TYPES`
+  in `web/src/app/organizer/tournaments/[id]/participants/participant-types.ts` — **benutzen, nicht
+  neu erfinden.** Die Bracket-Quelle filtert an **zwei** Stellen (`saveSeeds` UND `generateBracket`);
+  ergänzt man nur eine, meldet das Speichern „Ungültiger oder nicht eingecheckter Teilnehmer". Als
+  Netz darunter: `trg_matches_guard_competitors` bricht laut ab, wenn eine Person in einem Match-Slot
+  landet — lieber ein Fehler als ein stiller, falscher Turnierbaum.
+- ⚠️ **Mensch → Wettkämpfer löst man überall gleich auf: `coalesce(team_id, id)`.** Beim Einzelstarter
+  die eigene Zeile, beim Teammitglied die seines Teams. So machen es `report_match`,
+  `report_match_via_token`, `get_open_match_by_qr_token`, `start_match_as_player`,
+  `match_reports_select` und `/me`. Wer die Person-Id direkt gegen `matches` hält, bekommt bei einem
+  Teamturnier **nichts** — kein Fehler, nur eine leere Seite.
+- ⚠️ **`type` ist beim INSERT abgeleitet und danach eingefroren.** Der Guard-Trigger erzwingt
+  `team_size > 1 ? 'player' : 'solo'`. **Das Ändern von `tournaments.team_size` rechnet bestehende
+  Anmeldungen NICHT um** → siehe §7, Punkt 24.
 - **Multi-Tenant-Isolation:** `profiles.org_id` + `tournaments.org_id` + `public.current_org_id()` (SECURITY DEFINER). Staff-Write-RLS ist `is_staff() AND <org = current_org_id()>`. **Turnier-SELECT bleibt public**. `games` bleiben **global**. Organizer-Seiten 404'en fremde Turniere via `requireOrgTournament`.
 - **⚠️ SECURITY-DEFINER-RPCs umgehen RLS** → brauchen EXPLIZITE Guards. Neue schreibende Definer-RPCs: **immer `is_staff()`/`is_admin()` UND Org-Check**. Bei `my_sessions()`/`revoke_session()` ist die `auth.uid()`-Bedingung die Autorisierung — nicht entfernen.
 - **PII-Modell:** `anon` hat nur Spalten-GRANT auf `participants(id, tournament_id, display_name)`. Öffentliche Seiten lesen über **`createPublicClient()`**.
@@ -584,6 +672,50 @@ auf einem Hallenbildschirm keine Kante gegen den Hintergrund hatten.
     unique, kopieren geht nicht.
 23. 🟡 **`allow_carry_over` steht seit dem 2026-08-11 auf `true`** (vom User zum Test gesetzt). Wenn
     turnierübergreifende Codes nicht dauerhaft gelten sollen: Haken unter *Organisation* wieder raus.
+
+### Neu offen aus dem Person/Team-Umbau (2026-08-11)
+
+24. 🔴 **`tournaments.team_size` lässt sich ändern, nachdem sich Leute angemeldet haben — und rechnet
+    nichts um.** `updateTournament` (`organizer/tournaments/actions.ts`, ~Z. 101–124) sperrt bei
+    vorhandenen Partien nur `game_id` und `format`, `team_size` **nicht einmal dann**. Der Typ einer
+    Anmeldung wird aber nur beim INSERT abgeleitet. Folge: 3 → 1 lässt die Personen als `player`
+    stehen (keine Wettkämpfer, im Baum stehen die Team-Zeilen), 1 → 3 lässt `solo`-Zeilen als
+    Einzelstarter im Baum — in beiden Fällen mischen sich Teams und Einzelspieler. **Riegel gehört in
+    die Server Action, nicht nur ins Formular.** Der User hat das nach dem Turnier eingeplant; eine
+    vorbereitete Aufgabe mit Fundstellen läuft bereits als eigene Session.
+25. 🟡 **Nicht durchgeklickt: Teams-Screen, Restspieler-Panel, Sammel-Freigabe.** Alle drei liegen
+    hinter dem Orga-Login, das ein Agent nicht hat. Anmeldung und Team-Beitritt sind auf Produktion
+    bewiesen (§5), diese drei nicht. **Besonders offen:** ob das Ziehen per Pointer-Events auf einem
+    echten Tablet trägt. Fallback ist eingebaut — neben jedem Spieler ein Auswahlfeld „verschieben
+    nach …", das denselben Weg nimmt.
+26. 🟡 **Wird ein Team bei 3/3 eingecheckten Spielern wirklich von selbst spielbereit?** Der Trigger
+    `sync_team_ready` ist in einer zurückgerollten Transaktion belegt, aber nie mit drei echten
+    Check-ins gelaufen. **Notausgang, falls nicht:** auf der Check-in-Seite gibt es pro Team einen
+    „Spielbereit"-Knopf (setzt `checked_in_at` auf der Team-Zeile, genau das prüft die Bracket-Quelle).
+27. 🟡 **`team_members` steht noch.** Der Umzug (`20260811094000`) hat kopiert, nicht gelöscht — die
+    Tabelle ist der Rückweg. Nichts liest oder schreibt sie noch. **Droppen, sobald eine Turnierrunde
+    sauber gelaufen ist**, in einer eigenen Mini-Migration. Rückweg bis dahin:
+    `delete from participants where type = 'player' and user_id is null;`
+28. 🟡 **Geburtsdatum ist vor dem Schiedsrichter nur in der Oberfläche versteckt**, nicht in der
+    Datenbank. Spaltenrechte gelten pro Postgres-Rolle, und alle drei App-Rollen **sind** dieselbe
+    Rolle `authenticated`. Eine echte Trennung braucht eine View oder eine DEFINER-Funktion mit fester
+    Spaltenauswahl. Steht so auch im Code und in `20260811110000`.
+29. 🟡 **`E2E_ORG_EMAIL` / `E2E_ORG_PASSWORD` in `.env.local` sind ungültig** („Invalid login
+    credentials"). Seit die Registrierungs-Specs ihr **eigenes** Wegwerf-Turnier anlegen (statt sich
+    das erstbeste offene zu greifen), brauchen sie Staff-Rechte und scheitern ohne gültige Zugangsdaten
+    in `beforeAll`. Erneuern → dann läuft auch der neue `register-team.spec.ts`, der als Einziger den
+    Team-Beitritt end-to-end prüft.
+30. 🟢 **„Partie starten" kann nur starten, nicht zählen oder beenden.** `start_match_as_player`
+    (`20260811130000`) setzt `status='live'`. Zählen bleibt beim Scorekeeper (ein zweiter paralleler
+    Zähler würde ihn überschreiben), Beenden auch (daraus baut `scorePrefill` den Freigabe-Vorschlag,
+    und die Einigkeit der Spieler hat ohnehin Vorrang). Bewusst so, kein fehlendes Feature.
+31. 🟢 **Das Realtime-Abo auf `match_reports` läuft ungefiltert**, weil die Tabelle keine
+    `tournament_id` hat. Ein Organizer mit Parallelturnieren bekommt überflüssige Refreshes. Harmlos
+    (RLS bleibt), sauber wäre eine denormalisierte `tournament_id`.
+32. 🟡 **Token-Modus + Team + alle Partien gespielt = leere Partienliste.** `get_participant_by_qr_token`
+    liefert kein `team_id`, deshalb leitet `/me` den Wettkämpfer aus dem *offenen* Match ab. Gibt es
+    keins mehr, fällt es auf die Person-Zeile zurück und findet nichts. Einzeiler: `team_id` in den
+    Rückgabewert der Funktion aufnehmen. Einzelstarter sind nicht betroffen.
 
 ## 8. Datei-Landkarte
 - `web/src/app/` — Routen. Öffentlich: `page.tsx`, `o/[slug]/`, `t/[tournamentId]/{,register,me,board,checkin-station}`. Auth: `(auth)/login`, `(auth)/signup`, `auth/confirm/route.ts`, `link/[token]/route.ts` (Geräte-Kopplung). Organizer: `organizer/`, `games`, `members` (Org-Name + Geräte + Mitglieder), `tournaments/[id]/{,bracket,matches,participants,checkin,station}`. Scorekeeper: `score/[token]/`.
@@ -815,3 +947,88 @@ DB noch Auth noch Turnier-Logik. Ein laufendes Turnier kann daran nicht scheiter
 
 Die 0-Byte-Datei `web/{,` aus dem 2026-08-10er Shell-Unfall (§4) gelöscht — leer, untracked, kein
 Inhalt verloren. Die zehn Geschwister waren schon weg.
+
+---
+
+## 14. Protokoll — Session 2026-08-11 (Person/Team-Umbau, sieben Phasen)
+
+Parallel zu §12/§13 gelaufen, im selben Verzeichnis. Beide Sitzungen haben `database.types.ts`
+angefasst — additiv, ohne Konflikt. Die Zeitstempel-Kollision (`20260811120000` doppelt) hat die
+andere Sitzung selbst nach `140000`/`141000` aufgelöst.
+
+### Ausgangsfrage des Users
+
+„Ich habe ein 3on3. Wenn man sich anmeldet, fragt er, ob man ein Team gründen möchte … wie ist das,
+wenn man kein Team gründet? Kann man später Teams zusammenschließen?" Dazu zwei Wünsche für „Mein
+Status": QR einklappen, nächste Partien sehen — und Ergebnisse selbst melden, die der Schiedsrichter
+bestätigt.
+
+Antwort nach dem Blick in den Code: **beides ging nicht.** Kein „ohne Team", kein späteres
+Zusammenschließen — die `participants`-Zeile *war* das Team. Und die Melde→Freigabe-Kette existierte
+zu 80 %, sie war nur unsichtbar (kein Realtime, keine Sammel-Freigabe).
+
+### Ablauf
+
+Sieben Phasen, in dieser Reihenfolge: Roster sichtbar machen (Sofortfix) → Datenmodell → Anmeldung →
+Orga-Teamscreen → Wettkämpfer-Filter → „Mein Status" → Freigabe-Flow → Schiri-Rolle. Danach zwei
+Nacharbeiten (Spieler-Start, e2e-Umbau) und ein Datenaufräumen.
+
+Vorgehen bei allem Datenbanknahen, und es hat sich jedes Mal ausgezahlt: **Snapshot → Rollback-Probe
+mit Bestandszählung → anwenden → gegen `pg_policies`/`pg_proc`/`pg_constraint` verifizieren.**
+
+### Was gut war
+
+- **Adversariale Prüfung vor dem Anwenden.** Fünf Perspektiven (Postgres-Semantik, Angreifer mit
+  Anon-Key, Datenumzug, Regressionen, der nächste UI-Entwickler), jeder Befund danach von einem
+  zweiten Durchgang mit dem Auftrag, ihn zu **widerlegen**. 42 Befunde überlebten, sieben kritisch,
+  alle fünf Urteile lauteten „nicht anwendbar wie sie ist". **Zwei davon waren echte Fehler in meinem
+  Entwurf** (No-op-Trigger, falsches Wettkämpfer-Kriterium) — beide vor Produktion korrigiert.
+- **Gegenlesen mit Reparaturauftrag statt Meldeauftrag.** Jede Bau-Phase bekam einen zweiten Agenten,
+  der Fehler direkt behebt. Ausbeute: `MatchReportCard` ohne `key` (hätte das Ergebnis von Runde 1 als
+  Meldung für Runde 2 eingetragen), `disbandTeam` mit totem `23503`-Zweig (die Match-FKs sind
+  `ON DELETE SET NULL` — „Auflösen" hätte einer gespielten Partie den Sieger genullt), zugeordnete
+  Restteams wurden nie spielbereit.
+- **Gestaffelt angewandt statt alles auf einmal.** Vier Migrationen sofort (unsichtbar für den alten
+  Code), zwei zurückgehalten bis zum Deploy — der Schutz-Trigger hätte die 3on3-Anmeldung auf der
+  Live-Seite sofort gebrochen, weil der alte Client `type='team'` schreibt.
+- **Am Ende auf Produktion durchgespielt**, zwei echte Gast-Sitzungen, statt sich auf 515 grüne Tests
+  zu verlassen.
+
+### Was schlecht war
+
+- **Die Rollback-Probe hat den Trigger ohne seine `WHEN`-Klausel angelegt** — also genau den Teil
+  nicht geprüft, der beim Anwenden mit 42703 brach. Kostete einen Fehlversuch. **Immer wortgleich
+  proben, was angewandt wird.**
+- **Zwei eigene Denkfehler**, beide erst durch fremde Prüfung gefunden: der `security definer`-Guard,
+  dessen Hintertür immer offenstand, und „Wettkämpfer = `team_id is null`". Der zweite hätte genau die
+  Kinderklarnamen freigegeben, die der Umbau schützen sollte.
+- **Der Browser-Durchlauf scheiterte zunächst an der Werkzeugkette**, nicht an der App: das getippte
+  Geburtsdatumsfeld nimmt per Werkzeug gesetzte Werte nicht an. **Offener Verdacht:
+  Browser-Autofill scheitert dort genauso** — nicht nachgewiesen, aber plausibel und einen Blick wert.
+  Mit Playwright lief derselbe Weg auf Anhieb.
+- **Ein Agenten-Durchlauf starb am Sitzungslimit**, drei Bau-Agenten gleichzeitig auf hoher Stufe.
+  Wiederholung lief durch. Bei großen Fan-outs die Last im Blick behalten.
+- **Die e2e-Specs waren doppelt kaputt**, und der ältere Bruch hatte nichts mit diesem Umbau zu tun:
+  `getByLabel("Geburtsdatum").fill("2000-01-01")` traf seit dem getippten Datumsfeld nur das Tag-Feld
+  mit `maxLength={2}`. Aufgefallen ist es niemandem, **weil die Suite Zugangsdaten braucht und nicht
+  von allein läuft** (§7, Punkt 29).
+
+### Nebenbei aufgeräumt
+
+- Testteam „Rene_Test" samt vier migrierter Spieler auf Wunsch gelöscht (Sicherung im Scratchpad,
+  Turnier danach leer). Die Unterschriftsdatei im Storage-Bucket bleibt — Fremdschlüssel räumen keine
+  Dateien ab.
+- **Rund fünfzehn 0-Byte-Dateien** im Wurzelverzeichnis entfernt (`p.type`, `{,+`, `m.id`, `HTTP` …),
+  Umleitungs-Unfälle aus Shell-Aufrufen mit unmaskierten `>` und `)`. Sie entstehen weiterhin —
+  **gezielt adden statt `git add -A`.**
+- `report_match` hat durch das explizite `revoke` sein `PUBLIC EXECUTE` verloren; alle neun neuen
+  Team-RPCs tragen `public_execute = 0`. Damit sind sie strenger abgesichert als jede ältere Funktion
+  dieses Projekts — ein offener Linter-Befund weniger.
+
+### Was der Nächste zuerst tun sollte
+
+1. **§7 Punkt 24** — `team_size` sperren. Läuft schon als eigene Session, Ergebnis prüfen.
+2. **§7 Punkte 25/26** — Teams-Screen und automatische Spielbereitschaft einmal mit echten Menschen
+   durchklicken. Das sind die letzten ungeprüften Wege im Turnierbetrieb.
+3. **§7 Punkt 29** — e2e-Zugangsdaten erneuern. Danach deckt `register-team.spec.ts` den Team-Beitritt
+   dauerhaft ab, statt dass jemand ihn von Hand nachstellt.
