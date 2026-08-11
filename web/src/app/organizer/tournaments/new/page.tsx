@@ -19,8 +19,12 @@ export default async function NewTournamentPage() {
     .select("role")
     .eq("id", user.id)
     .maybeSingle();
-  if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
-    redirect("/login");
+  // Ein Turnier anlegen ist Leitungsarbeit. Seit 20260811110000 haengt die
+  // tournaments-Policy an is_organizer(); ohne diesen Riegel fuellt ein
+  // Schiedsrichter das Formular aus und bekommt beim Speichern nichts als eine
+  // Fehlermeldung.
+  if (!profile || !["admin", "organizer"].includes(profile.role)) {
+    redirect("/organizer");
   }
 
   const { data: games } = await supabase

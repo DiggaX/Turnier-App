@@ -126,10 +126,22 @@ export default async function ParticipantDetailPage({
                 <dt className="font-display text-[10px] uppercase tracking-[0.12em] text-fg-dim">
                   Geburtsdatum
                 </dt>
+                {/*
+                  Fuer den Schiedsrichter ausgeblendet. Er braucht es nicht: ob
+                  eine Fotoerlaubnis vorliegt, steht als eigene Zeile darunter,
+                  und mehr entscheidet am Tresen nichts. Ehrlich dazu gesagt —
+                  auf Datenbank-Ebene kann er die Spalte weiterhin lesen:
+                  Spalten-Rechte gelten pro Postgres-Rolle, und alle drei
+                  App-Rollen sind dieselbe Rolle 'authenticated'. Eine echte
+                  Trennung braeuchte eine View oder eine DEFINER-Funktion mit
+                  fester Spaltenauswahl.
+                */}
                 <dd className="text-fg-muted">
-                  {participant.birthdate
-                    ? formatBirthdate(participant.birthdate)
-                    : "—"}
+                  {profile.role === "referee"
+                    ? "— (nur für die Turnierleitung)"
+                    : participant.birthdate
+                      ? formatBirthdate(participant.birthdate)
+                      : "—"}
                 </dd>
 
                 <dt className="font-display text-[10px] uppercase tracking-[0.12em] text-fg-dim">

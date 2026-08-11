@@ -28,8 +28,18 @@ type MatchInsert = Database["public"]["Tables"]["matches"]["Insert"];
 export type ActionResult = { ok: true } | { error: string };
 
 /**
- * Verify the caller is signed in and a staff member (admin/organizer/referee).
- * Returns the authenticated Supabase client on success, or an error string.
+ * Verify the caller is signed in and part of the tournament management
+ * (admin/organizer). Returns the authenticated Supabase client, or an error.
+ *
+ * Referees are out. Everything in this file writes `matches`, and
+ * generateBracket deletes every match of the tournament before it builds the
+ * new one — the single most destructive action in the app. Since
+ * 20260811110000 the `matches_write_staff` policy is keyed on is_organizer(),
+ * so a referee's request would come back as zero rows changed, which reads like
+ * "nothing to do" rather than "you may not". This says so instead.
+ *
+ * Releasing a result is unaffected: confirm_match is SECURITY DEFINER and
+ * checks is_staff() inside itself, so it never touches this policy.
  */
 async function requireStaff(): Promise<
   { supabase: Supabase } | { error: string }
@@ -48,8 +58,8 @@ async function requireStaff(): Promise<
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
-    return { error: "Diese Aktion ist nicht erlaubt." };
+  if (!profile || !["admin", "organizer"].includes(profile.role)) {
+    return { error: "Das darf nur die Turnierleitung." };
   }
 
   return { supabase };

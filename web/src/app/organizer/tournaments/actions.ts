@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import type { Database, TournamentFormat, TournamentMode, TournamentStatus } from "@/lib/database.types";
 import { friendlyDbError } from "@/lib/db-errors";
-import { requireStaff, type ActionResult } from "@/lib/auth/staff";
+import { requireOrganizerOrAdmin, type ActionResult } from "@/lib/auth/staff";
 import { nextStatus } from "@/lib/tournament/lifecycle";
 
 const FORMATS: TournamentFormat[] = [
@@ -29,7 +29,7 @@ export type CreateTournamentInput = {
 export async function createTournament(
   input: CreateTournamentInput,
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
   const { supabase, userId, orgId } = guard;
   if (!orgId) return { error: "Kein Org-Kontext — dein Account ist keiner Organisation zugeordnet." };
@@ -85,7 +85,7 @@ export type UpdateTournamentInput = {
 export async function updateTournament(
   input: UpdateTournamentInput,
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
   const { supabase } = guard;
 
@@ -141,7 +141,7 @@ export async function advanceStatus(
   id: string,
   current: string,
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
   const { supabase } = guard;
 
@@ -171,7 +171,7 @@ export async function setTournamentArchived(
   id: string,
   archived: boolean,
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
   const { supabase } = guard;
 
@@ -208,7 +208,7 @@ export async function setTournamentArchived(
 
 /** Delete a tournament (cascades matches/participants via FKs). */
 export async function deleteTournament(id: string): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
   const { supabase } = guard;
 

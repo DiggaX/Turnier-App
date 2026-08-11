@@ -1,7 +1,7 @@
 "use server";
 
 import { friendlyDbError, isUniqueViolation } from "@/lib/db-errors";
-import { requireStaff, type ActionResult } from "@/lib/auth/staff";
+import { requireOrganizerOrAdmin, type ActionResult } from "@/lib/auth/staff";
 import { manualCheckIn, resetCheckIn } from "../participants/actions";
 import type { Assignment } from "./assign";
 
@@ -39,7 +39,7 @@ export async function createTeam(
   tournamentId: string,
   name: string,
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
 
   const teamName = name?.trim();
@@ -67,7 +67,7 @@ export async function renameTeam(
   teamId: string,
   name: string,
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
 
   const teamName = name?.trim();
@@ -97,7 +97,7 @@ export async function disbandTeam(
   tournamentId: string,
   teamId: string,
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
 
   // Auf einen 23503 zu warten waere hier ein Fehler: matches.participant_a_id,
@@ -141,7 +141,7 @@ export async function setCaptain(
   teamId: string,
   playerId: string,
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
 
   const { data: member } = await guard.supabase
@@ -204,7 +204,7 @@ export async function saveAssignments(
   tournamentId: string,
   changes: Assignment[],
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
 
   if (changes.length === 0) return { ok: true };

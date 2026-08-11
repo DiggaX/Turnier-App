@@ -77,8 +77,11 @@ export default async function BracketPage({
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
-    redirect("/login");
+  // Auf dieser Seite wird gesetzt und generiert, und Generieren loescht zuerst
+  // alle Partien des Turniers. Das ist Leitungsarbeit — der Schiedsrichter sieht
+  // den Turnierbaum oeffentlich auf /t/[id]/board, ohne den Ausloeser daneben.
+  if (!profile || !["admin", "organizer"].includes(profile.role)) {
+    redirect(`/organizer/tournaments/${id}`);
   }
 
   const tournament = await requireOrgTournament<{

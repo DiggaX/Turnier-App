@@ -1,7 +1,11 @@
 "use server";
 
 import { friendlyDbError } from "@/lib/db-errors";
-import { requireStaff, type ActionResult } from "@/lib/auth/staff";
+import {
+  requireStaff,
+  requireOrganizerOrAdmin,
+  type ActionResult,
+} from "@/lib/auth/staff";
 import { validBirthdate } from "@/lib/consent";
 
 export async function updateParticipant(
@@ -10,7 +14,11 @@ export async function updateParticipant(
   displayName: string,
   gamertag: string | null,
 ): Promise<ActionResult> {
-  const guard = await requireStaff();
+  // Umbenennen ist Datenpflege, nicht Tresenarbeit — und der Trigger auf
+  // participants laesst einen Schiedsrichter ohnehin nur checked_in_at aendern.
+  // Der Guard hier sorgt dafuer, dass er dafuer eine Meldung bekommt statt einer
+  // rohen Datenbank-Ausnahme.
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
   const name = displayName?.trim();
   if (!name) return { error: "Anzeigename ist erforderlich." };
@@ -189,7 +197,10 @@ export async function addParticipant(
 }
 
 export async function removeParticipant(id: string, tournamentId: string): Promise<ActionResult> {
-  const guard = await requireStaff();
+  // Loeschen ist seit 20260811110000 der Turnierleitung vorbehalten. Ohne diesen
+  // Guard liefe die Anfrage bis Postgres und kaeme als "Teilnehmer wurde nicht
+  // gefunden" zurueck — die Policy filtert die Zeile weg, statt zu widersprechen.
+  const guard = await requireOrganizerOrAdmin();
   if ("error" in guard) return guard;
   const { error, count } = await guard.supabase
     .from("participants")

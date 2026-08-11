@@ -102,24 +102,31 @@ describe("generatePlayoffs action", () => {
     expect(result).toEqual({ error: "Nicht angemeldet." });
   });
 
-  it("returns error when user role is not staff", async () => {
-    mockClient.from = vi.fn().mockImplementation((table: string) => {
-      if (table === "profiles") {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: () =>
-                Promise.resolve({ data: { role: "viewer" }, error: null }),
+  // Ein Referee ist Staff und darf einchecken und freigeben — aber Playoffs
+  // erzeugen loescht zuerst Partien, und das ist seit 20260811110000 der
+  // Turnierleitung vorbehalten. Der Test faehrt beide Rollen, weil nur der
+  // Referee-Fall beweist, dass hier die neue Grenze gilt und nicht mehr die
+  // alte "ist irgendwie Staff"-Pruefung.
+  it.each(["viewer", "referee"])(
+    "lehnt %s ab: Playoffs erzeugen ist Sache der Turnierleitung",
+    async (role) => {
+      mockClient.from = vi.fn().mockImplementation((table: string) => {
+        if (table === "profiles") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: () => Promise.resolve({ data: { role }, error: null }),
+              }),
             }),
-          }),
-        };
-      }
-      return {};
-    });
-    const { generatePlayoffs } = await import("./actions");
-    const result = await generatePlayoffs("t1");
-    expect(result).toEqual({ error: "Diese Aktion ist nicht erlaubt." });
-  });
+          };
+        }
+        return {};
+      });
+      const { generatePlayoffs } = await import("./actions");
+      const result = await generatePlayoffs("t1");
+      expect(result).toEqual({ error: "Das darf nur die Turnierleitung." });
+    },
+  );
 
   it("returns error when tournament format is not groups_playoffs", async () => {
     setupFromChain(

@@ -33,8 +33,13 @@ export default async function TeamsPage({
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile || !["admin", "organizer", "referee"].includes(profile.role)) {
-    redirect("/login");
+  // Mannschaften zusammenstellen ist Leitungsarbeit: jede Aktion auf diesem
+  // Bildschirm ausser "Spielbereit" haengt seit 20260811110000 an
+  // is_organizer(), ein Schiedsrichter saehe also lauter Knoepfe, die ins Leere
+  // laufen. "Spielbereit" darf er weiterhin — dafuer gibt es den Teams-Block auf
+  // der Check-in-Seite, die ohnehin seine Seite ist.
+  if (!profile || !["admin", "organizer"].includes(profile.role)) {
+    redirect(`/organizer/tournaments/${id}/checkin`);
   }
 
   const tournament = await requireOrgTournament<{

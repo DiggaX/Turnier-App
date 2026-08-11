@@ -16,6 +16,11 @@ let requireStaffResult: { supabase: MockSupabase; orgId: string | null } | { err
 
 vi.mock("@/lib/auth/staff", () => ({
   requireStaff: () => Promise.resolve(requireStaffResult),
+  // Seit 20260811110000 laeuft alles Loeschende und Konfigurierende ueber
+  // requireOrganizerOrAdmin. Beide zeigen hier auf dasselbe Ergebnis: die Tests
+  // pruefen das Verhalten der Action, nicht die Rollenzuordnung — die steckt in
+  // der Policy und ist in der Datenbank belegt.
+  requireOrganizerOrAdmin: () => Promise.resolve(requireStaffResult),
 }));
 
 // setTeamReady reicht nur an den vorhandenen manuellen Check-in durch — hier
