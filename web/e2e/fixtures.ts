@@ -4,7 +4,7 @@
 // centralize the fixture lifecycle that every organizer/format spec needs, so a
 // change to the RLS contract (e.g. org-scoped writes) or the registration flow
 // lives in ONE place instead of being copy-pasted across ~8 spec files.
-import { expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -64,6 +64,55 @@ export async function getOrgId(client: SupabaseClient): Promise<string> {
     throw new Error(`Could not resolve org_id: ${error?.message ?? "none"}`);
   }
   return data.org_id as string;
+}
+
+/**
+ * Register the beforeAll/afterAll pair for a throwaway tournament and hand back
+ * a getter for its id.
+ *
+ * Why every spec needs its own: the registration specs used to grab whatever
+ * tournament happened to sit in `registration` status and write into it. That
+ * made them depend on data nobody promised them — the form they faced changed
+ * with someone else's team_size — and it left rows behind, because a borrowed
+ * tournament is not yours to clean. Three runs during one session left fifteen
+ * participants in a real tournament.
+ *
+ * Owning the tournament fixes both: the spec decides team_size, so it knows
+ * which form it will see, and the afterAll delete takes participants, consents,
+ * matches and reports down with it.
+ *
+ * The price, stated plainly: creating a tournament needs staff RLS. A spec using
+ * this must also carry `test.skip(!hasOrgCreds, …)`, and without credentials it
+ * skips instead of running. Skipping loudly beats passing against a stranger's
+ * data.
+ */
+export function withFixtureTournament(opts: {
+  namePrefix: string;
+  teamSize?: number;
+  format?: string;
+}): () => string {
+  let id = "";
+
+  test.beforeAll(async () => {
+    expectSupabaseEnv();
+    const staff = await staffClient();
+    id = await createFixtureTournament(staff, {
+      format: opts.format ?? "single_elim",
+      namePrefix: opts.namePrefix,
+      teamSize: opts.teamSize,
+    });
+  });
+
+  test.afterAll(async () => {
+    if (!id) return;
+    const staff = await staffClient();
+    await staff.from("tournaments").delete().eq("id", id);
+  });
+
+  return () => {
+    if (!id) throw new Error("fixture tournament not created — beforeAll failed");
+    return id;
+  };
 }
 
 /**
@@ -247,7 +296,17 @@ export async function loginAsOrganizer(page: Page): Promise<void> {
  */
 export async function createFixtureTournament(
   staff: SupabaseClient,
-  opts: { format: string; namePrefix: string; mode?: string },
+  opts: {
+    format: string;
+    namePrefix: string;
+    mode?: string;
+    /**
+     * 1 = single entrants, >1 = the team flow (registration ends in the team
+     * step). Worth setting explicitly: a spec that borrows whatever tournament
+     * happens to be open cannot know which of the two forms it will face.
+     */
+    teamSize?: number;
+  },
 ): Promise<string> {
   const gameId = await getValorantGameId(staff);
   const orgId = await getOrgId(staff);
@@ -263,6 +322,7 @@ export async function createFixtureTournament(
       format: opts.format,
       mode: opts.mode ?? "hybrid",
       status: "registration",
+      team_size: opts.teamSize ?? 1,
     })
     .select("id")
     .single();

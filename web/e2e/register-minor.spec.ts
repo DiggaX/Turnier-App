@@ -1,33 +1,20 @@
 import { test, expect } from "@playwright/test";
-import { createClient } from "@supabase/supabase-js";
-import { completeTeamStep, fillRegistrationForm } from "./fixtures";
+import {
+  hasOrgCreds,
+  withFixtureTournament,
+  fillRegistrationForm,
+} from "./fixtures";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-
-async function getOpenTournamentId(): Promise<string> {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data, error } = await supabase
-    .from("tournaments")
-    .select("id")
-    .eq("status", "registration")
-    .limit(1)
-    .single();
-  if (error || !data) {
-    throw new Error(
-      `Could not load an open tournament: ${error?.message ?? "none found"}`,
-    );
-  }
-  return data.id as string;
-}
+// Eigenes Wegwerf-Turnier: kein fremdes Turnier vollschreiben, und die
+// Teamgroesse steht fest, statt vom Zufall abzuhaengen.
+test.skip(!hasOrgCreds, "organizer creds not configured");
+const tournamentId = withFixtureTournament({
+  namePrefix: "E2E Minor",
+  teamSize: 1,
+});
 
 test("minor registration + drawn signature photo consent", async ({ page }) => {
-  expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
-  expect(SUPABASE_ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set").not.toBe(
-    "",
-  );
-
-  const id = await getOpenTournamentId();
+  const id = tournamentId();
   await page.goto(`/t/${id}/register`);
 
   const displayName = `E2E Minor ${Date.now()}`;
@@ -83,10 +70,6 @@ test("minor registration + drawn signature photo consent", async ({ page }) => {
   });
   await finishButton.click();
 
-  // Teamturnier: hier laege der Team-Schritt. Diese Specs brauchen kein
-  // Team, also der ehrliche Ausgang "noch kein Team".
-  await completeTeamStep(page);
-
   await expect(page.getByText(/anmeldung abgeschlossen/i)).toBeVisible();
   await expect(page.getByText(displayName, { exact: false })).toBeVisible();
 });
@@ -96,12 +79,7 @@ test("minor registration + drawn signature photo consent", async ({ page }) => {
  * damit ohne Eltern-Unterschrift — kommt man trotzdem durch die Anmeldung.
  */
 test("minor registration without photo consent", async ({ page }) => {
-  expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
-  expect(SUPABASE_ANON_KEY, "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set").not.toBe(
-    "",
-  );
-
-  const id = await getOpenTournamentId();
+  const id = tournamentId();
   await page.goto(`/t/${id}/register`);
 
   const displayName = `E2E NoConsent ${Date.now()}`;
@@ -113,10 +91,6 @@ test("minor registration without photo consent", async ({ page }) => {
   await page
     .getByRole("button", { name: /ohne fotoerlaubnis fortfahren/i })
     .click();
-
-  // Teamturnier: hier laege der Team-Schritt. Diese Specs brauchen kein
-  // Team, also der ehrliche Ausgang "noch kein Team".
-  await completeTeamStep(page);
 
   await expect(page.getByText(/anmeldung abgeschlossen/i)).toBeVisible();
   await expect(page.getByText(displayName, { exact: false })).toBeVisible();
