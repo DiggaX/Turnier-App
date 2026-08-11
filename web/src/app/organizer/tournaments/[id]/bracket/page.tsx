@@ -131,9 +131,26 @@ export default async function BracketPage({
     memberCount: rows.filter((p) => p.type === "player" && p.team_id === t.id)
       .length,
   }));
-  const freeAgents = rows
-    .filter((p) => p.type === "player" && p.team_id === null)
-    .map((p) => ({ id: p.id, name: p.display_name }));
+  const freeAgentRows = rows.filter(
+    (p) => p.type === "player" && p.team_id === null,
+  );
+  const freeAgents = freeAgentRows.map((p) => ({
+    id: p.id,
+    name: p.display_name,
+  }));
+
+  // Wer beim Generieren still herausfaellt (siehe lib/bracket/generate-warning):
+  // eingecheckte Menschen ohne Team sind keine Wettkaempfer, nicht eingecheckte
+  // Teams sind keine Anwesenden — beide stehen in keinem Match. Der Check-in ist
+  // hier der Unterschied zum Restspieler-Panel darueber: wer nicht da ist, hat
+  // auch nichts zu erwarten; wer da ist und trotzdem draussen bleibt, ist der
+  // Vorfall.
+  const orphanNames = freeAgentRows
+    .filter((p) => p.checked_in_at !== null)
+    .map((p) => p.display_name);
+  const notReadyTeamNames = teamRows
+    .filter((t) => t.checked_in_at === null)
+    .map((t) => t.display_name);
 
   // Existing matches, joining participant names for sides a/b via the FKs.
   const { data: rawMatches } = await supabase
@@ -375,12 +392,23 @@ export default async function BracketPage({
                   <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
                     Bracket generieren
                   </h2>
+                  {/*
+                    „wechselt danach auf Läuft" stimmt nur noch bedingt: seit
+                    dem Nachmelden generiert man auch mitten im Turnier, und
+                    generateBracket laesst ein laufendes oder beendetes Turnier
+                    seit dem Statusfix in Ruhe. Der Satz sagt jetzt, fuer wen er
+                    gilt, statt etwas zu versprechen.
+                  */}
                   <p className="text-sm text-fg-muted">
                     Erzeugt den Spielplan aus den eingecheckten Teilnehmern in
-                    Seeding-Reihenfolge. Das Turnier wechselt danach in den
-                    Status „Läuft“.
+                    Seeding-Reihenfolge. Ein Turnier im Anmeldestatus wechselt
+                    danach auf „Läuft“.
                   </p>
-                  <GenerateButton tournamentId={id} />
+                  <GenerateButton
+                    tournamentId={id}
+                    orphanNames={orphanNames}
+                    notReadyTeamNames={notReadyTeamNames}
+                  />
                 </section>
               )}
               </div>
@@ -472,6 +500,8 @@ export default async function BracketPage({
                   decidedCount={decidedCount}
                   liveCount={liveCount}
                   reportedCount={reportedCount}
+                  orphanNames={orphanNames}
+                  notReadyTeamNames={notReadyTeamNames}
                 />
               </section>
               </div>

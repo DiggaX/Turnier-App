@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/database.types";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +13,7 @@ import {
   SectionLabel,
 } from "@/components/brand/participant-shell";
 import { JoinCodeCard } from "./join-code-card";
+import { JoinQrCard } from "./join-qr-card";
 
 /** Das Team, in dem der Anmeldende gerade steht. */
 export interface TeamState {
@@ -43,6 +45,12 @@ interface TeamStepProps {
   teamSize: number;
   /** Beim Wiedereinstieg schon bekannt, bei frischer Anmeldung `null`. */
   initialTeam: TeamState | null;
+  /**
+   * Gepruefter Code aus dem Beitritts-QR eines Mitspielers (`?join=…`). Steht
+   * er, ist der Weg schon gewaehlt: der Code liegt im Feld und die
+   * Beitritts-Karte steht oben.
+   */
+  initialJoinCode?: string | null;
   /** Weiter zum Abschluss — mit dem Team, in dem der Anmeldende steht. */
   onDone: (team: TeamState | null) => void;
 }
@@ -66,12 +74,13 @@ export function TeamStep({
   tournamentId,
   teamSize,
   initialTeam,
+  initialJoinCode,
   onDone,
 }: TeamStepProps) {
   const [team, setTeam] = useState<TeamState | null>(initialTeam);
   const [members, setMembers] = useState<Member[]>([]);
   const [teamName, setTeamName] = useState("");
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialJoinCode ?? "");
   const [renaming, setRenaming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -264,7 +273,10 @@ export function TeamStep({
         </div>
 
         {team.joinCode && (
-          <JoinCodeCard code={team.joinCode} teamName={team.name} />
+          <>
+            <JoinCodeCard code={team.joinCode} teamName={team.name} />
+            <JoinQrCard tournamentId={tournamentId} code={team.joinCode} />
+          </>
         )}
 
         {team.isCaptain &&
@@ -361,60 +373,106 @@ export function TeamStep({
     );
   }
 
+  // Wer ueber einen Beitritts-QR hereinkommt, hat gewaehlt: seine Karte steht
+  // oben, nicht nur farbig da. Reihenfolge im DOM, nicht per CSS-`order` —
+  // sonst laufen Vorlesereihenfolge und Tabreihenfolge an der Ansicht vorbei.
+  // Gruenden bleibt erreichbar: der QR kann von letzter Woche sein.
+  // Nur solange der Code aus dem QR auch wirklich noch im Feld steht: nach
+  // einem gelungenen Beitritt raeumt handleJoin ihn weg, und wer danach wieder
+  // austritt, staende sonst vor „steht schon drin" mit leerem Feld. Wer
+  // stattdessen einen anderen Code tippt, hat den QR-Weg genauso verlassen.
+  const invited = Boolean(initialJoinCode) && code === initialJoinCode;
+
+  const createCard = (
+    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-6">
+      <SectionLabel>Team gründen</SectionLabel>
+      <Label htmlFor="teamName">Teamname</Label>
+      <Input
+        id="teamName"
+        value={teamName}
+        onChange={(e) => setTeamName(e.target.value)}
+      />
+      <Button
+        type="button"
+        disabled={busy}
+        onClick={() => void handleCreate()}
+        className="mt-1 h-11"
+      >
+        Team gründen
+      </Button>
+    </div>
+  );
+
+  const joinCard = (
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-2xl border p-6",
+        invited ? "border-cyan/30 bg-cyan/[0.06]" : "border-line bg-surface",
+      )}
+    >
+      <SectionLabel>Team beitreten</SectionLabel>
+      {invited && (
+        <p className="text-sm leading-relaxed text-fg-muted">
+          Der Code aus dem QR-Code steht schon drin — tipp auf „Team beitreten“.
+        </p>
+      )}
+      <Label htmlFor="joinCode">Team-Code</Label>
+      <Input
+        id="joinCode"
+        value={code}
+        // Der Vergleich in der Datenbank ist schreibungsblind; hier wird nur
+        // die Anzeige vereinheitlicht. Leerzeichen fliegen raus, weil ein
+        // vorgelesener Code gern als "AB C4 2X" ankommt und btrim in der RPC
+        // nur aussen putzt.
+        onChange={(e) =>
+          setCode(e.target.value.toUpperCase().replace(/\s+/g, ""))
+        }
+        autoCapitalize="characters"
+        autoCorrect="off"
+        spellCheck={false}
+        className="uppercase tracking-[0.25em]"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        disabled={busy}
+        onClick={() => void handleJoin()}
+        className="mt-1 h-11"
+      >
+        Team beitreten
+      </Button>
+    </div>
+  );
+
   return shell(
     <>
-      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-6">
-        <SectionLabel>Team gründen</SectionLabel>
-        <Label htmlFor="teamName">Teamname</Label>
-        <Input
-          id="teamName"
-          value={teamName}
-          onChange={(e) => setTeamName(e.target.value)}
-        />
-        <Button
-          type="button"
-          disabled={busy}
-          onClick={() => void handleCreate()}
-          className="mt-1 h-11"
-        >
-          Team gründen
-        </Button>
-      </div>
+      {invited ? (
+        <>
+          {joinCard}
+          {createCard}
+        </>
+      ) : (
+        <>
+          {createCard}
+          {joinCard}
+        </>
+      )}
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-6">
-        <SectionLabel>Team beitreten</SectionLabel>
-        <Label htmlFor="joinCode">Team-Code</Label>
-        <Input
-          id="joinCode"
-          value={code}
-          // Der Vergleich in der Datenbank ist schreibungsblind; hier wird nur
-          // die Anzeige vereinheitlicht. Leerzeichen fliegen raus, weil ein
-          // vorgelesener Code gern als "AB C4 2X" ankommt und btrim in der RPC
-          // nur aussen putzt.
-          onChange={(e) =>
-            setCode(e.target.value.toUpperCase().replace(/\s+/g, ""))
-          }
-          autoCapitalize="characters"
-          autoCorrect="off"
-          spellCheck={false}
-          className="uppercase tracking-[0.25em]"
-        />
-        <Button
-          type="button"
-          variant="outline"
-          disabled={busy}
-          onClick={() => void handleJoin()}
-          className="mt-1 h-11"
-        >
-          Team beitreten
-        </Button>
-      </div>
-
-      <div className="rounded-2xl border border-line bg-surface-2/60 p-6">
-        <SectionLabel className="mb-2">Noch kein Team</SectionLabel>
-        <p className="text-sm leading-relaxed text-fg-muted">
-          Du bist trotzdem angemeldet. Die Orga ordnet dich vor Ort einem Team
-          zu — bring am besten mit, wen du kennst.
+      {/* Die Folge steht bewusst ÜBER dem Knopf und nicht als Rückfrage
+          dahinter: bei der ersten Live-Runde standen 9 von 11 Kindern am Ende
+          ohne Team, weil „Du bist trotzdem angemeldet“ wie ein gleichwertiger
+          Weg klang. Gelesen sein muss es vorher — versperrt wird der Weg
+          nicht, irgendjemand kommt immer allein an. */}
+      <div className="rounded-2xl border border-warn/35 bg-warn/[0.08] p-6">
+        <SectionLabel className="mb-2 text-warn">Ohne Team weiter</SectionLabel>
+        <p className="text-sm font-semibold leading-relaxed text-ink">
+          Ohne Team bekommst du kein Spiel — die Turnierleitung kann dich vor
+          Ort einem Team zuteilen.
+        </p>
+        <p className="mt-2 text-sm leading-relaxed text-fg-muted">
+          Angemeldet bist du trotzdem. Kennst du hier jemanden? Lass dir seinen
+          Team-Code geben oder scann seinen QR-Code mit der Handy-Kamera — das
+          dauert eine Minute.
         </p>
         <Button
           type="button"

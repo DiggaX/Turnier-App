@@ -16,6 +16,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { requireOrgTournament } from "@/lib/auth/org-tournament";
 import { AddParticipantForm } from "./add-participant-form";
+import { AssignTeamSelect } from "./assign-team-select";
 import { TYPE_LABELS } from "./participant-types";
 
 export const metadata: Metadata = {
@@ -87,6 +88,17 @@ export default async function ParticipantsPage({
   }
   const teamSize = tournament.team_size ?? 1;
 
+  // Die Mannschaften stehen schon in `all` (nach display_name sortiert) und
+  // ihre Staerke in memberCount — eine zweite Abfrage waere dieselbe Zeile
+  // zweimal geholt.
+  const teams = all
+    .filter((p) => p.type === "team")
+    .map((t) => ({
+      id: t.id,
+      name: t.display_name,
+      memberCount: memberCount.get(t.id) ?? 0,
+    }));
+
   return (
     <>
       <OrganizerNav isAdmin={profile.role === "admin"} />
@@ -124,6 +136,7 @@ export default async function ParticipantsPage({
           <AddParticipantForm
             tournamentId={id}
             teamSize={tournament.team_size ?? 1}
+            teams={teams}
           />
 
           {rows.length === 0 ? (
@@ -189,6 +202,27 @@ export default async function ParticipantsPage({
                               }
                             >
                               {rosterCount} / {teamSize}
+                            </span>
+                          ) : participant.type === "player" &&
+                            participant.team_id === null ? (
+                            // Ohne Team ist kein Fehler, sondern der zweite
+                            // normale Fall — wie bei der Fotoerlaubnis darum
+                            // grau und nicht rot. Daneben der kurze Weg, das
+                            // sofort zu erledigen: sonst muesste die Orga den
+                            // Teams-Screen suchen, waehrend das Kind vor ihr
+                            // steht.
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className="inline-flex items-center whitespace-nowrap rounded-md bg-white/[0.08] px-2.5 py-1 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-fg-dim">
+                                ohne Team
+                              </span>
+                              <AssignTeamSelect
+                                tournamentId={id}
+                                playerId={participant.id}
+                                playerName={participant.display_name}
+                                currentTeamId={participant.team_id}
+                                teams={teams}
+                                teamSize={teamSize}
+                              />
                             </span>
                           ) : (
                             <span className="text-fg-dim">—</span>

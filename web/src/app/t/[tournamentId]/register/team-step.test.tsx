@@ -65,7 +65,7 @@ beforeEach(() => {
 });
 
 describe("TeamStep", () => {
-  it("zeigt den Team-Code, nachdem das Team gegründet wurde", async () => {
+  it("zeigt Team-Code und Beitritts-QR, nachdem das Team gegründet wurde", async () => {
     rpc.mockImplementation((fn: string) =>
       Promise.resolve(
         fn === "get_my_registration"
@@ -86,6 +86,11 @@ describe("TeamStep", () => {
     expect(await screen.findByText("K7X2QD")).toBeInTheDocument();
     expect(screen.getByText("Team Rakete")).toBeInTheDocument();
     expect(screen.getByText(/1 von 3/)).toBeInTheDocument();
+    // Der QR ist der zweite Weg zum selben Team — sechs Zeichen vorlesen ist
+    // genau die Stelle, an der es live gerissen hat.
+    expect(
+      screen.getByRole("img", { name: /Beitritts-QR für Code K7X2QD/i }),
+    ).toBeInTheDocument();
     expect(rpc).toHaveBeenCalledWith("create_team", {
       p_tournament_id: "t-1",
       p_name: "Team Rakete",
@@ -150,5 +155,81 @@ describe("TeamStep", () => {
       p_tournament_id: "t-1",
       p_code: "ZZZZZZ",
     });
+  });
+
+  it("nennt die Folge, bevor man ohne Team weitergeht", () => {
+    // Der Satz muss sichtbar dastehen, nicht hinter einer Rückfrage: live
+    // standen 9 von 11 Kindern am Ende ohne Team.
+    renderStep();
+
+    expect(
+      screen.getByText(/Ohne Team bekommst du kein Spiel/i),
+    ).toBeInTheDocument();
+    // Und er versperrt den Weg nicht.
+    expect(
+      screen.getByRole("button", { name: "Ohne Team fortfahren" }),
+    ).toBeEnabled();
+  });
+
+  it("füllt den Code aus dem Beitritts-QR vor", () => {
+    render(
+      <TeamStep
+        supabase={supabase}
+        tournamentId="t-1"
+        teamSize={3}
+        initialTeam={null}
+        initialJoinCode="K7X2QD"
+        onDone={onDone}
+      />,
+    );
+
+    expect(screen.getByLabelText("Team-Code")).toHaveValue("K7X2QD");
+    expect(screen.getByText(/steht schon drin/i)).toBeInTheDocument();
+  });
+
+  it("behauptet nach Beitritt und Austritt nicht weiter, der Code stehe schon drin", async () => {
+    // Der Hinweis hing am ?join=-Parameter, das Feld am Zustand: nach dem
+    // Beitritt räumt handleJoin den Code weg, und wer danach wieder austritt,
+    // stand vor „steht schon drin" mit leerem Feld.
+    let inTeam = false;
+    rpc.mockImplementation((fn: string) => {
+      if (fn === "join_team") inTeam = true;
+      if (fn === "leave_team") inTeam = false;
+      if (fn === "get_my_registration") {
+        return Promise.resolve({
+          data: [
+            inTeam
+              ? REG_WITH_TEAM
+              : { ...REG_WITH_TEAM, team_id: null, team_name: null, join_code: null },
+          ],
+          error: null,
+        });
+      }
+      if (fn === "get_my_team") {
+        return Promise.resolve({ data: inTeam ? [ME] : [], error: null });
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    render(
+      <TeamStep
+        supabase={supabase}
+        tournamentId="t-1"
+        teamSize={3}
+        initialTeam={null}
+        initialJoinCode="K7X2QD"
+        onDone={onDone}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Team beitreten" }));
+    expect(await screen.findByText("Team Rakete")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Aus dem Team austreten" }),
+    );
+
+    expect(await screen.findByLabelText("Team-Code")).toHaveValue("");
+    expect(screen.queryByText(/steht schon drin/i)).toBeNull();
   });
 });

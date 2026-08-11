@@ -511,6 +511,53 @@ Team-Niki vernichten (`on delete cascade`, Zeile existiert, geprüft) und die Na
 überwiegend Minderjährigen anon-lesbar machen (`participants_select_public_board` filtert
 `type <> 'player'`). Für ein beendetes Turnier ohne Ergebnisse kauft das nichts.
 
+### Neu am 2026-08-11 (Nacht): Die vier Feature-Workstreams zum Vorfall — A/B/D/C
+
+Plan „Team-Turnier-Fixes" (Grill-Interview mit Rene, alle Entscheidungen per Auswahlfrage
+abgenommen). Vier parallele Ketten, jede nach dem **Dreifach-Prinzip** (Implementierer →
+unabhängiger Prüfer → bei Mängeln separater Fixer → Endkontrolle; nie dieselbe Instanz zweimal):
+
+**A — Nachmeldung kennt jetzt den Einzelspieler** (`add-participant-form.tsx`,
+`participants/actions.ts`). Bei `team_size > 1` Umschalter „Team nachmelden" /
+„Einzelspieler nachmelden"; der Einzelspieler wird `type='player'`, `team_id NULL`, sofort
+eingecheckt — und kann optional **direkt** einem bestehenden Team zugeordnet werden (natives
+Select mit Belegung `x/y`, nur unvollständige Teams, Kapazitätsprüfung auch serverseitig).
+- ⚠️ **Reihenfolge in `addParticipant`: insert → check_in → moveInto → syncTeamReady.** Der
+  Prüfer fand die Zuordnung VOR dem Check-in: schlug sie fehl (real für Rolle `referee`, deren
+  Trigger nur `checked_in_at` erlaubt), blieb eine angelegte, nicht eingecheckte Geister-Zeile
+  zurück und die Meldung verschwieg sie — der zweite Tresen-Versuch hätte eine Dublette erzeugt.
+  Jede Fehlermeldung nach dem Insert sagt jetzt, was schon steht („… wurde angelegt und
+  eingecheckt, aber …").
+- Captain wird nur gesetzt, wenn das Zielteam leer war.
+
+**B — „ohne Team" sichtbar + Zuordnung am Tresen** (`participants/page.tsx`, neu
+`assign-team-select.tsx`, `checkin/page.tsx`). Jede Spieler-Zeile ohne Team trägt eine graue
+Markierung (grau, nicht rot — zweiter Normalfall) und ein natives Auswahlfeld „→ Team zuordnen"
+mit Belegung `x/y`; schreibt über das vorhandene `saveAssignments` (validiert, Captain-Hygiene,
+`syncTeamReady`). Check-in-Liste: nur die Markierung, keine Zuordnungs-UI. Kein neues Query —
+Zähler aus den ohnehin geladenen Zeilen.
+
+**D — Generieren warnt namentlich** (`bracket/generate-button.tsx`, `bracket/page.tsx`, neu
+`lib/bracket/generate-warning.ts` + Test). Der Dialog zeigt VOR dem Generieren: „Diese N
+eingecheckten Spieler stehen in keiner Mannschaft und bekommen KEIN Match: …" und „Diese Teams
+sind nicht spielbereit: …", mit Pflicht-Häkchen „Trotzdem generieren". Reine Warnung, kein Block
+(Rene-Entscheidung: am Turniertag braucht Staff einen Ausweg). Wortlaut-Builder pure, getestet,
+Muster `lostWork()`. Der Dialogtext verspricht den Statuswechsel nach `running` nicht mehr
+bedingungslos (seit E5 bedingt).
+
+**C — Kinder-Flow: Konsequenz + QR statt Tippen** (`register/team-step.tsx`, neu
+`join-qr-card.tsx`, `register-client.tsx`, `register/page.tsx`). „Ohne Team weiter" sagt jetzt
+unübersehbar: ohne Team kein Spiel, die Turnierleitung kann vor Ort zuteilen (kein Block — B/A
+machen die Zuteilung ja möglich). Der Captain zeigt zusätzlich zum 6-Zeichen-Code einen **QR mit
+`/t/<id>/register?join=<CODE>`** — jede Handy-Kamera reicht, kein In-App-Scanner. `register/page.tsx`
+liest `searchParams.join` (async, Next 16), validiert gegen das Join-Code-Alphabet und füllt den
+Beitritts-Pfad vor. Der Vorfüll-Hinweis erlischt, sobald der Code verbraucht oder verlassen wurde
+(Prüfer-Fund: sonst log er nach Beitritt+Austritt weiter).
+
+Alle vier Ketten mit FREIGABE der Endkontrolle; Polier-Runde für die letzten Minors (u. a.
+Typfehler in `generate-button.test.tsx`: `vi.fn` ohne Signatur leitet parameterlos ab —
+Signatur an den Mock, kein ts-ignore).
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - ⚠️ **Wer antritt, entscheidet `participants.type` — NIEMALS `team_id`.** Wettkämpfer =
   `type in ('solo','team')`, Mensch = `type in ('solo','player')`. Ein `player` ohne Team trägt
@@ -799,7 +846,10 @@ Team-Niki vernichten (`on delete cascade`, Zeile existiert, geprüft) und die Na
 
 ### Neu offen aus dem 2026-08-11 (Rene, Nachmittag)
 
-34. 🟠 **Ursache geklärt, Fix in Arbeit — „Solo-Anmeldung als Team, danach nur 3 Spieler".**
+34. ✅ **Geklärt und behoben — „Solo-Anmeldung als Team, danach nur 3 Spieler".**
+    Die vier Workstreams (A Nachmeldung-Einzelweg, B Tresen-Zuordnung, D Generieren-Warnung,
+    C Kinder-Flow) sind mit dem Nacht-Commit vom 2026-08-11 live — Details im §5-Changelog
+    „Die vier Feature-Workstreams". Ursprünglicher Befund bleibt unten als Historie stehen:
     Die 13-Agenten-Forensik (2026-08-11 abends) hat die Vermutungsrichtungen **widerlegt**: der
     Team-Schritt der Kinder-Anmeldung ist bei `team_size = 1` korrekt gesperrt (UI **und**
     `assert_team_phase`) und war nie erreichbar. Wirkliche Kette: das Turnier war ein **3v3**, das

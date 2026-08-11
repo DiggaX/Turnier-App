@@ -188,16 +188,29 @@ export default async function CheckinPage({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rows.map((p) => (
-                      <AttendanceRow
-                        key={p.id}
-                        participantId={p.id}
-                        tournamentId={id}
-                        displayName={p.display_name}
-                        checkedInAt={p.checked_in_at}
-                        photoConsent={(p.consents ?? []).length > 0}
-                      />
-                    ))}
+                    {rows.map((p) => {
+                      // „ohne Team" haengt am Namen statt in einer eigenen
+                      // grauen Pille: AttendanceRow nimmt einen String, und die
+                      // Team-Zeilen unten schreiben ihren Stand genauso dorthin.
+                      // An der Tuer muss es nur auffallen — zugeordnet wird in
+                      // der Teilnehmerliste, hier steht dafuer kein Feld.
+                      const teamless =
+                        p.type === "player" && p.team_id === null;
+                      return (
+                        <AttendanceRow
+                          key={p.id}
+                          participantId={p.id}
+                          tournamentId={id}
+                          displayName={
+                            teamless
+                              ? `${p.display_name} · ohne Team`
+                              : p.display_name
+                          }
+                          checkedInAt={p.checked_in_at}
+                          photoConsent={(p.consents ?? []).length > 0}
+                        />
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

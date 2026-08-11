@@ -69,12 +69,19 @@ interface RegisterClientProps {
   teamSize: number;
   /** Verantwortliche Stelle im Text der Fotoerlaubnis. */
   org: ConsentOrg;
+  /**
+   * Geprüfter Team-Code aus `?join=…` — der Beitritts-QR eines Mitspielers
+   * führt hierher. Im Einzelturnier bedeutungslos, dort gibt es keinen
+   * Team-Schritt.
+   */
+  joinCode?: string | null;
 }
 
 export function RegisterClient({
   tournament,
   teamSize,
   org,
+  joinCode,
 }: RegisterClientProps) {
   const isTeam = teamSize > 1;
   // The browser Supabase client is created once (stable singleton, render-safe).
@@ -344,6 +351,10 @@ export function RegisterClient({
         tournamentId={tournament.id}
         teamSize={teamSize}
         initialTeam={team}
+        // Der Code zählt nur, solange kein Team steht: wer beim Wiedereinstieg
+        // schon in einem ist, sieht die Beitritts-Karte gar nicht — der
+        // Parameter läuft dann ins Leere, und genau das soll er.
+        initialJoinCode={joinCode}
         onDone={(chosen) => {
           setTeam(chosen);
           setStep("done");
