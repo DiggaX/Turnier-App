@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
+import { confirmFailureReason } from "@/lib/station/station";
 
 export type ConfirmFormProps = {
   matchId: string;
@@ -19,30 +20,6 @@ export type ConfirmFormProps = {
   defaultScoreB?: number | null;
   suggestionSource?: "player_reports" | "scorekeeper";
 };
-
-/** Map a confirm_match RPC failure to a friendly German message. */
-function confirmError(error: unknown): string {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "object" && error !== null && "message" in error
-        ? String((error as { message: unknown }).message)
-        : "";
-  const lower = message.toLowerCase();
-  if (lower.includes("draw")) {
-    return "Unentschieden ist nicht erlaubt.";
-  }
-  if (lower.includes("staff")) {
-    return "Diese Aktion ist nur für die Orga erlaubt.";
-  }
-  if (lower.includes("empty slot")) {
-    return "Das Match hat noch keinen Gegner.";
-  }
-  if (lower.includes("invalid score")) {
-    return "Ungültiger Score. Bitte prüfe deine Eingabe.";
-  }
-  return "Ergebnis konnte nicht freigegeben werden.";
-}
 
 /**
  * Referee score entry + confirm for one match. Works both as a confirmation of
@@ -96,12 +73,12 @@ export function ConfirmForm({
         p_score_b: b,
       });
       if (rpcErr) {
-        setError(confirmError(rpcErr));
+        setError(confirmFailureReason(rpcErr));
         return;
       }
       router.refresh();
     } catch (e) {
-      setError(confirmError(e));
+      setError(confirmFailureReason(e));
     } finally {
       setSubmitting(false);
     }

@@ -30,6 +30,8 @@ describe("agreedScore", () => {
     expect(agreedScore([r(2, 1), r(1, 2)])).toBeNull();
     expect(agreedScore([])).toBeNull();
   });
+});
+
 describe("scorePrefill", () => {
   const report = (scoreA: number, scoreB: number): Report => ({
     scoreA,
@@ -63,5 +65,4 @@ describe("scorePrefill", () => {
     ).toBeNull();
     expect(scorePrefill([], finished(-1, 1))).toBeNull();
   });
-});
 });

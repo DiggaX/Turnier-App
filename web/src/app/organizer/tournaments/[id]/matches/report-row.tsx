@@ -2,15 +2,17 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import { ScorekeeperQr } from "@/components/scorekeeper-qr";
-import { scorePrefill } from "@/lib/station/station";
+import { agreedScore, scorePrefill } from "@/lib/station/station";
 
 import { ConfirmForm } from "./confirm-form";
 import { LiveControl } from "./live-control";
 
 /** A single player report in match (a/b) terms. */
 export type ReportView = {
-  /** Reporter's display name, if resolvable. */
+  /** Reporting competitor's display name (the team, or the solo starter). */
   byName: string | null;
+  /** The person who actually submitted it — a team member, if resolvable. */
+  personName: string | null;
   scoreA: number;
   scoreB: number;
 };
@@ -35,18 +37,6 @@ export type MatchRowView = {
   /** Player reports for this match, in match (a/b) terms. */
   reports: ReportView[];
 };
-
-/** Both reports present and identical → the agreed (a,b) score, else null. */
-function agreedScore(
-  reports: ReportView[],
-): { a: number; b: number } | null {
-  if (reports.length < 2) return null;
-  const [first] = reports;
-  const allAgree = reports.every(
-    (r) => r.scoreA === first.scoreA && r.scoreB === first.scoreB,
-  );
-  return allAgree ? { a: first.scoreA, b: first.scoreB } : null;
-}
 
 function StatusBadge({
   children,
@@ -96,7 +86,7 @@ export function ReportRow({ match }: { match: MatchRowView }) {
     } else if (agreed) {
       badge = (
         <StatusBadge tone="ok">
-          ✓ Einig: {agreed.a}:{agreed.b}
+          ✓ Einig: {agreed.scoreA}:{agreed.scoreB}
         </StatusBadge>
       );
     } else if (match.reports.length >= 2) {
@@ -133,6 +123,11 @@ export function ReportRow({ match }: { match: MatchRowView }) {
               <span className="font-display font-semibold text-ink">
                 {r.scoreA}:{r.scoreB}
               </span>
+              {r.personName && r.personName !== r.byName && (
+                <span className="text-xs text-fg-dim">
+                  gemeldet von {r.personName}
+                </span>
+              )}
             </div>
           ))}
         </div>

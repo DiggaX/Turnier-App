@@ -10,6 +10,10 @@ import { requireOrgTournament } from "@/lib/auth/org-tournament";
 import { type TournamentFormat, type TournamentStatus } from "@/lib/database.types";
 import { createClient } from "@/lib/supabase/server";
 
+import { bulkConfirmable } from "@/lib/station/station";
+
+import { BulkConfirm } from "./bulk-confirm";
+import { MatchesRealtime } from "./matches-realtime";
 import { ReportRow, type MatchRowView } from "./report-row";
 import { NotifyButton } from "./notify-button";
 
@@ -38,6 +42,8 @@ type RawMatch = {
 type RawReport = {
   match_id: string;
   reported_by: string;
+  /** The PERSON behind the report — at a team tournament some member reported. */
+  reported_by_person: string | null;
   score_a: number;
   score_b: number;
 };
@@ -101,7 +107,7 @@ export default async function MatchesPage({
   if (matchIds.length > 0) {
     const { data } = await supabase
       .from("match_reports")
-      .select("match_id, reported_by, score_a, score_b")
+      .select("match_id, reported_by, reported_by_person, score_a, score_b")
       .in("match_id", matchIds)
       .overrideTypes<RawReport[]>();
     rawReports = data ?? [];
@@ -115,11 +121,14 @@ export default async function MatchesPage({
     if (m.participant_a_id && m.a) nameById.set(m.participant_a_id, m.a.display_name);
     if (m.participant_b_id && m.b) nameById.set(m.participant_b_id, m.b.display_name);
   }
+  // Auch die meldende PERSON aufloesen: bei einem Teamturnier meldet irgendein
+  // Mitglied fuer sein Team, und wenn die Orga nachfragen muss, braucht sie den
+  // Namen. Die Person steht nie in den Match-Slots, also immer nachschlagen.
   const missingReporterIds = [
     ...new Set(
       rawReports
-        .map((r) => r.reported_by)
-        .filter((pid) => !nameById.has(pid)),
+        .flatMap((r) => [r.reported_by, r.reported_by_person])
+        .filter((pid): pid is string => pid != null && !nameById.has(pid)),
     ),
   ];
   if (missingReporterIds.length > 0) {
@@ -167,10 +176,17 @@ export default async function MatchesPage({
     scoreB: m.score_b,
     reports: (reportsByMatch.get(m.id) ?? []).map((r) => ({
       byName: nameById.get(r.reported_by) ?? null,
+      personName:
+        r.reported_by_person != null
+          ? (nameById.get(r.reported_by_person) ?? null)
+          : null,
       scoreA: r.score_a,
       scoreB: r.score_b,
     })),
   }));
+
+  // Alles, was beide Seiten gleich gemeldet haben — fuer die Sammel-Freigabe.
+  const confirmable = bulkConfirmable(rows);
 
   // Round-robin standings from the decided matches.
   const isRoundRobin = tournament.format === "round_robin";
@@ -198,6 +214,7 @@ export default async function MatchesPage({
   return (
     <>
       <OrganizerNav isAdmin={profile.role === "admin"} />
+      <MatchesRealtime tournamentId={id} />
 
       <main className="relative flex-1 overflow-hidden">
         <div
@@ -223,6 +240,8 @@ export default async function MatchesPage({
           <div className="mb-6">
             <NotifyButton tournamentId={id} />
           </div>
+
+          <BulkConfirm items={confirmable} />
 
           {isRoundRobin && (
             <section className="mb-8 flex flex-col gap-4">
