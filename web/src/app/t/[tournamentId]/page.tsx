@@ -78,7 +78,7 @@ export default async function TournamentDetailPage(props: {
           {/* hero card */}
           <div className="mb-6 overflow-hidden rounded-2xl border border-line bg-surface">
             {/* game art band */}
-            <div className="relative flex min-h-[180px] items-end p-6 [background:repeating-linear-gradient(135deg,#161c27,#161c27_11px,#12161e_11px,#12161e_22px)] sm:min-h-[200px]">
+            <div className="relative flex min-h-[180px] items-end p-6 [background:repeating-linear-gradient(135deg,#242b38,#242b38_11px,#1d232e_11px,#1d232e_22px)] sm:min-h-[200px]">
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-0 [background:linear-gradient(transparent,rgba(16,20,28,0.95))]"

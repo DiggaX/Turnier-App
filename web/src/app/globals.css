@@ -9,9 +9,9 @@
   --color-foreground: var(--foreground);
 
   /* Esports brand palette */
-  --color-bg: #07090c;
-  --color-surface: #10141c;
-  --color-surface-2: #0a0d12;
+  --color-bg: #11161f;
+  --color-surface: #1b2029;
+  --color-surface-2: #151a23;
   --color-line: rgba(255, 255, 255, 0.08);
   --color-lime: #c5f72e;
   --color-cyan: #1fd1e3;
@@ -105,17 +105,17 @@
 /* Dark is the default. shadcn tokens are aligned to the esports palette so
    shadcn components (button/badge/card/input...) look right on the dark UI. */
 .dark {
-  --background: #07090c; /* page bg */
+  --background: #11161f; /* page bg */
   --foreground: #ffffff;
-  --card: #10141c; /* surface */
+  --card: #1b2029; /* surface */
   --card-foreground: #ffffff;
-  --popover: #10141c;
+  --popover: #1b2029;
   --popover-foreground: #ffffff;
   --primary: #c5f72e; /* lime accent */
-  --primary-foreground: #07090c; /* dark ink on lime */
-  --secondary: #161c27;
+  --primary-foreground: #11161f; /* dark ink on lime */
+  --secondary: #242b38;
   --secondary-foreground: #ffffff;
-  --muted: #161c27; /* surface-muted (bg-muted) */
+  --muted: #242b38; /* surface-muted (bg-muted) */
   --muted-foreground: #7c8696; /* brand muted text */
   --accent: rgba(31, 209, 227, 0.1); /* cyan-tinted accent */
   --accent-foreground: #1fd1e3;
@@ -128,11 +128,11 @@
   --chart-3: #ff3b5c;
   --chart-4: #ffc107;
   --chart-5: #7c8696;
-  --sidebar: #0a0d12;
+  --sidebar: #151a23;
   --sidebar-foreground: #ffffff;
   --sidebar-primary: #c5f72e;
-  --sidebar-primary-foreground: #07090c;
-  --sidebar-accent: #161c27;
+  --sidebar-primary-foreground: #11161f;
+  --sidebar-accent: #242b38;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: rgba(255, 255, 255, 0.08);
   --sidebar-ring: #1fd1e3;

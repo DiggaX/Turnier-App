@@ -39,7 +39,7 @@ const CARDS: TournamentCard[] = [
 ];
 
 const ART_BG =
-  "[background:repeating-linear-gradient(135deg,#161c27,#161c27_11px,#12161e_11px,#12161e_22px)]";
+  "[background:repeating-linear-gradient(135deg,#242b38,#242b38_11px,#1d232e_11px,#1d232e_22px)]";
 
 /** "Live & Upcoming" — three static tournament showcase cards linking to `/`. */
 export function Tournaments() {
