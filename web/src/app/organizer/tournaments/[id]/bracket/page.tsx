@@ -29,7 +29,8 @@ import { BracketLiveShell } from "./bracket-live-shell";
 import { FreeAgentsPanel } from "./free-agents-panel";
 import { GenerateButton } from "./generate-button";
 import { GeneratePlayoffsButton } from "./generate-playoffs-button";
-import { SeedingClient } from "./seeding-client";
+import { SeedingSection } from "./seeding-section";
+import { COMPETITOR_TYPES } from "../participants/participant-types";
 
 export const metadata: Metadata = {
   title: "Bracket — Turnier-App",
@@ -110,9 +111,12 @@ export default async function BracketPage({
   const rows = allRows ?? [];
 
   // Seeding-Liste: eingecheckte WETTKAEMPFER, seed zuerst, Ungesetzte danach —
-  // dieselbe Reihenfolge, die generateBracket erwartet.
+  // dieselbe Reihenfolge, die generateBracket erwartet. Gefiltert wird ueber
+  // dieselbe Konstante wie in saveSeeds und generateBracket: eine dritte, von
+  // Hand geschriebene Variante hier haette genau dann eine andere Meinung, wenn
+  // ein vierter Typ dazukommt.
   const checkedIn = rows
-    .filter((p) => p.checked_in_at !== null && p.type !== "player")
+    .filter((p) => p.checked_in_at !== null && COMPETITOR_TYPES.includes(p.type))
     .sort(
       (a, b) =>
         (a.seed ?? Number.MAX_SAFE_INTEGER) - (b.seed ?? Number.MAX_SAFE_INTEGER) ||
@@ -309,6 +313,32 @@ export default async function BracketPage({
     display_name: p.display_name,
   }));
 
+  // Das Panel entscheidet selbst, ob es etwas zu zeigen hat (keine Restspieler
+  // UND keine Luecke -> es rendert null). Das aeussere `teamSize > 1` davor war
+  // deshalb nicht nur doppelt, es war falsch: nach einer geaenderten Teamgroesse
+  // stehen Spieler ohne Team in einem Turnier, das sich fuer ein Einzelturnier
+  // haelt — genau die muss die Orga sehen. Und auch nach dem Generieren, denn
+  // Neu-Generieren ist der Weg, auf dem sie doch noch ein Match bekommen.
+  const freeAgentsPanel = (
+    <FreeAgentsPanel
+      tournamentId={id}
+      teamSize={teamSize}
+      teams={teamSlots}
+      freeAgents={freeAgents}
+    />
+  );
+
+  // Eine Instanz, zwei Einbauorte (vor und nach dem Generieren) — zwei Kopien
+  // liefen beim naechsten Umbau auseinander. Warum es beide Orte braucht, steht
+  // in seeding-section.tsx.
+  const seedingSection = (
+    <SeedingSection
+      tournamentId={id}
+      participants={seedParticipants}
+      hasMatches={hasMatches}
+    />
+  );
+
   return (
     <>
       <OrganizerNav isAdmin={profile.role === "admin"} />
@@ -337,32 +367,8 @@ export default async function BracketPage({
           <BracketLiveShell tournamentId={id}>
             {!hasMatches ? (
               <div className="flex flex-col gap-8">
-              {/* Nur vor dem Generieren: danach ist der Spielplan gezogen, und
-                  ein nachtraeglich gefuelltes Team steht trotzdem nicht drin. */}
-              {teamSize > 1 && (
-                <FreeAgentsPanel
-                  tournamentId={id}
-                  teamSize={teamSize}
-                  teams={teamSlots}
-                  freeAgents={freeAgents}
-                />
-              )}
-              <section className="flex flex-col gap-4">
-                <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
-                  Seeding
-                </h2>
-                {seedParticipants.length === 0 ? (
-                  <p className="text-sm text-fg-muted">
-                    Noch keine eingecheckten Teilnehmer. Das Bracket kann erst
-                    nach dem Check-in generiert werden.
-                  </p>
-                ) : (
-                  <SeedingClient
-                    tournamentId={id}
-                    participants={seedParticipants}
-                  />
-                )}
-              </section>
+              {freeAgentsPanel}
+              {seedingSection}
 
               {seedParticipants.length >= 2 && (
                 <section className="flex flex-col gap-3 border-t border-line pt-6">
@@ -380,6 +386,7 @@ export default async function BracketPage({
               </div>
             ) : (
               <div className="flex flex-col gap-8">
+              {freeAgentsPanel}
               <section className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
@@ -452,6 +459,8 @@ export default async function BracketPage({
                   </div>
                 )}
               </section>
+
+              {seedingSection}
 
               <section className="flex flex-col gap-3 border-t border-line pt-6">
                 <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">

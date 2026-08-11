@@ -3,6 +3,7 @@
 import { friendlyDbError, isUniqueViolation } from "@/lib/db-errors";
 import { requireOrganizerOrAdmin, type ActionResult } from "@/lib/auth/staff";
 import { manualCheckIn, resetCheckIn } from "../participants/actions";
+import { syncTeamReady } from "../team-sync";
 import type { Assignment } from "./assign";
 
 /**
@@ -247,6 +248,37 @@ export async function saveAssignments(
       return { error: friendlyDbError(error, "Zuordnung konnte nicht gespeichert werden.") };
     }
     if ((count ?? 0) === 0) return { error: "Spieler wurde nicht gefunden." };
+  }
+
+  // Ein Team, das erst durch diese Zuordnung vollzaehlig wird, bleibt sonst mit
+  // checked_in_at NULL stehen: der Trigger sync_team_ready feuert nur bei einer
+  // geaenderten ANWESENHEIT, hier aendert sich nur das Team. generateBracket
+  // uebergeht das Team dann stillschweigend — genau der Mechanismus, an dem das
+  // laufende Turnier zerbrochen ist. Der Weg ueber die Restspieler-Zuordnung
+  // zieht das schon lange nach; dieser hier tat es nicht.
+  //
+  // Nur die ZIELE, und jedes nur einmal. Ein verlassenes Team wird bewusst
+  // nicht zurueckgenommen: syncTeamReady meldet ausschliesslich spielbereit,
+  // und eine von Hand gesetzte Freigabe darf keine Aktion wieder einkassieren.
+  const targetIds = [
+    ...new Set(
+      changes.map((c) => c.teamId).filter((teamId): teamId is string => teamId !== null),
+    ),
+  ];
+  if (targetIds.length > 0) {
+    const { data: tournament, error: tErr } = await guard.supabase
+      .from("tournaments")
+      .select("team_size")
+      .eq("id", tournamentId)
+      .maybeSingle();
+    if (tErr) {
+      return { error: friendlyDbError(tErr, "Turnier konnte nicht geladen werden.") };
+    }
+    const teamSize = tournament?.team_size ?? 1;
+    for (const teamId of targetIds) {
+      const ready = await syncTeamReady(guard.supabase, tournamentId, teamId, teamSize);
+      if (ready) return ready;
+    }
   }
 
   return { ok: true };

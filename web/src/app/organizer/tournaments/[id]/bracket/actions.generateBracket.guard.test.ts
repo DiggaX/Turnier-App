@@ -187,3 +187,124 @@ describe("generateBracket bracket-work guard", () => {
     expect(reportsSelect).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Was am Ende mit dem Turnierstatus passiert.
+ *
+ * Neu generieren schrieb bis hierher immer status='running'. Seit die
+ * Nachmeldung daraus eine Aktion MITTEN im Turnier gemacht hat, traf das auch
+ * ein abgeschlossenes Turnier: der Endstand war weg, der Sieger wieder offen,
+ * und nichts sagte, warum.
+ */
+describe("generateBracket tournament status", () => {
+  /**
+   * Der volle Durchlauf bis zum Statuswechsel, mit zwei eingecheckten
+   * Wettkaempfern. Format round_robin mit Absicht: es braucht keine
+   * Verkettung der Matches, der Weg endet also direkt an der Stelle, um die es
+   * hier geht. Die seeds stehen schon auf 1 und 2, damit keine Korrektur-
+   * UPDATEs dazwischenfunken.
+   */
+  function setupRun(status: string) {
+    const tournamentUpdate = vi.fn().mockReturnValue({
+      eq: () => Promise.resolve({ error: null }),
+    });
+
+    mockClient = {
+      auth: {
+        getUser: vi.fn().mockResolvedValue({ data: { user: { id: "u1" } } }),
+      },
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === "profiles") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({ data: { role: "organizer" }, error: null }),
+              }),
+            }),
+          };
+        }
+        if (table === "tournaments") {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: { id: "t1", format: "round_robin", status },
+                    error: null,
+                  }),
+              }),
+            }),
+            update: tournamentUpdate,
+          };
+        }
+        if (table === "participants") {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  not: () => ({
+                    order: () => ({
+                      order: () =>
+                        Promise.resolve({
+                          data: [
+                            { id: "p1", seed: 1, created_at: "2026-08-12T09:00:00Z" },
+                            { id: "p2", seed: 2, created_at: "2026-08-12T09:01:00Z" },
+                          ],
+                          error: null,
+                        }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === "matches") {
+          return {
+            delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+            insert: () => ({
+              select: () =>
+                Promise.resolve({
+                  data: [{ id: "m1", bracket: "winner", round: 1, slot: 0 }],
+                  error: null,
+                }),
+            }),
+          };
+        }
+        return {};
+      }),
+    };
+    return { tournamentUpdate };
+  }
+
+  it("leaves a finished tournament finished", async () => {
+    const { tournamentUpdate } = setupRun("finished");
+    const { generateBracket } = await import("./actions");
+
+    expect(await generateBracket("t1", { discardResults: true })).toEqual({
+      ok: true,
+    });
+    expect(tournamentUpdate).not.toHaveBeenCalled();
+  });
+
+  it("does not rewrite the status of an already running tournament", async () => {
+    const { tournamentUpdate } = setupRun("running");
+    const { generateBracket } = await import("./actions");
+
+    expect(await generateBracket("t1", { discardResults: true })).toEqual({
+      ok: true,
+    });
+    expect(tournamentUpdate).not.toHaveBeenCalled();
+  });
+
+  it("still starts a tournament that is still open for registration", async () => {
+    const { tournamentUpdate } = setupRun("registration");
+    const { generateBracket } = await import("./actions");
+
+    expect(await generateBracket("t1", { discardResults: true })).toEqual({
+      ok: true,
+    });
+    expect(tournamentUpdate).toHaveBeenCalledWith({ status: "running" });
+  });
+});

@@ -218,9 +218,10 @@ export async function generateBracket(
     }
   }
 
+  // status kommt mit, weil Schritt 5 ihn nur noch bedingt setzt — siehe dort.
   const { data: tournament, error: tErr } = await supabase
     .from("tournaments")
-    .select("id, format")
+    .select("id, format, status")
     .eq("id", tournamentId)
     .maybeSingle();
 
@@ -403,13 +404,21 @@ export async function generateBracket(
     }
   }
 
-  // 5. Mark the tournament as running.
-  const { error: statusErr } = await supabase
-    .from("tournaments")
-    .update({ status: "running" })
-    .eq("id", tournamentId);
-  if (statusErr) {
-    return { error: friendlyDbError(statusErr, "Turnierstatus konnte nicht aktualisiert werden.") };
+  // 5. Turnier auf "laeuft" setzen — aber nur, wenn es dort noch nicht steht.
+  //
+  // Seit dem Nachmelden ist Neu-Generieren eine Aktion MITTEN im Turnier, und
+  // sie traf bis hierher jeden Status. Ein abgeschlossenes Turnier sprang damit
+  // allein durch ein versehentliches Neu-Generieren zurueck auf "laeuft":
+  // Endstand weg, Sieger wieder offen, und nichts sagte, warum. Ein bereits
+  // laufendes Turnier braucht das Schreiben ohnehin nicht.
+  if (tournament.status !== "running" && tournament.status !== "finished") {
+    const { error: statusErr } = await supabase
+      .from("tournaments")
+      .update({ status: "running" })
+      .eq("id", tournamentId);
+    if (statusErr) {
+      return { error: friendlyDbError(statusErr, "Turnierstatus konnte nicht aktualisiert werden.") };
+    }
   }
 
   return { ok: true };

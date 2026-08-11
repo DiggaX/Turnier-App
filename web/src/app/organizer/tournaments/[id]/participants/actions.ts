@@ -36,13 +36,26 @@ export async function updateParticipant(
  * Undo a check-in. Someone gets scanned by mistake, or a scan station is being
  * tested — without this the only way back was editing the row by hand, since
  * the check_in RPC is one-way.
+ *
+ * Der seed faellt mit: er ist die Startnummer IM Spielplan, und wer nicht
+ * eingecheckt ist, steht nicht darin. Blieb er stehen, trug beim naechsten
+ * Generieren ein Ausgecheckter dieselbe Nummer wie ein Antretender — genau die
+ * Kollision, die live aufgefallen ist. Das gilt auch fuer den Weg ueber
+ * setTeamReady(false): ein zurueckgenommenes Team ist aus dem Bracket raus und
+ * darf seine Nummer nicht behalten.
+ *
+ * ⚠️ guard_participant_protected_fields laesst einen SCHIEDSRICHTER beim UPDATE
+ * nur checked_in_at aendern (20260811110000). Solange der Trigger seed nicht
+ * zusammen mit checked_in_at durchlaesst, faellt ein Reset durch den
+ * Schiedsrichter auf einen bereits gesetzten Teilnehmer mit
+ * "insufficient_privilege" — die Turnierleitung kommt durch.
  */
 export async function resetCheckIn(id: string, tournamentId: string): Promise<ActionResult> {
   const guard = await requireStaff();
   if ("error" in guard) return guard;
   const { error, count } = await guard.supabase
     .from("participants")
-    .update({ checked_in_at: null }, { count: "exact" })
+    .update({ checked_in_at: null, seed: null }, { count: "exact" })
     .eq("id", id)
     .eq("tournament_id", tournamentId);
   if (error) return { error: friendlyDbError(error, "Anwesenheit konnte nicht zurückgesetzt werden.") };

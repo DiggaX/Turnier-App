@@ -189,6 +189,18 @@ export function FreeAgentsPanel({
         {error && <span className="text-sm text-live">{error}</span>}
       </div>
 
+      {/*
+        Der Satz steht immer da, nicht nur wenn schon ein Spielplan existiert:
+        das Panel weiss nichts von matches, und vor dem ersten Generieren ist er
+        genauso wahr. Ohne ihn liest sich ein uebernommener Vorschlag am Tisch
+        wie „erledigt" — das Team meldet sich spielbereit (syncTeamReady), steht
+        aber in keiner Partie, bis das Bracket generiert wird.
+      */}
+      <p className="text-sm text-fg-muted">
+        Die Zuordnung erscheint im Spielplan, sobald das Bracket (neu) generiert
+        wird — übernehmen allein setzt niemanden in ein Match.
+      </p>
+
       <p className="text-xs text-fg-dim">
         Der Vorschlag ist unverbindlich — du kannst das Bracket auch ohne ihn
         generieren.

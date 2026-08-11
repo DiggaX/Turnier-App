@@ -79,6 +79,26 @@ export default async function TeamsPage({
       is_captain: p.is_captain,
     }));
 
+  // Nicht die Teamgroesse entscheidet, ob dieser Bildschirm etwas zu zeigen hat,
+  // sondern der Bestand. Wird team_size nach den ersten Anmeldungen auf 1
+  // gestellt, bleiben Team- und Spieler-Zeilen liegen — `type` wird beim INSERT
+  // gestanzt und nie nachgerechnet (HANDOVER §6). Am alten Riegel waren genau
+  // diese Zeilen dann unerreichbar: die Seite verwarf die schon geladenen Daten
+  // und behauptete, es gebe keine Mannschaften. Genau so verschwanden live zehn
+  // Kinder und ihr Team aus jeder Bedienoberflaeche.
+  const hasTeamRows = teamSize > 1 || teams.length > 0 || players.length > 0;
+
+  // Nur nennen, was es wirklich gibt. „0 Mannschaften und 3 Spieler" schickt die
+  // Orga auf die Suche nach einer Mannschaft, die es nicht gibt. Eine der beiden
+  // Zahlen ist immer > 0, sonst stuende der ganze Hinweis nicht da.
+  const leftovers: string[] = [];
+  if (teams.length > 0) {
+    leftovers.push(
+      `${teams.length} ${teams.length === 1 ? "Mannschaft" : "Mannschaften"}`,
+    );
+  }
+  if (players.length > 0) leftovers.push(`${players.length} Spieler`);
+
   return (
     <>
       <OrganizerNav isAdmin={profile.role === "admin"} />
@@ -101,17 +121,28 @@ export default async function TeamsPage({
 
           <TournamentTabs tournamentId={id} />
 
-          {teamSize <= 1 ? (
+          {!hasTeamRows ? (
             <p className="text-sm text-fg-muted">
               Dieses Turnier wird einzeln gespielt — es gibt keine Mannschaften.
             </p>
           ) : (
-            <TeamsClient
-              tournamentId={id}
-              teamSize={teamSize}
-              teams={teams}
-              players={players}
-            />
+            <>
+              {teamSize <= 1 && (
+                <p className="mb-6 rounded-2xl border border-warn/30 bg-warn/[0.04] p-4 text-sm text-fg-muted">
+                  Dieses Turnier steht auf Einzelspiel, es gibt aber noch{" "}
+                  {leftovers.join(" und ")} aus einer früheren Teamgröße.{" "}
+                  {players.length > 0 &&
+                    "Diese Spieler treten nicht selbst an — im Spielplan steht ihre Mannschaft. "}
+                  Hier lassen sie sich auflösen oder neu zuordnen.
+                </p>
+              )}
+              <TeamsClient
+                tournamentId={id}
+                teamSize={teamSize}
+                teams={teams}
+                players={players}
+              />
+            </>
           )}
         </div>
       </main>

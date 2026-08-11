@@ -452,6 +452,65 @@ Menschen als `player` mit eigenem Geburtsdatum, **keine Person als Wettkämpfer*
 Spielplan schreiben, ein Schiedsrichter kann freigeben (`confirm_match` → `done 10:8`, richtiger
 Sieger) aber `matches` nicht direkt beschreiben (0 Zeilen).
 
+### Neu am 2026-08-11 (Abend): Härtung nach dem team_size-Vorfall
+
+**Vorfall vollständig aufgeklärt** (13-Agenten-Forensik, jede Linse adversarial gegengeprüft): Beim
+Turnier „Mission: Next Level Rocket League 2026" (`8da58fae`) wurde `team_size` zwischen 08:52 und
+09:02 von 3 auf 1 gestellt — **Stunden bevor** der Riegel aus `ff71519` um 15:15:53 live ging. Der
+Riegel wurde nicht umgangen, er existierte noch nicht. `participants.type` wird beim INSERT gestanzt
+und nie nachgerechnet → 10 `player` + 1 `team` aus der 3v3-Welt wurden für das Bracket unsichtbar,
+`generateBracket` baute kommentarlos einen Zweier-Baum aus den zwei nach der Umstellung angemeldeten
+`solo`-Zeilen. Das Phantom-„Team-Niki" (1 von 3) kam vom **Tresen-Formular**, das bei `team_size > 1`
+keinen Einzelweg anbietet — nicht vom Kinder-Team-Schritt (der ist bei Solo-Turnieren korrekt
+gesperrt, UI und `assert_team_phase`). Details: §7.34/§7.35-Auflösung und die Fix-Runde unten.
+
+**Acht Härtungs-Fixes, alle drin** (Implementierer → unabhängiger Prüfer → separater Nachbesserer,
+Dreifach-Prinzip):
+
+1. `resetCheckIn` setzt jetzt auch `seed = null` — eine stehengebliebene Startnummer hatte die
+   Seed-Kollision erzeugt (Team-Niki seed=1 **und** Max seed=1; kein Unique-Index auf
+   `(tournament_id, seed)`, geprüft).
+2. **Seeding-Block inkl. „Zufällig setzen" ist nach dem Generieren erreichbar** — neue Komponente
+   `bracket/seeding-section.tsx`, eine Instanz, in beiden Zweigen gerendert, im `hasMatches`-Zweig
+   direkt über „Bracket neu generieren". Ablauf: Zufällig setzen → speichern → Neu generieren. Damit
+   ist §7.35 gelöst — der Fisher-Yates-Shuffle existierte längst, er war nur hinter `!hasMatches`
+   unerreichbar.
+3. Teams-Screen versteckt nichts mehr: rendert, sobald Team-/Spieler-Zeilen existieren, auch bei
+   `team_size <= 1` (mit Warnkarte zur früheren Teamgröße). Der Satz „es gibt keine Mannschaften"
+   log, solange Team-Niki dastand.
+4. Dritte Filterstelle `bracket/page.tsx` nutzt `COMPETITOR_TYPES` statt `p.type !== "player"`.
+5. `generateBracket` liest jetzt den Status und schreibt `running` nicht mehr auf ein
+   `finished`-Turnier (vorher kippte „Neu generieren" ein beendetes Turnier kommentarlos zurück).
+6. Turnier-Übersicht warnt, wenn eingecheckte Spieler ohne Mannschaft existieren (genau die Zeilen,
+   die kein Match bekommen) — bewusst nicht `anyCount > pCount`, das wäre bei Team-Turnieren
+   Dauerfeuer.
+7. **Migration `20260812090000_team_size_guard.sql` (angewandt):** `BEFORE UPDATE`-Trigger auf
+   `tournaments`, SECURITY INVOKER, sperrt `team_size`-Änderungen sobald participants existieren;
+   `postgres`/`service_role` bleiben als Reparatur-Tür offen. Der `ff71519`-Riegel lebte nur in
+   TypeScript — PostgREST lag offen. Bewiesen in zurückgerollter Transaktion: unverändertes
+   `team_size` passiert (jedes Formular schickt es mit), Änderung mit Teilnehmern → `23514`,
+   Änderung ohne Teilnehmer erlaubt, postgres passiert.
+8. `syncTeamReady`/`moveInto` aus `free-agent-actions.ts` in `[id]/team-sync.ts` gehoben (**ohne**
+   `"use server"` — exportierte ungeschützte Helfer wären dort offene Server Actions) und
+   `saveAssignments` zieht jetzt pro Ziel-Team die Spielbereitschaft nach — ohne das blieb ein per
+   Zuordnung vollzählig gewordenes Team bei `checked_in_at NULL`, exakt der Team-Niki-Mechanismus.
+   Restspieler-Panel rendert in beiden Zweigen (mit Hinweis, dass Zuordnungen erst nach dem
+   Neu-Generieren im Spielplan landen).
+
+⚠️ **Folge-Migration `20260812091000_referee_seed_on_reset.sql` (angewandt):** Fix 1 kollidierte mit
+`guard_participant_protected_fields` — der Schiedsrichter darf nur `checked_in_at` ändern, `seed`
+warf `insufficient_privilege`, womit **jeder Referee-Check-in-Reset** gescheitert wäre (vom
+Implementierungs-Agenten an der Live-DB gefunden). Die Tür ist absichtlich schmal: `seed` darf sich
+nur ändern, wenn er dabei NULL wird **und** die Zeile im selben UPDATE nicht (mehr) eingecheckt ist.
+Bewiesen: Reset mit seed-NULL als Referee erlaubt, seed **setzen** → `42501`, seed nullen bei
+bestehendem Check-in → `42501`, reiner Anwesenheits-Reset unverändert erlaubt.
+
+**Turnier `8da58fae` bleibt datenseitig unangetastet** (bewusst): `finished`, 0 `match_reports`,
+das eine Match wurde nie gespielt. Ein Backfill `player → solo` würde die Check-in-Audit-Zeile von
+Team-Niki vernichten (`on delete cascade`, Zeile existiert, geprüft) und die Namen von ~10
+überwiegend Minderjährigen anon-lesbar machen (`participants_select_public_board` filtert
+`type <> 'player'`). Für ein beendetes Turnier ohne Ergebnisse kauft das nichts.
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - ⚠️ **Wer antritt, entscheidet `participants.type` — NIEMALS `team_id`.** Wettkämpfer =
   `type in ('solo','team')`, Mensch = `type in ('solo','player')`. Ein `player` ohne Team trägt
@@ -681,6 +740,13 @@ Sieger) aber `matches` nicht direkt beschreiben (0 Zeilen).
     Wert wird die Action mit einer deutschen Meldung abgelehnt (`TEAM_SIZE_LOCKED` in
     `lib/tournament/lifecycle.ts`). Formular deaktiviert das Feld und zeigt dieselbe Konstante daneben.
     528 Tests grün, Build grün, live. Details im Protokoll **§16**.
+    ⚠️ **Zeitlinie, wichtig fürs Verständnis des Vorfalls:** dieser Riegel ging am 2026-08-11 erst um
+    **15:15:53** auf `origin/main` (git reflog geprüft) — die `team_size`-Umstellung im
+    Rocket-League-Turnier passierte Stunden **davor** (08:52–09:02). Der Riegel wurde nicht umgangen,
+    er war noch nicht da. Frühere Fassungen dieses Punkts lasen sich anders.
+    **Seit dem 2026-08-11 abends zusätzlich in der Datenbank verankert:**
+    `20260812090000_team_size_guard.sql` — der TypeScript-Riegel deckte PostgREST-Direktzugriffe
+    nicht (Details im Abend-Changelog in §5).
 25. 🟡 **Nicht durchgeklickt: Teams-Screen, Restspieler-Panel, Sammel-Freigabe.** Alle drei liegen
     hinter dem Orga-Login, das ein Agent nicht hat. Anmeldung und Team-Beitritt sind auf Produktion
     bewiesen (§5), diese drei nicht. **Besonders offen:** ob das Ziehen per Pointer-Events auf einem
@@ -730,6 +796,30 @@ Sieger) aber `matches` nicht direkt beschreiben (0 Zeilen).
     `1dbfbdb` und stand am Ende der letzten Session als offener Vorschlag, den Rene noch nicht
     beauftragt hat. **Nächster Schritt:** Uhrzeit des Vorfalls erfragen; wenn nach 10:58, den
     zweiten Rand angehen (Feld bei einer einzelnen „0" als unvollständig statt als „00" behandeln).
+
+### Neu offen aus dem 2026-08-11 (Rene, Nachmittag)
+
+34. 🟠 **Ursache geklärt, Fix in Arbeit — „Solo-Anmeldung als Team, danach nur 3 Spieler".**
+    Die 13-Agenten-Forensik (2026-08-11 abends) hat die Vermutungsrichtungen **widerlegt**: der
+    Team-Schritt der Kinder-Anmeldung ist bei `team_size = 1` korrekt gesperrt (UI **und**
+    `assert_team_phase`) und war nie erreichbar. Wirkliche Kette: das Turnier war ein **3v3**, das
+    Phantom-Team („Team-Niki", 1 von 3) kam vom **Nachmelde-Formular am Tresen**, das bei
+    `team_size > 1` keinen Einzelweg anbietet (`created_at`-Reihenfolge + `user_id IS NULL` beweisen
+    den Pfad); zwischen 08:52 und 09:02 wurde dann `team_size` auf 1 gestellt (vor dem Riegel, §7.24),
+    was die 10 `player`-Zeilen verwaiste. Die „3" war die Wettkämpfer-Zählung der Turnier-Übersicht
+    (Team-Niki + 2 nach der Umstellung angemeldete `solo`). Härtung ist drin (§5, Abend-Changelog);
+    die Feature-Fixe laufen: Einzelspieler-Nachmeldung, Tresen-Zuordnung, Generieren-Warnung,
+    Kinder-Flow (Plan „Team-Turnier-Fixes", von Rene abgenommen). Punkt schließen, sobald die vier
+    Workstreams live sind.
+35. ✅ **Bracket-Neu-Mischen erreichbar** (2026-08-11 abends). Die Prämisse war halb falsch: ein
+    Fisher-Yates-Shuffle existierte längst („Zufällig setzen", `seeding-client.tsx`), er war nur
+    unerreichbar, sobald Matches existierten (`!hasMatches`-Ternär). Jetzt rendert der Seeding-Block
+    in beiden Zweigen (`bracket/seeding-section.tsx`), direkt über „Bracket neu generieren":
+    Zufällig setzen → speichern → Neu generieren. Die Generatoren bleiben bewusst deterministisch
+    (kein `Math.random()` in `generateBracket` — reproduzierbare Generierung, Vorschau bleibt,
+    handgesetztes Seeding wird nicht stillschweigend überschrieben). Randnotiz aus der Forensik: im
+    konkreten Vorfall hätte Mischen nichts geändert (N=2 hat nur eine Paarung); der gemeldete Fall
+    „zwei gleichstarke Teams in Runde 1" stammt aus einer größeren Auslosung.
 
 ## 8. Datei-Landkarte
 - `web/src/app/` — Routen. Öffentlich: `page.tsx`, `o/[slug]/`, `t/[tournamentId]/{,register,me,board,checkin-station}`. Auth: `(auth)/login`, `(auth)/signup`, `auth/confirm/route.ts`, `link/[token]/route.ts` (Geräte-Kopplung). Organizer: `organizer/`, `games`, `members` (Org-Name + Geräte + Mitglieder), `tournaments/[id]/{,bracket,matches,participants,checkin,station}`. Scorekeeper: `score/[token]/`.

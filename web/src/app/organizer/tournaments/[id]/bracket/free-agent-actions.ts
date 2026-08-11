@@ -4,6 +4,7 @@ import { requireStaff, type ActionResult } from "@/lib/auth/staff";
 import { friendlyDbError } from "@/lib/db-errors";
 
 import { PERSON_TYPES } from "../participants/participant-types";
+import { moveInto, syncTeamReady } from "../team-sync";
 
 /** Spieler, die in ein bestehendes Team einziehen. */
 export type TeamFill = { teamId: string; playerIds: string[] };
@@ -127,82 +128,4 @@ export async function assignFreeAgents(
   }
 
   return { ok: true };
-}
-
-/**
- * Ein vollzaehliges Team spielbereit melden.
- *
- * Der Trigger sync_team_ready macht das sonst von selbst — er feuert aber nur,
- * wenn sich die ANWESENHEIT einer Person aendert, und hier aendert sich nur ihr
- * Team. Ohne diesen Nachzug bleibt ein Team, das gerade aus lauter anwesenden
- * Restspielern entstanden ist, mit checked_in_at NULL zurueck: generateBracket
- * uebergeht es, und auf der Bracket-Seite steht nirgends, warum. Dieselbe
- * Bedingung wie im Trigger, damit beide Wege dasselbe bedeuten.
- */
-async function syncTeamReady(
-  supabase: Supabase,
-  tournamentId: string,
-  teamId: string,
-  teamSize: number,
-): Promise<ActionResult | null> {
-  if (teamSize < 2) return null;
-
-  const { data: members, error: memberErr } = await supabase
-    .from("participants")
-    .select("id, checked_in_at")
-    .eq("tournament_id", tournamentId)
-    .eq("team_id", teamId);
-  if (memberErr) {
-    return { error: friendlyDbError(memberErr, "Spielbereitschaft konnte nicht geprüft werden.") };
-  }
-  const present = (members ?? []).filter((m) => m.checked_in_at !== null).length;
-  if (present < teamSize) return null;
-
-  // `is("checked_in_at", null)` wie im Trigger: eine von Hand gesetzte
-  // Freigabe (Team tritt unvollzaehlig an) bekommt keinen neuen Zeitstempel.
-  const { error } = await supabase
-    .from("participants")
-    .update({ checked_in_at: new Date().toISOString() })
-    .eq("id", teamId)
-    .eq("tournament_id", tournamentId)
-    .is("checked_in_at", null);
-  if (error) {
-    return { error: friendlyDbError(error, "Team konnte nicht spielbereit gemeldet werden.") };
-  }
-  return null;
-}
-
-type Supabase = Extract<Awaited<ReturnType<typeof requireStaff>>, { supabase: unknown }>["supabase"];
-
-/**
- * Spieler in ein Team umhaengen. `withCaptain` macht den ersten zum Captain —
- * ein frisch gebildetes Team hat sonst keinen, und ohne Captain kann es sich
- * spaeter nicht selbst umbenennen oder aufloesen.
- */
-async function moveInto(
-  supabase: Supabase,
-  tournamentId: string,
-  teamId: string,
-  playerIds: string[],
-  withCaptain: boolean,
-): Promise<ActionResult | null> {
-  const { error } = await supabase
-    .from("participants")
-    .update({ team_id: teamId })
-    .eq("tournament_id", tournamentId)
-    .in("id", playerIds);
-  if (error) {
-    return { error: friendlyDbError(error, "Zuordnung konnte nicht gespeichert werden.") };
-  }
-  if (withCaptain) {
-    const { error: capErr } = await supabase
-      .from("participants")
-      .update({ is_captain: true })
-      .eq("tournament_id", tournamentId)
-      .eq("id", playerIds[0]);
-    if (capErr) {
-      return { error: friendlyDbError(capErr, "Captain konnte nicht gesetzt werden.") };
-    }
-  }
-  return null;
 }

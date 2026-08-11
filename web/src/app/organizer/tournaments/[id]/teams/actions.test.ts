@@ -41,41 +41,69 @@ function setupStaff(fromImpl: (table: string) => unknown) {
  * Das Turnier, das saveAssignments vorfindet: zwei Spieler, ein Team, und eine
  * Zeile aus einem fremden Turnier gibt es hier per Definition nicht — die
  * Abfrage ist auf tournament_id eingegrenzt.
+ *
+ * `teamSize` und `members` gehoeren zum Nachzug am Schluss der Action, die ein
+ * durch die Zuordnung vollzaehlig gewordenes Team spielbereit meldet. Standard
+ * ist ein Einzelturnier, dort faellt der Nachzug sofort wieder heraus.
  */
 function setupAssignments(options?: {
   loadError?: { code: string; message: string };
   updateError?: { code: string; message: string };
   updateCount?: number;
+  teamSize?: number;
+  members?: { id: string; checked_in_at: string | null }[];
 }) {
-  const update = vi.fn().mockReturnValue({
-    eq: () => ({
-      eq: () => ({
-        eq: () =>
-          Promise.resolve({
-            error: options?.updateError ?? null,
-            count: options?.updateError ? null : (options?.updateCount ?? 1),
-          }),
-      }),
-    }),
+  const writeResult = {
+    error: options?.updateError ?? null,
+    count: options?.updateError ? null : (options?.updateCount ?? 1),
+  };
+  // Ein Kettenglied, das beides kann — weiter verketten und awaited werden:
+  // die Zuordnung haengt .eq().eq().eq() an, syncTeamReady .eq().eq().is().
+  const update = vi.fn().mockImplementation(() => {
+    const chain = {
+      eq: () => chain,
+      is: () => chain,
+      then: (resolve: (v: typeof writeResult) => unknown) => resolve(writeResult),
+    };
+    return chain;
   });
 
   setupStaff((table: string) => {
+    if (table === "tournaments") {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: { team_size: options?.teamSize ?? 1 },
+                error: null,
+              }),
+          }),
+        }),
+      };
+    }
     if (table !== "participants") return {};
     return {
+      // Nach dem ersten .eq() wartet der Typ-Check auf sein Ergebnis;
+      // syncTeamReady haengt ein zweites .eq() an und bekommt die Mitglieder.
       select: () => ({
-        eq: () =>
-          Promise.resolve(
-            options?.loadError
-              ? { data: null, error: options.loadError }
-              : {
-                  data: [
-                    { id: "ada", type: "player" },
-                    { id: "bo", type: "player" },
-                    { id: "rakete", type: "team" },
-                  ],
-                  error: null,
-                },
-          ),
+        eq: () => ({
+          eq: () =>
+            Promise.resolve({ data: options?.members ?? [], error: null }),
+          then: (resolve: (v: unknown) => unknown) =>
+            resolve(
+              options?.loadError
+                ? { data: null, error: options.loadError }
+                : {
+                    data: [
+                      { id: "ada", type: "player" },
+                      { id: "bo", type: "player" },
+                      { id: "rakete", type: "team" },
+                    ],
+                    error: null,
+                  },
+            ),
+        }),
       }),
       update,
     };
@@ -153,6 +181,56 @@ describe("saveAssignments", () => {
       { team_id: null, is_captain: false },
       { count: "exact" },
     );
+  });
+
+  it("meldet ein durch die Zuordnung vollzaehliges Team spielbereit", async () => {
+    // Der Trigger sync_team_ready feuert nur bei geaenderter ANWESENHEIT, hier
+    // aendert sich nur das Team. Ohne diesen Nachzug bliebe das Zielteam mit
+    // checked_in_at NULL stehen und faellt aus dem Bracket, ohne dass irgendwo
+    // steht warum — genau daran ist das laufende Turnier zerbrochen.
+    const { update } = setupAssignments({
+      teamSize: 2,
+      members: [
+        { id: "ada", checked_in_at: "2026-08-12T09:00:00Z" },
+        { id: "bo", checked_in_at: "2026-08-12T09:01:00Z" },
+      ],
+    });
+    const { saveAssignments } = await import("./actions");
+    const result = await saveAssignments("t1", [
+      { playerId: "ada", teamId: "rakete" },
+      { playerId: "bo", teamId: "rakete" },
+    ]);
+
+    expect(result).toEqual({ ok: true });
+    // Zwei Zuordnungen, danach genau EIN Nachzug: dasselbe Zielteam steht
+    // zweimal in `changes` und wird trotzdem nur einmal gemeldet.
+    expect(update).toHaveBeenCalledTimes(3);
+    expect(update).toHaveBeenNthCalledWith(3, {
+      checked_in_at: expect.any(String),
+    });
+  });
+
+  it("laesst ein noch unvollzaehliges Team ungemeldet", async () => {
+    const { update } = setupAssignments({
+      teamSize: 3,
+      members: [{ id: "ada", checked_in_at: "2026-08-12T09:00:00Z" }],
+    });
+    const { saveAssignments } = await import("./actions");
+    expect(
+      await saveAssignments("t1", [{ playerId: "ada", teamId: "rakete" }]),
+    ).toEqual({ ok: true });
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it("zieht nichts nach, wenn nur aus einem Team heraus verschoben wird", async () => {
+    // Kein Zielteam, also nichts zu melden — und ein verlassenes Team behaelt
+    // seine Freigabe: syncTeamReady meldet nur spielbereit, nimmt nie zurueck.
+    const { update } = setupAssignments({ teamSize: 2 });
+    const { saveAssignments } = await import("./actions");
+    expect(
+      await saveAssignments("t1", [{ playerId: "ada", teamId: null }]),
+    ).toEqual({ ok: true });
+    expect(update).toHaveBeenCalledTimes(1);
   });
 
   it("reports a load failure", async () => {

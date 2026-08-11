@@ -59,20 +59,38 @@ export default async function TournamentOverviewPage({
   // Gezaehlt werden WETTKAEMPFER: „12 Teilnehmer" muss bei einem Team-Turnier
   // die Zahl der Teams sein, sonst steht auf der Uebersicht die Zahl der Kinder
   // und die Orga plant mit der falschen Groesse.
-  const [{ count: pCount }, { count: anyCount }, { count: mCount }, { data: games }] =
-    await Promise.all([
-      supabase
-        .from("participants")
-        .select("id", { count: "exact", head: true })
-        .eq("tournament_id", id)
-        .in("type", COMPETITOR_TYPES),
-      // Fuer die Teamgroessen-Sperre zaehlt JEDE Zeile, auch ein Spieler ohne
-      // Team: sein Typ haengt schon an der aktuellen Teamgroesse.
-      supabase.from("participants").select("id", { count: "exact", head: true }).eq("tournament_id", id),
-      supabase.from("matches").select("id", { count: "exact", head: true }).eq("tournament_id", id),
-      supabase.from("games").select("id, name, team_size").order("name"),
-    ]);
+  const [
+    { count: pCount },
+    { count: anyCount },
+    { count: orphanCount },
+    { count: mCount },
+    { data: games },
+  ] = await Promise.all([
+    supabase
+      .from("participants")
+      .select("id", { count: "exact", head: true })
+      .eq("tournament_id", id)
+      .in("type", COMPETITOR_TYPES),
+    // Fuer die Teamgroessen-Sperre zaehlt JEDE Zeile, auch ein Spieler ohne
+    // Team: sein Typ haengt schon an der aktuellen Teamgroesse.
+    supabase.from("participants").select("id", { count: "exact", head: true }).eq("tournament_id", id),
+    // Anwesend, aber niemand tritt fuer ihn an: ein Spieler ohne Mannschaft
+    // ist selbst kein Wettkaempfer (§6) und wird von keiner Team-Zeile
+    // vertreten — er bekommt kein Match. Bei einem Team-Turnier ist
+    // „Personen > Wettkaempfer" der Normalfall, deshalb zaehlt hier nicht die
+    // Differenz, sondern genau dieser Fall. Ein Kopfzaehler, kein Join.
+    supabase
+      .from("participants")
+      .select("id", { count: "exact", head: true })
+      .eq("tournament_id", id)
+      .eq("type", "player")
+      .is("team_id", null)
+      .not("checked_in_at", "is", null),
+    supabase.from("matches").select("id", { count: "exact", head: true }).eq("tournament_id", id),
+    supabase.from("games").select("id, name, team_size").order("name"),
+  ]);
   const hasMatches = (mCount ?? 0) > 0;
+  const orphans = orphanCount ?? 0;
 
   return (
     <>
@@ -104,6 +122,20 @@ export default async function TournamentOverviewPage({
               </span>
             )}
             <span className="text-sm text-fg-muted">{pCount ?? 0} Teilnehmer</span>
+            {/*
+              Hier steht NUR die Zahl der Uebriggebliebenen. anyCount zaehlt jede
+              participants-Zeile, also auch die Team-Zeilen selbst: bei 4 Teams à
+              3 Kindern plus einem Restspieler haette „17 angemeldet" gestanden,
+              obwohl 13 Menschen da sind. Die Zahl ist fuer die Teamgroessen-
+              Sperre gedacht, nicht fuer die Anzeige.
+            */}
+            {orphans > 0 && (
+              <p className="basis-full text-sm text-warn">
+                {orphans === 1
+                  ? "1 eingecheckter Spieler steht in keiner Mannschaft und bekommt kein Match."
+                  : `${orphans} eingecheckte Spieler stehen in keiner Mannschaft und bekommen kein Match.`}
+              </p>
+            )}
           </section>
 
           <LifecycleControls
