@@ -1,6 +1,6 @@
 # Turnier-App — Übergabe an den nächsten Agent
 
-**Stand:** 2026-08-11 · Branch `main`, letzter Code-Commit `ff71519` (§16) · **gepusht und live** unter https://turnier-app-opal.vercel.app (Push auf `main` deployt automatisch, siehe §3)
+**Stand:** 2026-08-11 · Branch `main`, letzter Code-Commit `1dbfbdb` (§17) · **gepusht und live** unter https://turnier-app-opal.vercel.app (Push auf `main` deployt automatisch, siehe §3)
 
 Session-Protokolle der letzten Arbeit stehen in **§11–§16** (was gemacht, wie entschieden, was gut/schlecht lief).
 
@@ -715,6 +715,22 @@ Sieger) aber `matches` nicht direkt beschreiben (0 Zeilen).
     keins mehr, fällt es auf die Person-Zeile zurück und findet nichts. Einzeiler: `team_id` in den
     Rückgabewert der Funktion aufnehmen. Einzelstarter sind nicht betroffen.
 
+### Neu offen aus dem 2026-08-11 (Geburtsdatum-Fix, Nachmittag)
+
+33. 🟡 **Rene berichtet von einem Vorfall am Einlass: Junge tippt Geburtsjahr „2013 oder so",
+    Formular meldet einen Fehler, zweiter Versuch (erneutes Einloggen/„Lock in") geht durch.**
+    Uhrzeit relativ zum Fix in `1dbfbdb` (Push ca. 10:56, live ca. 10:58) ist **nicht geklärt** —
+    die Frage steht offen, Rene hat stattdessen die Doku-Aufgabe gegeben. Zwei Deutungen:
+    (a) es war der **alte** `padOnBlur`-Bug (Tag/Monat unter 10 wurde zu `00`, Formular zeigte
+    „Bitte ein gültiges Geburtsdatum eingeben.") — dann ist er mit `1dbfbdb` bereits erledigt und
+    der Vorfall ist ein Nachzügler vor dem Deploy. (b) ein zweiter, noch offener Rand: eine
+    **einzelne** getippte `0` in Tag oder Monat wird beim Verlassen des Feldes zu `00` aufgefüllt
+    (`padOnBlur`, `birthdate-field.tsx`) — daraus baut sich weiterhin ein ungültiges Datum, ohne
+    dass sichtbar wird, welches Kästchen gemeint war. Dieser zweite Rand ist **nicht** Teil von
+    `1dbfbdb` und stand am Ende der letzten Session als offener Vorschlag, den Rene noch nicht
+    beauftragt hat. **Nächster Schritt:** Uhrzeit des Vorfalls erfragen; wenn nach 10:58, den
+    zweiten Rand angehen (Feld bei einer einzelnen „0" als unvollständig statt als „00" behandeln).
+
 ## 8. Datei-Landkarte
 - `web/src/app/` — Routen. Öffentlich: `page.tsx`, `o/[slug]/`, `t/[tournamentId]/{,register,me,board,checkin-station}`. Auth: `(auth)/login`, `(auth)/signup`, `auth/confirm/route.ts`, `link/[token]/route.ts` (Geräte-Kopplung). Organizer: `organizer/`, `games`, `members` (Org-Name + Geräte + Mitglieder), `tournaments/[id]/{,bracket,matches,participants,checkin,station}`. Scorekeeper: `score/[token]/`.
 - `web/src/lib/` — `bracket/`, `swiss/`, `groups/`, `standings.ts`, `tournament/lifecycle.ts`, `org/`, `auth/{staff,org-tournament,device-pairing,device-label}.ts`, `supabase/{server,client,public,admin}.ts`, `format-date.ts`, `hardware-scan.ts`, `scan-feedback.ts`, `push/`, `station/`, `db-errors.ts`, `database.types.ts`.
@@ -1156,3 +1172,60 @@ Sitzung heraus nicht löschen — Windows hält ihn gesperrt, solange die Sitzun
 Arbeitsverzeichnis dorthin zurücksetzt. Aus der Git-Worktree-Registrierung ist er raus
 (`git worktree remove`), das Verzeichnis selbst braucht ein `rm -rf` von außerhalb dieser Sitzung; der
 zugehörige Branch ist inhaltsgleich mit `main` und gefahrlos löschbar.
+
+---
+
+## 17. Protokoll — Session 2026-08-11 (Geburtsdatum: die getippte 05 wurde zur 00)
+
+### Ausgangsfrage des Users
+„wenn die kinder sich anmelden und das Geburstatem eintragen geht nicht 05 sondern nur 5 das ist doof"
+— am Ende der Sitzung, ohne den Tag/Monat-Fix schon zu kennen, ein Bericht vom laufenden Turnier: ein
+Junge tippte sein Geburtsjahr, das Formular meldete einen Fehler, erst der zweite Versuch ging durch.
+
+### Ablauf
+1. `birthdate-field.tsx` gelesen, den Aufrufer in `register-client.tsx` und `validBirthdate()`
+   nachvollzogen — Repro-Verdacht: der Fokus-Sprung nach der zweiten Ziffer könnte mit `padOnBlur`
+   kollidieren.
+2. **Reproduziert, bevor gefixt wurde:** eine Wegwerf-Testdatei, die 05.05.2015 Ziffer für Ziffer mit
+   `fireEvent.change` eintippt — schlug fehl, Monat landete bei `00` statt `05`. Zwischenlogging
+   zeigte den genauen Mechanismus: nach der ersten `0` steht `parts.month` noch leer, der zweite
+   `fireEvent.change` liefert `"05"`, aber `padOnBlur` (ausgelöst vom Fokus-Sprung ins Jahr-Feld) las
+   zu diesem Zeitpunkt noch aus der Closure-Variable `parts`, nicht aus dem Feld — Zustand einen
+   Renderdurchlauf alt.
+3. Fix: `padOnBlur` nimmt den Wert jetzt aus dem `blur`-Ereignis selbst (`e.target.value`) statt aus
+   `parts`. Zwei Ziffern → nichts zu tun, eine Ziffer → wie bisher mit führender Null aufgefüllt.
+4. Regressionstest in `birthdate-field.test.tsx` ergänzt, der den echten Repro-Ablauf nachstellt (nicht
+   nur `fireEvent.blur` ohne vorherigen Fokus, wie die bisherigen Tests es taten — genau das hatte den
+   Bug bis jetzt unsichtbar gehalten). Wegwerf-Testdatei danach gelöscht.
+5. Committed (`1dbfbdb`) und auf Nachfrage des Users gepusht — Risikoabwägung vorab genannt (reiner
+   Frontend-Fix, atomarer Vercel-Deploy, offene Tabs laufen mit altem Code weiter, bereits gespeicherte
+   `00`-Daten bleiben unangetastet).
+6. **Danach meldete Rene den Vorfall mit dem Jungen.** Timing gegen den Deploy (Push ~10:56) ist nicht
+   geklärt — die Frage steht offen (§7.33), Rene hat stattdessen diese Doku-Aufgabe gegeben.
+
+### Was gut war
+- **Reproduziert vor dem Fix, mit einer Wegwerf-Datei statt am bestehenden Test herumzuschrauben.**
+  Der Bug hing exakt an der Fokus-Reihenfolge — `fireEvent.blur()` ohne vorherigen Fokuswechsel hätte
+  ihn nicht gezeigt, und genau das taten alle bisherigen Tests. Ohne den eigenen Repro-Schritt wäre der
+  „Fix" eine Vermutung geblieben.
+- **Root Cause, nicht Symptom:** die Behebung liegt in der einen Funktion, die alle drei Felder
+  (Tag/Monat/Jahr) gemeinsam nutzen, nicht in einem Sonderfall pro Feld.
+- Vor dem Push explizit das Blast-Radius-Gespräch geführt (§ oben), statt stillschweigend zu pushen.
+
+### Was schlecht war
+- ⚠️ Die naheliegendste Klärung — **wann genau stand der Junge an der Theke, vor oder nach 10:58?**
+  — wurde einmal gefragt, aber nicht insistiert, als der User stattdessen zur Doku-Aufgabe wechselte.
+  Ohne diese Antwort bleibt unklar, ob der gemeldete Vorfall schon erledigt ist oder auf einen zweiten,
+  noch offenen Rand zeigt (einzelne `0` in Tag/Monat wird beim Verlassen weiterhin zu `00`
+  aufgefüllt — technisch korrektes Padding, das aber am Turniertag denselben Fehlertext produziert).
+  **Nicht raten, beim nächsten Kontakt gezielt fragen.**
+- `npx tsc --noEmit` lief einmal über das ganze Projekt und zeigte vorbestehende Fehler in fremden
+  Testdateien (`qr-code.test.tsx`, `signup/actions.test.ts`, `groups-view.test.tsx`) — keiner davon in
+  den geänderten Dateien, aber unnötig Kontext verbraucht, weil ein gezielter `vitest run` auf die
+  betroffene Datei gereicht hätte, um Vertrauen ins Ergebnis zu haben.
+
+### Was der Nächste zuerst tun sollte
+Uhrzeit des gemeldeten Vorfalls klären (§7.33). Wenn nach dem Deploy: den zweiten Rand angehen — eine
+einzelne getippte `0` in Tag oder Monat sollte das Feld als **unvollständig** behandeln, nicht als
+`00` auffüllen. Der User hat diesen Fix am Ende der vorigen Runde vorgeschlagen bekommen, aber noch
+nicht beauftragt.

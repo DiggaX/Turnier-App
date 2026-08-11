@@ -1,7 +1,12 @@
 # Turnier-App — Fortschritt
 
-**Letzter Stand:** 2026-08-11 · Branch `main` @ `f7cbf95` · gepusht und deployt
+**Letzter Stand:** 2026-08-11 · Branch `main` @ `1dbfbdb` · gepusht und deployt
 (`turnier-app-opal.vercel.app`; Push auf `main` deployt automatisch, siehe HANDOVER §3)
+
+**Nachmittag:** Geburtsdatum-Feld — `padOnBlur` las beim Fokus-Sprung noch den alten React-State
+statt das Eingabe-Ereignis; eine getippte `05` in Tag/Monat wurde dadurch zu `00`. Repariert
+(`1dbfbdb`), Regressionstest ergänzt, live. Details HANDOVER.md §5 + §17. Offen: Timing eines
+gemeldeten Vorfalls (Junge, Geburtsjahr 2013, Formularfehler) relativ zum Deploy ungeklärt — §7.33.
 
 ⚠️ **Am 2026-08-11 lief durchgehend eine zweite Sitzung im selben Arbeitsbaum** („3on3 Eff-State
 Team Management"): elf Migrationen, Teilnehmer-Modell umgebaut (Person und Team sind jetzt getrennte
