@@ -29,6 +29,12 @@ export default async function TournamentDetailPage(props: {
   const { tournamentId } = await props.params;
   const supabase = await createPublicClient();
 
+  // participants(id) zaehlt WETTKAEMPFER — bei einem Team-Turnier also Teams,
+  // nicht Kinder. Der Filter steht bewusst NICHT hier: die Seite liest als
+  // anon, und die Policy participants_select_public_board laesst fuer anon nur
+  // `type <> 'player'` durch. Ein `participants.type=in.(…)` waere hier sogar
+  // ein 403 — anon hat SELECT nur auf (id, tournament_id, display_name) und
+  // darf nach type gar nicht filtern (auf der Live-DB nachgestellt).
   const { data: tournament } = await supabase
     .from("tournaments")
     .select(

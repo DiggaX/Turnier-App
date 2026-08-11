@@ -130,19 +130,25 @@ function setupAdd(options?: {
   memberError?: { code: string; message: string };
   checkInError?: { code: string; message: string };
 }) {
-  const insert = vi.fn().mockReturnValue({
-    select: () => ({
-      single: () =>
-        Promise.resolve(
-          options?.insertError
-            ? { data: null, error: options.insertError }
-            : { data: { id: "p-new" }, error: null },
-        ),
-    }),
-  });
   const memberInsert = vi
     .fn()
     .mockResolvedValue({ error: options?.memberError ?? null });
+  // Beide Inserts gehen jetzt auf participants: die Team-Zeile einzeln (mit
+  // .select().single() dahinter), die Mitglieder als Array. Unterschieden wird
+  // deshalb an der Nutzlast.
+  const insert = vi.fn().mockImplementation((payload: unknown) => {
+    if (Array.isArray(payload)) return memberInsert(payload);
+    return {
+      select: () => ({
+        single: () =>
+          Promise.resolve(
+            options?.insertError
+              ? { data: null, error: options.insertError }
+              : { data: { id: "p-new" }, error: null },
+          ),
+      }),
+    };
+  });
   const rpc = vi
     .fn()
     .mockResolvedValue({ error: options?.checkInError ?? null });
@@ -163,7 +169,6 @@ function setupAdd(options?: {
       };
     }
     if (table === "participants") return { insert };
-    if (table === "team_members") return { insert: memberInsert };
     return {};
   });
   mockSupabase.rpc = rpc;
@@ -260,14 +265,27 @@ describe("addParticipant", () => {
     expect(insert).toHaveBeenCalledWith(
       expect.objectContaining({ type: "team", display_name: "Team Rakete" }),
     );
+    // Die Mitglieder sind eigene participants-Zeilen (type='player'), verknuepft
+    // ueber team_id — team_members wird nicht mehr geschrieben.
     expect(memberInsert).toHaveBeenCalledWith([
       {
-        participant_id: "p-new",
-        name: "Ada",
+        tournament_id: "t1",
+        user_id: null,
+        type: "player",
+        team_id: "p-new",
+        display_name: "Ada",
         gamertag: "ada99",
         is_captain: true,
       },
-      { participant_id: "p-new", name: "Bo", gamertag: null, is_captain: false },
+      {
+        tournament_id: "t1",
+        user_id: null,
+        type: "player",
+        team_id: "p-new",
+        display_name: "Bo",
+        gamertag: null,
+        is_captain: false,
+      },
     ]);
   });
 

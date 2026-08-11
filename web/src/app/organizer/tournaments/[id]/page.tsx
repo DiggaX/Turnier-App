@@ -13,6 +13,7 @@ import { formatDateTime } from "@/lib/format-date";
 
 import { EditTournamentForm } from "./edit-tournament-form";
 import { LifecycleControls } from "./lifecycle-controls";
+import { COMPETITOR_TYPES } from "./participants/participant-types";
 
 export const metadata: Metadata = { title: "Übersicht — Turnier-App" };
 
@@ -55,8 +56,15 @@ export default async function TournamentOverviewPage({
     "id, name, format, mode, status, team_size, starts_at, game_id, org_id, archived_at, games(name)",
   );
 
+  // Gezaehlt werden WETTKAEMPFER: „12 Teilnehmer" muss bei einem Team-Turnier
+  // die Zahl der Teams sein, sonst steht auf der Uebersicht die Zahl der Kinder
+  // und die Orga plant mit der falschen Groesse.
   const [{ count: pCount }, { count: mCount }, { data: games }] = await Promise.all([
-    supabase.from("participants").select("id", { count: "exact", head: true }).eq("tournament_id", id),
+    supabase
+      .from("participants")
+      .select("id", { count: "exact", head: true })
+      .eq("tournament_id", id)
+      .in("type", COMPETITOR_TYPES),
     supabase.from("matches").select("id", { count: "exact", head: true }).eq("tournament_id", id),
     supabase.from("games").select("id, name, team_size").order("name"),
   ]);

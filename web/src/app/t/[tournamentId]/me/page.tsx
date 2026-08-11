@@ -19,6 +19,7 @@ type ParticipantRow = {
   display_name: string;
   qr_token: string;
   checked_in_at: string | null;
+  team_id: string | null;
   consents: { id: string }[];
 };
 
@@ -40,7 +41,7 @@ export default async function MePage(props: {
   if (user) {
     const { data } = await supabase
       .from("participants")
-      .select("id, display_name, qr_token, checked_in_at, consents(id)")
+      .select("id, display_name, qr_token, checked_in_at, team_id, consents(id)")
       .eq("tournament_id", tournamentId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -61,6 +62,9 @@ export default async function MePage(props: {
         display_name: row.display_name,
         qr_token: row.qr_token,
         checked_in_at: row.checked_in_at,
+        // Der Token-Weg braucht sie nicht: das offene Match kommt hier aus
+        // get_open_match_by_qr_token, das den Wettkaempfer selbst aufloest.
+        team_id: null,
         consents: row.has_consent ? [{ id: "via-token" }] : [],
       };
       viaToken = true;
@@ -96,6 +100,12 @@ export default async function MePage(props: {
       };
     }
   } else if (!viaToken) {
+    // Im Spielplan steht der WETTKAEMPFER: bei einem Team-Mitglied die
+    // Team-Zeile, sonst die eigene. coalesce(team_id, id) — wer hier die eigene
+    // Zeile sucht, findet als Team-Spieler nie ein Match. Der Token-Weg ist in
+    // der Datenbank schon so repariert, der Sitzungs-Weg hier war es nicht.
+    const competitorId = participant.team_id ?? participant.id;
+
     const { data: rawMatch } = await supabase
       .from("matches")
       .select(
@@ -107,7 +117,7 @@ export default async function MePage(props: {
       .not("participant_a_id", "is", null)
       .not("participant_b_id", "is", null)
       .or(
-        `participant_a_id.eq.${participant.id},participant_b_id.eq.${participant.id}`,
+        `participant_a_id.eq.${competitorId},participant_b_id.eq.${competitorId}`,
       )
       .order("round", { ascending: true })
       .order("slot", { ascending: true })
@@ -117,18 +127,20 @@ export default async function MePage(props: {
 
     if (rawMatch) {
       const mySide: "a" | "b" =
-        rawMatch.participant_a_id === participant.id ? "a" : "b";
+        rawMatch.participant_a_id === competitorId ? "a" : "b";
       const opponentName =
         (mySide === "a"
           ? rawMatch.b?.display_name
           : rawMatch.a?.display_name) ?? "Gegner";
 
-      // The participant's own existing report for this match, if any.
+      // Die eigene Meldung zu diesem Match. match_reports.reported_by ist der
+      // WETTKAEMPFER — die Meldung eines Team-Mitglieds ist die Meldung des
+      // Teams, und genau die soll den anderen im Team angezeigt werden.
       const { data: myReport } = await supabase
         .from("match_reports")
         .select("score_a, score_b")
         .eq("match_id", rawMatch.id)
-        .eq("reported_by", participant.id)
+        .eq("reported_by", competitorId)
         .maybeSingle();
 
       currentMatch = {

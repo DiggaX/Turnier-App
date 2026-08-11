@@ -48,6 +48,9 @@ export default async function OrgPage({
 
   if (!org) notFound();
 
+  // Wie auf /t/[id]: participants(id) zaehlt WETTKAEMPFER, und zwar durch die
+  // anon-Policy (type <> 'player'), nicht durch einen Filter hier — anon darf
+  // die Spalte type nicht einmal lesen.
   const { data } = await supabase
     .from("tournaments")
     .select(

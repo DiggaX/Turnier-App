@@ -7,6 +7,7 @@ import { requireOrgTournament } from "@/lib/auth/org-tournament";
 import { storedConsentText } from "@/lib/consent-text";
 import { formatDate } from "@/lib/format-date";
 
+import { PERSON_TYPES } from "../participants/participant-types";
 import { PrintButton } from "./print-button";
 
 export const metadata: Metadata = {
@@ -64,12 +65,16 @@ export default async function ConsentsPage({
     org_id: string;
   }>(supabase, id, profile.org_id as string | null, "id, name, org_id");
 
+  // Eine Fotoerlaubnis gehoert einem MENSCHEN, nie einem Team: es wird ja das
+  // Kind fotografiert. Darum nur solo + player — Team-Zeilen haetten hier
+  // ohnehin nie eine Einwilligung, wuerden aber mitgeladen.
   const { data: participants } = await supabase
     .from("participants")
     .select(
       "id, display_name, consents(id, grantor, grantor_name, method, signature_path, address, consent_text, granted_at)",
     )
     .eq("tournament_id", id)
+    .in("type", PERSON_TYPES)
     .order("display_name", { ascending: true });
 
   const sheets = (participants ?? [])

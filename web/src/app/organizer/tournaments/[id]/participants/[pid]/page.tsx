@@ -40,22 +40,46 @@ export default async function ParticipantDetailPage({
     id: string;
     name: string;
     org_id: string;
+    team_size: number;
   }>(
     supabase,
     id,
     profile.org_id as string | null,
-    "id, name, org_id",
+    "id, name, org_id, team_size",
   );
 
   const { data: participant } = await supabase
     .from("participants")
-    .select("id, display_name, gamertag, birthdate, type, qr_token, checked_in_at, consents(id)")
+    .select(
+      "id, display_name, gamertag, birthdate, type, qr_token, checked_in_at, consents(id)",
+    )
     .eq("id", pid)
     .eq("tournament_id", id)
     .maybeSingle();
   if (!participant) notFound();
 
   const hasConsent = (participant.consents ?? []).length > 0;
+
+  // Die Spieler eines Teams sind eigene participants-Zeilen (type='player',
+  // team_id -> Team). Nur fuer Team-Zeilen geladen; bei einem Menschen gibt es
+  // nichts zu holen.
+  const { data: members } =
+    participant.type === "team"
+      ? await supabase
+          .from("participants")
+          .select("id, display_name, gamertag, is_captain")
+          .eq("tournament_id", id)
+          .eq("team_id", pid)
+      : { data: [] };
+
+  // Captain zuerst, dann alphabetisch: bei einer Sammelanmeldung ist created_at
+  // fuer alle gleich und taugt nicht als Reihenfolge.
+  const roster = [...(members ?? [])].sort(
+    (a, b) =>
+      Number(b.is_captain) - Number(a.is_captain) ||
+      a.display_name.localeCompare(b.display_name, "de"),
+  );
+  const teamSize = tournament.team_size ?? 1;
 
   return (
     <>
@@ -137,6 +161,50 @@ export default async function ParticipantDetailPage({
               <QrCode value={participant.qr_token} size={160} ariaLabel={`QR-Code für ${participant.display_name}`} />
             </section>
           </div>
+
+          {participant.type === "team" && (
+            <section className="mt-6 rounded-2xl border border-line bg-surface p-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+                  Spieler
+                </h2>
+                <span
+                  className={`font-display text-[11px] uppercase tracking-[0.14em] ${
+                    roster.length === teamSize ? "text-lime" : "text-warn"
+                  }`}
+                >
+                  {roster.length} / {teamSize}
+                </span>
+              </div>
+
+              {roster.length === 0 ? (
+                <p className="text-sm text-fg-muted">
+                  Für dieses Team wurden keine Spieler eingetragen.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {roster.map((member) => (
+                    <li
+                      key={member.id}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line/60 bg-bg/40 px-3 py-2"
+                    >
+                      <span className="font-display font-semibold text-ink">
+                        {member.display_name}
+                      </span>
+                      {member.is_captain && (
+                        <span className="inline-flex items-center rounded-md bg-cyan/15 px-2 py-0.5 font-display text-[10px] font-medium uppercase tracking-[0.12em] text-cyan">
+                          Captain
+                        </span>
+                      )}
+                      <span className="text-sm text-fg-muted">
+                        {member.gamertag ?? "—"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
           <ParticipantDetailClient
             participantId={participant.id}

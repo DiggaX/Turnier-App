@@ -26,6 +26,7 @@ import { swissStandings } from "@/lib/swiss/standings";
 
 import { AdvanceRoundButton } from "./advance-round-button";
 import { BracketLiveShell } from "./bracket-live-shell";
+import { FreeAgentsPanel } from "./free-agents-panel";
 import { GenerateButton } from "./generate-button";
 import { GeneratePlayoffsButton } from "./generate-playoffs-button";
 import { SeedingClient } from "./seeding-client";
@@ -85,22 +86,47 @@ export default async function BracketPage({
     name: string;
     format: TournamentFormat;
     status: TournamentStatus;
+    team_size: number;
     org_id: string;
   }>(
     supabase,
     id,
     profile.org_id as string | null,
-    "id, name, format, status, org_id",
+    "id, name, format, status, team_size, org_id",
   );
 
-  // Checked-in participants in seed order (for the seeding editor).
-  const { data: checkedIn } = await supabase
+  // Alle Zeilen des Turniers in einem Zug — die Seite braucht beide Sorten:
+  // die Wettkaempfer fuer das Seeding und die Menschen fuer das
+  // Restspieler-Panel. Getrennt wird hier in JS, nicht in zwei Abfragen.
+  const { data: allRows } = await supabase
     .from("participants")
-    .select("id, display_name, seed")
+    .select("id, display_name, seed, type, team_id, checked_in_at")
     .eq("tournament_id", id)
-    .not("checked_in_at", "is", null)
-    .order("seed", { ascending: true, nullsFirst: false })
     .order("display_name", { ascending: true });
+
+  const rows = allRows ?? [];
+
+  // Seeding-Liste: eingecheckte WETTKAEMPFER, seed zuerst, Ungesetzte danach —
+  // dieselbe Reihenfolge, die generateBracket erwartet.
+  const checkedIn = rows
+    .filter((p) => p.checked_in_at !== null && p.type !== "player")
+    .sort(
+      (a, b) =>
+        (a.seed ?? Number.MAX_SAFE_INTEGER) - (b.seed ?? Number.MAX_SAFE_INTEGER) ||
+        a.display_name.localeCompare(b.display_name, "de"),
+    );
+
+  const teamSize = tournament.team_size ?? 1;
+  const teamRows = rows.filter((p) => p.type === "team");
+  const teamSlots = teamRows.map((t) => ({
+    id: t.id,
+    name: t.display_name,
+    memberCount: rows.filter((p) => p.type === "player" && p.team_id === t.id)
+      .length,
+  }));
+  const freeAgents = rows
+    .filter((p) => p.type === "player" && p.team_id === null)
+    .map((p) => ({ id: p.id, name: p.display_name }));
 
   // Existing matches, joining participant names for sides a/b via the FKs.
   const { data: rawMatches } = await supabase
@@ -275,7 +301,7 @@ export default async function BracketPage({
       .every((m) => m.status === "done" || m.status === "bye");
 
   const hasMatches = matches.length > 0;
-  const seedParticipants = (checkedIn ?? []).map((p) => ({
+  const seedParticipants = checkedIn.map((p) => ({
     id: p.id,
     display_name: p.display_name,
   }));
@@ -308,6 +334,16 @@ export default async function BracketPage({
           <BracketLiveShell tournamentId={id}>
             {!hasMatches ? (
               <div className="flex flex-col gap-8">
+              {/* Nur vor dem Generieren: danach ist der Spielplan gezogen, und
+                  ein nachtraeglich gefuelltes Team steht trotzdem nicht drin. */}
+              {teamSize > 1 && (
+                <FreeAgentsPanel
+                  tournamentId={id}
+                  teamSize={teamSize}
+                  teams={teamSlots}
+                  freeAgents={freeAgents}
+                />
+              )}
               <section className="flex flex-col gap-4">
                 <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
                   Seeding

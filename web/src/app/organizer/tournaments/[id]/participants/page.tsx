@@ -60,15 +60,32 @@ export default async function ParticipantsPage({
     "id, name, org_id, team_size",
   );
 
-  // Single query: embed consents (FK consents.participant_id -> participants.id)
-  // so PostgREST returns each participant's consent rows. No N+1.
+  // Eine Abfrage fuer beide Sorten Zeilen, danach in JS getrennt: die Spieler
+  // eines Teams sind jetzt selbst participants (type='player', team_id -> Team),
+  // team_members wird nicht mehr gelesen.
   const { data: participants } = await supabase
     .from("participants")
-    .select("id, display_name, gamertag, type, checked_in_at, consents(id)")
+    .select(
+      "id, display_name, gamertag, type, team_id, checked_in_at, consents(id)",
+    )
     .eq("tournament_id", id)
     .order("display_name", { ascending: true });
 
-  const rows = participants ?? [];
+  const all = participants ?? [];
+
+  // Gezeigt werden die WETTKAEMPFER plus die Menschen ohne Team. Wer in einem
+  // Team steht, taucht in dessen Spieler-Zahl und auf der Team-Detailseite auf
+  // — sonst stuenden 4 Teams à 3 Spielern hier als 16 Zeilen, und „16
+  // Teilnehmer" waere schlicht falsch. Ein Spieler ohne Team dagegen muss
+  // sichtbar bleiben: um den muss sich jemand kuemmern.
+  const rows = all.filter((p) => p.type !== "player" || p.team_id === null);
+  const memberCount = new Map<string, number>();
+  for (const p of all) {
+    if (p.type === "player" && p.team_id) {
+      memberCount.set(p.team_id, (memberCount.get(p.team_id) ?? 0) + 1);
+    }
+  }
+  const teamSize = tournament.team_size ?? 1;
 
   return (
     <>
@@ -128,6 +145,9 @@ export default async function ParticipantsPage({
                       Typ
                     </TableHead>
                     <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                      Spieler
+                    </TableHead>
+                    <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
                       Fotoerlaubnis
                     </TableHead>
                     <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
@@ -139,6 +159,7 @@ export default async function ParticipantsPage({
                   {rows.map((participant) => {
                     const hasConsent =
                       (participant.consents ?? []).length > 0;
+                    const rosterCount = memberCount.get(participant.id) ?? 0;
                     return (
                       <TableRow
                         key={participant.id}
@@ -157,6 +178,21 @@ export default async function ParticipantsPage({
                         </TableCell>
                         <TableCell className="text-fg-muted">
                           {TYPE_LABELS[participant.type] ?? participant.type}
+                        </TableCell>
+                        <TableCell>
+                          {participant.type === "team" ? (
+                            <span
+                              className={
+                                rosterCount === teamSize
+                                  ? "text-lime"
+                                  : "text-warn"
+                              }
+                            >
+                              {rosterCount} / {teamSize}
+                            </span>
+                          ) : (
+                            <span className="text-fg-dim">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <PhotoConsentChip granted={hasConsent} />

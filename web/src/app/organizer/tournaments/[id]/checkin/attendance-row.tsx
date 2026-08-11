@@ -15,12 +15,16 @@ export function AttendanceRow({
   displayName,
   checkedInAt,
   photoConsent,
+  showConsent = true,
 }: {
   participantId: string;
   tournamentId: string;
   displayName: string;
   checkedInAt: string | null;
   photoConsent: boolean;
+  /** Aus fuer Team-Zeilen: eine Fotoerlaubnis gehoert einem Menschen, und ein
+   *  „Keine Fotoerlaubnis"-Chip an einem Team behauptete das Gegenteil. */
+  showConsent?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -65,7 +69,9 @@ export function AttendanceRow({
         ) : (
           <span className="text-fg-dim">—</span>
         )}
-        <PhotoConsentChip granted={photoConsent} className="ml-2" />
+        {showConsent && (
+          <PhotoConsentChip granted={photoConsent} className="ml-2" />
+        )}
         {checkedInAt && (
           <span className="ml-2 text-xs text-fg-muted">
             {formatShortDateTime(checkedInAt)}

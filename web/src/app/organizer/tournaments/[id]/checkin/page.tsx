@@ -8,7 +8,6 @@ import { QrCode } from "@/components/qr-code";
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -62,26 +61,52 @@ export default async function CheckinPage({
   const tournament = await requireOrgTournament<{
     id: string;
     name: string;
+    team_size: number;
     org_id: string;
   }>(
     supabase,
     id,
     profile.org_id as string | null,
-    "id, name, org_id",
+    "id, name, team_size, org_id",
   );
 
   const { data: participants } = await supabase
     .from("participants")
-    .select("id, display_name, checked_in_at, consents(id)")
+    .select("id, display_name, type, team_id, checked_in_at, consents(id)")
     .eq("tournament_id", id);
 
-  // Sort present participants first, then by name.
-  const rows = (participants ?? []).slice().sort((a, b) => {
-    const aIn = a.checked_in_at ? 0 : 1;
-    const bIn = b.checked_in_at ? 0 : 1;
-    if (aIn !== bIn) return aIn - bIn;
-    return a.display_name.localeCompare(b.display_name, "de");
-  });
+  const all = participants ?? [];
+
+  // Am Tresen stehen MENSCHEN — die Anwesenheitsliste zeigt deshalb Personen
+  // (solo + player), nicht Team-Zeilen: ein Team kann man nicht abhaken, es
+  // kommt in Teilen an.
+  //
+  // Die Team-Zeile traegt trotzdem die Spielbereitschaft: generateBracket liest
+  // checked_in_at der WETTKAEMPFER. Vollzaehlige Teams setzt der Trigger
+  // sync_team_ready von selbst — der Block unten macht sichtbar, ob das
+  // passiert ist, und laesst die Orga ein Team auch unvollzaehlig freigeben
+  // oder eine Freigabe zuruecknehmen. Ohne ihn waere "warum steht dieses Team
+  // nicht im Bracket?" eine Frage ohne Antwort auf dem Bildschirm.
+  // Anwesende zuerst, dann alphabetisch.
+  const rows = all
+    .filter((p) => p.type !== "team")
+    .sort((a, b) => {
+      const aIn = a.checked_in_at ? 0 : 1;
+      const bIn = b.checked_in_at ? 0 : 1;
+      if (aIn !== bIn) return aIn - bIn;
+      return a.display_name.localeCompare(b.display_name, "de");
+    });
+
+  const teamSize = tournament.team_size ?? 1;
+  const teams = all
+    .filter((p) => p.type === "team")
+    .map((t) => ({
+      ...t,
+      presentCount: all.filter(
+        (p) => p.team_id === t.id && p.checked_in_at !== null,
+      ).length,
+    }))
+    .sort((a, b) => a.display_name.localeCompare(b.display_name, "de"));
 
   const origin = await getOrigin();
   const stationUrl = `${origin}/t/${id}/checkin-station`;
@@ -178,6 +203,48 @@ export default async function CheckinPage({
               </div>
             )}
           </section>
+
+          {teams.length > 0 && (
+            <section className="mt-8 flex flex-col gap-3">
+              <h2 className="font-display text-[11px] uppercase tracking-[0.18em] text-fg-dim">
+                Teams spielbereit
+              </h2>
+              <p className="text-sm text-fg-muted">
+                Das Bracket wird aus den spielbereiten Teams gezogen — nicht aus
+                den einzelnen Spielern.
+              </p>
+              <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-line hover:bg-transparent">
+                      <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                        Team
+                      </TableHead>
+                      <TableHead className="font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                        Status
+                      </TableHead>
+                      <TableHead className="text-right font-display text-[10px] uppercase tracking-[0.14em] text-fg-dim">
+                        Aktion
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {teams.map((t) => (
+                      <AttendanceRow
+                        key={t.id}
+                        participantId={t.id}
+                        tournamentId={id}
+                        displayName={`${t.display_name} · ${t.presentCount} / ${teamSize} anwesend`}
+                        checkedInAt={t.checked_in_at}
+                        photoConsent={false}
+                        showConsent={false}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </section>
+          )}
         </div>
       </main>
     </>

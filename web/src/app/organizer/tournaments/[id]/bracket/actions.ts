@@ -20,6 +20,7 @@ import type { GeneratedMatch, SeededParticipant } from "@/lib/bracket/types";
 import type { Database, TournamentFormat } from "@/lib/database.types";
 import { friendlyDbError } from "@/lib/db-errors";
 import { createClient } from "@/lib/supabase/server";
+import { COMPETITOR_TYPES } from "../participants/participant-types";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 type MatchInsert = Database["public"]["Tables"]["matches"]["Insert"];
@@ -77,11 +78,15 @@ export async function saveSeeds(
     return { error: "Doppelte Teilnehmer im Seeding." };
   }
 
-  // Load the tournament's checked-in participants and validate the input set.
+  // Load the tournament's checked-in WETTKAEMPFER and validate the input set.
+  // Same filter as generateBracket below — the seeding editor and the
+  // generation must agree on who is in the bracket, or a saved order silently
+  // stops matching what gets generated.
   const { data: checkedIn, error: loadErr } = await supabase
     .from("participants")
     .select("id")
     .eq("tournament_id", tournamentId)
+    .in("type", COMPETITOR_TYPES)
     .not("checked_in_at", "is", null);
 
   if (loadErr) {
@@ -216,13 +221,18 @@ export async function generateBracket(
     return { error: "Turnier nicht gefunden." };
   }
 
-  // Load checked-in participants ordered so that seeded ones come first (by
+  // Load checked-in WETTKAEMPFER ordered so that seeded ones come first (by
   // seed asc), unseeded ones after (by created_at). This gives a stable order
   // for assigning a clean 1..N sequence below.
+  //
+  // Der type-Filter ist der Kern des Team-Umbaus: bei 4 Teams à 3 Spielern
+  // stehen 16 Zeilen im Turnier, aber nur 4 gehoeren in den Spielplan. Ohne ihn
+  // spielen die Kinder gegen ihre eigenen Teams.
   const { data: parts, error: pErr } = await supabase
     .from("participants")
     .select("id, seed, created_at")
     .eq("tournament_id", tournamentId)
+    .in("type", COMPETITOR_TYPES)
     .not("checked_in_at", "is", null)
     .order("seed", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });

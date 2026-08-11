@@ -144,12 +144,19 @@ export async function addParticipant(
     return { error: friendlyDbError(insErr, "Teilnehmer konnte nicht angelegt werden.") };
   }
 
-  // First name is the captain, same as the public registration writes it.
+  // Die Mitglieder sind eigene participants-Zeilen (type='player', team_id ->
+  // Team), nicht mehr team_members — sonst zeigt die Teilnehmerseite fuer eine
+  // Nachmeldung ein leeres Team an. Ohne user_id und ohne Geburtsdatum: das
+  // gehoert der Person und nicht dem Tresen. Der erste Name ist der Captain,
+  // genau wie die oeffentliche Anmeldung es schreibt.
   if (isTeam) {
-    const { error: memberErr } = await guard.supabase.from("team_members").insert(
+    const { error: memberErr } = await guard.supabase.from("participants").insert(
       roster.map((m, i) => ({
-        participant_id: participant.id,
-        name: m.name,
+        tournament_id: tournamentId,
+        user_id: null,
+        type: "player" as const,
+        team_id: participant.id,
+        display_name: m.name,
         gamertag: m.gamertag,
         is_captain: i === 0,
       })),

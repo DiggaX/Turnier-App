@@ -123,6 +123,9 @@ export default async function MatchesPage({
     ),
   ];
   if (missingReporterIds.length > 0) {
+    // Bewusst ohne type-Filter: hier wird nicht aufgezaehlt, sondern zu bereits
+    // bekannten Ids der Name geholt. reported_by ist der Wettkaempfer, aber ein
+    // Filter wuerde spaeter nur dafuer sorgen, dass ein Name als „—" erscheint.
     const { data: extra } = await supabase
       .from("participants")
       .select("id, display_name")
