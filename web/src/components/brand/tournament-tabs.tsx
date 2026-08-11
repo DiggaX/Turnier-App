@@ -24,6 +24,7 @@ type TabDef = {
 const TABS: TabDef[] = [
   { label: "Übersicht", segment: "" },
   { label: "Teilnehmer", segment: "participants" },
+  { label: "Teams", segment: "teams" },
   { label: "Check-in", segment: "checkin" },
   { label: "Bracket", segment: "bracket" },
   { label: "Matches", segment: "matches" },
