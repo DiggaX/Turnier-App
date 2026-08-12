@@ -223,7 +223,8 @@ raus, ein Team ganz ohne Spieler wird abgelehnt.
 - Grund: `team_members_write_owner` keyt auf `participants.user_id = auth.uid()`, ein Walk-in hat
   kein Konto → die Aufstellung war für die Orga unerreichbar. **Live passiert:** zwei über das
   Formular angelegte 3v3-Teams („Test", „Qqqq") standen mit null Spielern im Turnier.
-- ⚠️ **Migrations-Zeitstempel-Kollision:** diese Datei heißt `20260810140000_…` wie
+- ⚠️ **Migrations-Zeitstempel-Kollision** (behoben am 2026-08-12, Datei heißt seitdem
+  `20260810143000_…` — §7.5): diese Datei hieß `20260810140000_…` wie
   `20260810140000_participant_link_writes.sql` aus der parallelen Auth-Session. Kosmetisch, weil
   hier über MCP eingespielt wird (die DB-Versionen weichen ohnehin von den Dateinamen ab) — bei
   einem `supabase db push` aber eine Stolperfalle.
@@ -801,7 +802,14 @@ Hydration-Meldung.
    sicher leben. `SUPABASE_SERVICE_ROLE_KEY` steht jetzt auch in `web/.env.example`.
    Alte Prüfquery bleibt gültig: `select count(*) from storage.objects o where bucket_id='consent-signatures' and not exists (select 1 from consents c where c.signature_path = o.name);`
 4. **Push** nie auf echtem Gerät getestet (VAPID-Keys sind gesetzt).
-5. **Datei-Hygiene:** zwei Migrationen teilen den Timestamp `20260628090000`. Live-DB korrekt, nur Datei-Kollision; bei Gelegenheit umbenennen (NICHT neu anwenden).
+5. ✅ **Erledigt (2026-08-12): Migrations-Timestamp-Kollision behoben.** ⚠️ Die alte Fassung
+   dieser Zeile nannte `20260628090000` als Duplikat — **stimmte nicht mehr**, nachgemessen:
+   dieser Stamp existiert nur einmal (`fix_participant_read_leak.sql`). Die echte Kollision
+   war `20260810140000` ×2 (die aus §5 dokumentierte Parallel-Session-Kollision);
+   `team_members_insert_staff.sql` heißt jetzt `20260810143000_…` (git mv, Inhalt unberührt,
+   NICHT neu angewandt). Gefahrlos, doppelt geprüft: `supabase_migrations.schema_migrations`
+   führt eigene MCP-Timestamps (z.B. `20260811074650`), Dateinamen sind dort nie referenziert.
+   Danach 0 Duplikate über alle Migrationsdateien.
 6. ✅ **Geleakter `sb_secret_…`-Key ist rotiert** (laut `docs/FORTSCHRITT.md` am 2026-06-18). Diese Zeile stand bis 2026-08-09 fälschlich als offen und hat zu falschen Empfehlungen geführt. Am 2026-08-09 geprüft: in der gesamten Historie taucht nur die geschwärzte Form `sb_secret_…` auf, nie ein Key-Wert; `.gitignore` deckt `.env*` ab, getrackt ist allein `web/.env.example`.
 7. ✅ **`accept_invite` gefixt** (`20260809100000_accept_invite_atomic.sql`, angewandt + bewiesen). Zwei Fehler steckten übereinander: (a) `select` → prüfen → `insert profiles` → `update` ließ zwei gleichzeitige Einlöser desselben Codes beide durch — jetzt entscheidet **ein** bedingter UPDATE (`code` ist UNIQUE, der Verlierer trifft 0 Zeilen und wirft, was sein eigenes Profil zurückrollt); die Vorabprüfungen bleiben nur für die Fehlertexte. (b) **`accept_invite` konnte noch nie funktionieren**: `org_invites.role` ist `text`, `profiles.role` der Enum `user_role`, und Postgres castet dazwischen nicht — der Insert warf bei jedem Aufruf 42804. Unentdeckt, weil nie eine Einladung existierte (`org_invites` war leer). ⚠️ **Reihenfolge nicht umdrehen:** `accepted_by` hat einen FK auf `profiles(id)`, das Profil muss vor dem UPDATE stehen. **Am 2026-08-09 erstmals echt durchgespielt** (Einladung anlegen → `/signup?invite=…` → Konto → `/organizer`): funktioniert, das Profil bekam Rolle `organizer` — womit der Enum-Cast auch produktiv bewiesen ist. Ungültige und abgelaufene Codes sperren den Absende-Button (`canSubmit`), und scheitert `accept_invite` nach der Kontoanlage, räumt `cleanupOrphanedUser` den Auth-User weg.
 8. **Supabase-Advisor** (2026-08-09): 61 Hinweise, **0 ERROR**. Die 45 „SECURITY DEFINER ist aufrufbar"-Warnungen sind bei dieser Architektur erwartbar — die Guards sitzen in den Funktionen, stichprobenartig verifiziert (`set_member_role`/`remove_member`: `is_admin()` + Org + Selbstschutz; `get_scorekeeper_tokens`: `is_staff()` + Org). Die 13 „Anonymous Access"-Warnungen sind Form, nicht Substanz: die Policies stehen auf `public`, ihre `USING`-Klauseln sind für `anon` falsch. ⚠️ **„Leaked Password Protection einschalten" ist KEIN Ein-Klick-Punkt** — am 2026-08-10 im Dashboard nachgesehen: das Feature ist „Only available on Pro plan and above", das Projekt läuft auf **Free**. Der Advisor wird es weiter melden; das ist eine Plan-Grenze, kein Versäumnis. Nicht nochmal Zeit darauf verwenden.
