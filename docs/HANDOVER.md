@@ -610,6 +610,39 @@ Orga-Matchliste UND öffentlich.
 - Kette: Implementierer → Controller (Migration + anon-Beweise) → unabhängiger Prüfer →
   Browser-Beweis. Build grün, **578** Tests grün.
 
+### Neu am 2026-08-12: e2e-Suite repariert — 29/29 grün (vorher 6)
+
+Auslöser: §7.1 + §7.29. Kette nach Dreifach-Prinzip (Finder → Fixer-Agent → unabhängiger
+Prüfer), alle Änderungen **nur in `web/e2e/`**, kein App-Code, keine Migration.
+
+- **Wurzel von 14 der 17 roten Specs war EINE Zeile:** die Fixtures suchten das Spiel
+  „Valorant", das seit dem DB-Wipe vom 2026-08-07 nicht mehr existiert. Jetzt
+  `ensureFixtureGame()` in `fixtures.ts`: nimmt „E2E Game", legt es bei Bedarf selbst an
+  (RLS `games_write_staff` erlaubt das). ⚠️ **`games(name)` hat KEINEN Unique-Constraint**
+  (per SQL geprüft) — die Fixture liest deshalb Duplikat-tolerant (`order by created_at,
+  limit 1` statt `maybeSingle`), sonst wäre ein einziges Doppel für jeden Lauf tödlich.
+- **Drei Specs hingen an gestorbenen Produktionsdaten** und tun es jetzt nicht mehr:
+  `tournament-detail` (griff sich das erstbeste offene Turnier — es gab keins mehr) und
+  `organizer-checkin`/`organizer-participants` (klickten hartkodiert „Sommer Cup" im
+  Dashboard — archiviert) laufen auf eigenen Wegwerf-Turnieren via `withFixtureTournament`;
+  die Organizer-Specs legen sich per `registerAndCheckIn` einen Teilnehmer an, weil die
+  Seiten bei 0 Teilnehmern nur den Leer-Hinweis rendern, keine Tabelle. `multi-tenant`
+  lädt die Org dynamisch statt „eventpilot" zu erwarten.
+- **`double-elim` hatte zwei eigene Ursachen:** (1) `generateBracket` macht für Double-Elim
+  ~20 sequenzielle DB-Roundtrips und lief zusätzlich hinter dem `router.refresh()` der
+  Seeding-Transition — 5s-Default-Erwartung riss; die Spec wartet jetzt auf den wieder
+  aktiven Speichern-Knopf und gibt der Bracket-View 20 s. (2) Die Match-Karten-Zählung
+  selektierte `rounded-[10px]`, `match-card.tsx` ist längst `rounded-[8px]` → Count 0.
+- **Beweis:** kompletter Lauf 29/29 grün (2,4 min), Login-Konto `test@test.de` (Rolle
+  admin, in `auth.users` verifiziert). ⚠️ Creds liefen als Shell-Env — **`web/.env.local`
+  trägt noch die alten, ungültigen Werte** und ist für Agents schreibgesperrt; Rene muss
+  `E2E_ORG_EMAIL`/`E2E_ORG_PASSWORD` dort selbst nachziehen (§7.29).
+- Nebenbei: 19 Müll-Dateien (0 Byte) aus dem Root gelöscht, drei davon frisch von heute
+  09:00–09:15 — §7.15 bleibt offen, die Quelle produziert weiter.
+- Nebenbefund fürs Protokoll (App-Code, bewusst nicht angefasst): `generateBracket` schickt
+  die Winner-/Loser-Link-UPDATEs einzeln — ein Batch würde Sekunden sparen; und in den
+  Dev-Server-Logs steht ein React-Hydration-Mismatch in `PushOptIn` (§7.36).
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - ⚠️ **Wer antritt, entscheidet `participants.type` — NIEMALS `team_id`.** Wettkämpfer =
   `type in ('solo','team')`, Mensch = `type in ('solo','player')`. Ein `player` ohne Team trägt
@@ -650,7 +683,11 @@ Orga-Matchliste UND öffentlich.
 - **Iteration 2** (`55d2c32`): Der Platzhalter „Handscanner bereit" ist ersatzlos raus — er wiederholte nur den Modus-Schalter und schob das Ergebnis nach unten. Im Handscanner-Modus steht die Ergebnis-Karte jetzt ganz oben, im Kamera-Modus liegt sie als **Overlay über dem Livebild** (`variant="overlay"` in `scan-result-card.tsx`). ⚠️ **Die Ton-Füllungen sind durchscheinend** (`bg-lime/10` usw.) — über Video braucht die Karte eine deckende Ebene, und die muss ein **eigenes Element** sein: zwei Hintergrund-Utilities auf einem Knoten entscheidet die Stylesheet-Reihenfolge, nicht die Reihenfolge im `class`-String. Idle rendert im Overlay nur `sr-only`, der `aria-live`-Container bleibt aber montiert (eine Live-Region, die zusammen mit ihrer ersten Meldung erscheint, wird unzuverlässig vorgelesen).
 - **Anwesenheitsliste synct nach Scans:** `handleToken` ruft im Erfolgszweig `router.refresh()` (aktualisiert Tabelle **und** den „x von y anwesend"-Zähler, Client-State bleibt erhalten). Bewusst **nur** bei Erfolg — „schon anwesend" bricht vor dem RPC ab, Fehler schreiben nichts. Kein Realtime: andere Geräte sieht man weiterhin erst beim eigenen Reload.
 - **Manueller Check-in:** neue `checkin_method` **`manual`** (`20260808090000_manual_checkin.sql`) + Server-Action `manualCheckIn` und ein „Einchecken"-Knopf in der Anwesenheitsliste — Gegenstück zu „Zurücksetzen", für kaputten QR oder leeres Handy. Guard brauchte keine Änderung: `check_in` behandelt seit dem Kanal-Commit jede Methode außerhalb der Self-Service-Allowlist automatisch als Staff-only. Ende-zu-Ende verifiziert (Zeile mit `method='manual'` in `check_ins`).
-1. **e2e am 2026-08-10 ausgeführt — 19 von 28 rot, beide Ursachen liegen NICHT im Code:**
+1. ✅ **Erledigt (2026-08-12): Suite läuft 29/29 grün.** Genau die unten empfohlene Umstellung
+   ist passiert — alle Specs, die sich fremde Produktionsdaten griffen (offenes Turnier,
+   „Sommer Cup"-Link, Org „eventpilot", Spiel „Valorant"), legen ihre Fixtures jetzt selbst an.
+   Details im §5-Changelog „e2e-Suite repariert". Historie:
+   **e2e am 2026-08-10 ausgeführt — 19 von 28 rot, beide Ursachen liegen NICHT im Code:**
    (a) **Kein Turnier steht mehr auf `registration`.** Vier Specs (`register-*`, `checkin-*`) greifen
    sich per `.eq("status","registration").limit(1).single()` das erstbeste offene Turnier; gibt es
    keins, sterben sie mit *„Cannot coerce the result to a single JSON object"*, und „Sommer Cup 2026"
@@ -869,11 +906,14 @@ Orga-Matchliste UND öffentlich.
     Datenbank. Spaltenrechte gelten pro Postgres-Rolle, und alle drei App-Rollen **sind** dieselbe
     Rolle `authenticated`. Eine echte Trennung braucht eine View oder eine DEFINER-Funktion mit fester
     Spaltenauswahl. Steht so auch im Code und in `20260811110000`.
-29. 🟡 **`E2E_ORG_EMAIL` / `E2E_ORG_PASSWORD` in `.env.local` sind ungültig** („Invalid login
-    credentials"). Seit die Registrierungs-Specs ihr **eigenes** Wegwerf-Turnier anlegen (statt sich
-    das erstbeste offene zu greifen), brauchen sie Staff-Rechte und scheitern ohne gültige Zugangsdaten
-    in `beforeAll`. Erneuern → dann läuft auch der neue `register-team.spec.ts`, der als Einziger den
-    Team-Beitritt end-to-end prüft.
+29. 🟡 **Fast erledigt (2026-08-12) — ein Handgriff für Rene bleibt.** Gültiges Konto ist
+    `test@test.de` / `12345678` (Rolle admin, verifiziert); damit lief die komplette Suite
+    inkl. `register-team.spec.ts` grün. ⚠️ **Aber:** die Creds liefen als Shell-Env
+    (`E2E_ORG_EMAIL='test@test.de' E2E_ORG_PASSWORD='12345678' npx playwright test`) —
+    `web/.env.local` trägt noch die alten, ungültigen Werte und ist für Agents gesperrt
+    (Permission-Deny, korrekt so). **Rene: die zwei Zeilen dort selbst nachziehen**, dann
+    läuft die Suite auch ohne Env-Präfix. Shell-Env gewinnt gegen `.env.local` (Nexts
+    `loadEnvConfig` überschreibt gesetzte Variablen nicht).
 30. 🟢 **„Partie starten" kann nur starten, nicht zählen oder beenden.** `start_match_as_player`
     (`20260811130000`) setzt `status='live'`. Zählen bleibt beim Scorekeeper (ein zweiter paralleler
     Zähler würde ihn überschreiben), Beenden auch (daraus baut `scorePrefill` den Freigabe-Vorschlag,
@@ -938,6 +978,19 @@ Orga-Matchliste UND öffentlich.
     handgesetztes Seeding wird nicht stillschweigend überschrieben). Randnotiz aus der Forensik: im
     konkreten Vorfall hätte Mischen nichts geändert (N=2 hat nur eine Paarung); der gemeldete Fall
     „zwei gleichstarke Teams in Runde 1" stammt aus einer größeren Auslosung.
+
+### Neu offen aus dem 2026-08-12 (e2e-Reparatur)
+
+36. 🟢 **React-Hydration-Mismatch in `PushOptIn`** (`t/[tournamentId]/me/push-opt-in.tsx:38`),
+    beim e2e-Lauf in den Dev-Server-Logs aufgefallen: Server rendert das
+    „Match-Benachrichtigungen"-Panel, Client ersetzt es durch den „✅ Eingecheckt"-Status —
+    klassischer Fall von Client-only-State (vermutlich Push-Subscription/Permission wird beim
+    ersten Render gelesen). Kein Testausfall, aber React verwirft dabei den Server-Baum.
+    Üblicher Fix: den Zustand erst nach `useEffect`-Mount auswerten.
+37. 🟢 **`generateBracket` schickt Winner-/Loser-Link-UPDATEs einzeln** (~20 sequenzielle
+    Roundtrips bei Double-Elim) — deshalb braucht die `double-elim`-Spec einen 20s-Timeout.
+    Ein Batch-Update würde die Aktion um Sekunden beschleunigen und den Sonder-Timeout
+    überflüssig machen. Reine Performance, kein Korrektheitsproblem.
 
 ## 8. Datei-Landkarte
 - `web/src/app/` — Routen. Öffentlich: `page.tsx`, `o/[slug]/`, `t/[tournamentId]/{,register,me,board,checkin-station}`. Auth: `(auth)/login`, `(auth)/signup`, `auth/confirm/route.ts`, `link/[token]/route.ts` (Geräte-Kopplung). Organizer: `organizer/`, `games`, `members` (Org-Name + Geräte + Mitglieder), `tournaments/[id]/{,bracket,matches,participants,checkin,station}`. Scorekeeper: `score/[token]/`.

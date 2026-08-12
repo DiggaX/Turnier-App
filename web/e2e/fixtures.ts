@@ -37,17 +37,46 @@ export async function staffClient(): Promise<SupabaseClient> {
   return client;
 }
 
-/** Resolve the Valorant game id (the game the format fixtures use). */
-export async function getValorantGameId(client: SupabaseClient): Promise<string> {
-  const { data, error } = await client
-    .from("games")
-    .select("id")
-    .eq("name", "Valorant")
-    .single();
-  if (error || !data) {
-    throw new Error(`Could not load Valorant game: ${error?.message ?? "none"}`);
+/**
+ * Resolve the id of "E2E Game", creating it if missing. The game belongs to the
+ * fixtures, not production — specs must not depend on any production game
+ * existing (the DB wipe on 2026-08-07 proved why). The caller passes the
+ * staff client; games RLS allows staff to insert.
+ *
+ * games(name) has NO unique constraint, so parallel runs may have left
+ * duplicate "E2E Game" rows. The read tolerates that by taking the oldest row
+ * instead of demanding exactly one.
+ */
+export async function ensureFixtureGame(staff: SupabaseClient): Promise<string> {
+  const readOldest = () =>
+    staff
+      .from("games")
+      .select("id")
+      .eq("name", "E2E Game")
+      .order("created_at")
+      .limit(1);
+
+  const { data, error } = await readOldest();
+  if (error) {
+    throw new Error(`Could not read fixture game: ${error.message}`);
   }
-  return data.id as string;
+  if (data?.[0]) return data[0].id as string;
+
+  const { data: created, error: insertErr } = await staff
+    .from("games")
+    .insert({ name: "E2E Game" })
+    .select("id")
+    .single();
+  if (created) return created.id as string;
+
+  // Defensiv: falls ein paralleler Lauf das Spiel inzwischen angelegt hat.
+  const { data: retry, error: retryErr } = await readOldest();
+  if (retry?.[0]) return retry[0].id as string;
+  throw new Error(
+    `Could not ensure fixture game: insert failed (${
+      insertErr?.message ?? "none"
+    }), re-select ${retryErr ? `failed (${retryErr.message})` : "found no rows"}`,
+  );
 }
 
 /** Resolve the organizer's org_id — staff write RLS requires org_id = current_org_id(). */
@@ -308,7 +337,7 @@ export async function createFixtureTournament(
     teamSize?: number;
   },
 ): Promise<string> {
-  const gameId = await getValorantGameId(staff);
+  const gameId = await ensureFixtureGame(staff);
   const orgId = await getOrgId(staff);
   const name = `${opts.namePrefix} ${Date.now()}-${Math.floor(
     Math.random() * 1e6,

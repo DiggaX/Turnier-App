@@ -1,44 +1,33 @@
 import { test, expect } from "@playwright/test";
-import { createClient } from "@supabase/supabase-js";
+import { hasOrgCreds, staffClient, withFixtureTournament } from "./fixtures";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-
-async function getOpenTournament(): Promise<{
-  id: string;
-  name: string;
-  slug: string;
-}> {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data, error } = await supabase
-    .from("tournaments")
-    .select("id, name, organizations(slug)")
-    .eq("status", "registration")
-    .limit(1)
-    .single();
-  if (error || !data) {
-    throw new Error(
-      `Could not load an open tournament: ${error?.message ?? "none found"}`,
-    );
-  }
-  const org = data.organizations as { slug: string } | { slug: string }[] | null;
-  const slug = Array.isArray(org) ? org[0]?.slug : org?.slug;
-  if (!slug) {
-    throw new Error("Open tournament has no organization slug");
-  }
-  return { id: data.id as string, name: data.name as string, slug };
-}
+// Eigenes Wegwerf-Turnier statt "erstbestes Turnier in registration" aus der
+// Produktions-DB — genau das Borgen fremder Daten, vor dem der Doc-Kommentar
+// von withFixtureTournament warnt (und seit dem DB-Wipe gibt es ohnehin kein
+// offenes Turnier mehr zu borgen).
+test.skip(!hasOrgCreds, "E2E_ORG_EMAIL/E2E_ORG_PASSWORD not set");
+const tournamentId = withFixtureTournament({ namePrefix: "E2E Detail" });
 
 test("tournament detail shows title, register CTA and phase stepper", async ({
   page,
 }) => {
-  expect(SUPABASE_URL, "NEXT_PUBLIC_SUPABASE_URL must be set").not.toBe("");
-  expect(
-    SUPABASE_ANON_KEY,
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY must be set",
-  ).not.toBe("");
+  const id = tournamentId();
 
-  const { id, name, slug } = await getOpenTournament();
+  // Name und Org-Slug direkt am eigenen Fixture-Turnier nachschlagen — nichts
+  // hardcoden, die Spec kennt nur die Id.
+  const staff = await staffClient();
+  const { data, error } = await staff
+    .from("tournaments")
+    .select("name, organizations(slug)")
+    .eq("id", id)
+    .single();
+  if (error || !data) {
+    throw new Error(`Could not load fixture tournament: ${error?.message ?? "none"}`);
+  }
+  const name = data.name as string;
+  const org = data.organizations as { slug: string } | { slug: string }[] | null;
+  const slug = Array.isArray(org) ? org[0]?.slug : org?.slug;
+  if (!slug) throw new Error("Fixture tournament has no organization slug");
 
   // Reach the detail page from the home → org directory → tournament "Details"
   // link. Tournament listings live on the org page (/o/<slug>) since the

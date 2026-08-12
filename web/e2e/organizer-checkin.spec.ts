@@ -1,27 +1,28 @@
 import { test, expect } from "@playwright/test";
+import {
+  hasOrgCreds,
+  loginAsOrganizer,
+  registerAndCheckIn,
+  withFixtureTournament,
+} from "./fixtures";
 
-const email = process.env.E2E_ORG_EMAIL,
-  password = process.env.E2E_ORG_PASSWORD;
-test.skip(!email || !password, "organizer creds not configured");
+// Eigenes Wegwerf-Turnier statt Dashboard-Klick auf das hartkodierte
+// "Sommer Cup" (finished + archiviert, taucht im Dashboard nicht mehr auf).
+test.skip(!hasOrgCreds, "organizer creds not configured");
+const tournamentId = withFixtureTournament({ namePrefix: "E2E Checkin" });
+
+// Ohne Teilnehmer rendert die Seite nur den Leer-Hinweis, keine Tabelle —
+// also einen eingecheckten Teilnehmer anlegen. Laeuft nach dem beforeAll der
+// Fixture (Playwright fuehrt beforeAll-Hooks in Registrierungsreihenfolge aus).
+test.beforeAll(async () => {
+  await registerAndCheckIn(tournamentId(), `E2E Checkin P ${Date.now()}`);
+});
 
 test("organizer check-in page shows station QR and attendance table", async ({
   page,
 }) => {
-  await page.goto("/login");
-  await page.getByLabel(/e-?mail/i).first().fill(email!);
-  await page.getByLabel(/passwort|password/i).fill(password!);
-  await page.getByRole("button", { name: /anmelden/i }).first().click();
-  await expect(page).toHaveURL(/\/organizer/);
-
-  // The dashboard link lands on the tournament overview; capture the id from
-  // that URL, then open the check-in route for the same tournament.
-  await page.getByRole("link", { name: /sommer cup/i }).click();
-  await expect(page).toHaveURL(/\/organizer\/tournaments\/[^/]+$/);
-  const match = page.url().match(/\/tournaments\/([^/?#]+)/);
-  const id = match?.[1];
-  expect(id, "could not resolve tournament id").toBeTruthy();
-
-  await page.goto(`/organizer/tournaments/${id}/checkin`);
+  await loginAsOrganizer(page);
+  await page.goto(`/organizer/tournaments/${tournamentId()}/checkin`);
 
   // Scanner container + title render (camera feed itself is not asserted —
   // headless has no camera and may show a permission prompt).
@@ -34,5 +35,5 @@ test("organizer check-in page shows station QR and attendance table", async ({
   ).toBeVisible();
 
   // Attendance list table renders.
-  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByRole("table").first()).toBeVisible();
 });

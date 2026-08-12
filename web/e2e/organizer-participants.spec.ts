@@ -1,16 +1,30 @@
 import { test, expect } from "@playwright/test";
-const email = process.env.E2E_ORG_EMAIL, password = process.env.E2E_ORG_PASSWORD;
-test.skip(!email || !password, "organizer creds not configured");
-test("organizer sees participants with photo consent status", async ({ page }) => {
-  await page.goto("/login");
-  await page.getByLabel(/e-?mail/i).first().fill(email!);
-  await page.getByLabel(/passwort|password/i).fill(password!);
-  await page.getByRole("button", { name: /anmelden/i }).first().click();
-  await expect(page).toHaveURL(/\/organizer/);
-  await page.getByRole("link", { name: /sommer cup/i }).click();
-  // Dashboard links to the tournament overview; the participants table lives
-  // under the "Teilnehmer" tab.
-  await expect(page).toHaveURL(/\/organizer\/tournaments\/[^/]+$/);
-  await page.getByRole("link", { name: /teilnehmer/i }).click();
+import {
+  hasOrgCreds,
+  loginAsOrganizer,
+  registerAndCheckIn,
+  withFixtureTournament,
+} from "./fixtures";
+
+// Eigenes Wegwerf-Turnier statt Dashboard-Klick auf das hartkodierte
+// "Sommer Cup" (finished + archiviert, taucht im Dashboard nicht mehr auf).
+// Ohne Teilnehmer rendert die Seite nur den Leer-Hinweis, keine Tabelle —
+// registerAndCheckIn liefert genau, was die Spec sehen will: einen Teilnehmer
+// samt Consent-Zeile (Fotoerlaubnis-Spalte).
+test.skip(!hasOrgCreds, "organizer creds not configured");
+const tournamentId = withFixtureTournament({ namePrefix: "E2E Participants" });
+
+const displayName = `E2E Part P ${Date.now()}`;
+test.beforeAll(async () => {
+  await registerAndCheckIn(tournamentId(), displayName);
+});
+
+test("organizer sees participants with photo consent status", async ({
+  page,
+}) => {
+  await loginAsOrganizer(page);
+  await page.goto(`/organizer/tournaments/${tournamentId()}/participants`);
+
   await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByText(displayName)).toBeVisible();
 });

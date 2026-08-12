@@ -65,11 +65,20 @@ test("organizer generates and views a double-elim bracket (WB / LB / GF)", async
   await page.getByRole("button", { name: /zufällig setzen/i }).click();
   await page.getByRole("button", { name: /seeding speichern/i }).click();
   await expect(page.getByText(/gespeichert/i)).toBeVisible();
+  // "Gespeichert ✓" erscheint VOR dem router.refresh() der Speichern-Transition.
+  // Erst wenn der Knopf wieder "Seeding speichern" heisst (statt "Speichere…"),
+  // ist der Refresh durch — sonst reiht sich generateBracket dahinter ein.
+  await expect(
+    page.getByRole("button", { name: /^seeding speichern$/i }),
+  ).toBeEnabled();
   await page.getByRole("button", { name: /^generieren$/i }).click();
 
-  // (2) The double-elim view renders all three section headings.
+  // (2) The double-elim view renders all three section headings. Generieren
+  // macht fuer Double-Elim ~20 sequenzielle Roundtrips gegen die Live-DB
+  // (Insert + je ein UPDATE pro Winner-/Loser-Link) und braucht damit laenger
+  // als die 5s Default-Erwartung — Swiss (2 Matches, keine Links) taeuscht.
   const deView = page.getByTestId("double-elim-view");
-  await expect(deView).toBeVisible();
+  await expect(deView).toBeVisible({ timeout: 20_000 });
   await expect(
     deView.getByRole("heading", { name: /^winner bracket$/i }),
   ).toBeVisible();
@@ -81,9 +90,11 @@ test("organizer generates and views a double-elim bracket (WB / LB / GF)", async
   ).toBeVisible();
 
   // N=4 double-elim = 6 matches (WB 3 + LB 2 + GF 1); each renders one card with
-  // two named rows. The match cards are the bordered containers holding the rows.
+  // two named rows. The match cards are the bordered rounded-[8px] containers
+  // (see brand/match-card.tsx — the radius changed once already; a testid there
+  // waere App-Code und ist hier tabu, also haengt der Zaehler an der Klasse).
   const cardCount = await deView
-    .locator("div.rounded-\\[10px\\].border")
+    .locator("div.rounded-\\[8px\\].border")
     .count();
   expect(cardCount).toBe(6);
 
