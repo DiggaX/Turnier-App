@@ -713,6 +713,29 @@ Zwei Builder-Agents parallel, ein unabhängiger Reviewer, Läufe seriell. Suite 
   verworfen (Playwright erlaubt das auf Dateiebene; serial überspringt Folgetests nach Rot).
 - Wieder eine Müll-Datei während der Builder-Läufe (`p.is_captain)`, 17:07) — §7.15(d)-Muster.
 
+### Neu am 2026-08-12 (Abend, 3. Runde): §7.2 + §7.28 zu — Magic-Link cross-device, Geburtsdatum-Lockdown
+
+Details an den Punkten selbst; hier die Kette und die Lehrstücke:
+
+- **§7.2 (Magic Link):** Kette Erkundung → „null Code nötig" (Route war typ-agnostisch,
+  Geräte-Kopplung fuhr die Linkform längst) → Renes Dashboard-Edit landete im FALSCHEN
+  Template (Confirm signup) → mit Renes Freigabe des vorhandenen `sbp_`-Tokens beide
+  Templates per **Management-API** repariert → Testmail → Linkform-Beweis im Resend-Log →
+  **Fremdbrowser-Beweis komplett agentisch** (sessionloser Browser-Pane → eingeloggt auf
+  `/organizer`). Neuer Arbeitsmodus: Auth-Config (Templates, Schalter) kann der Agent jetzt
+  selbst setzen — Token liegt in `.mcp.json`, wird nie ausgegeben.
+- **§7.28 (Lockdown):** Kette Builder (mit dem No-op-Fang) → Review (null Befunde) →
+  Migration von mir angewandt → **beim Beweisen das anon-Default-Grant-Loch gefunden und
+  geschlossen** → alle Rollen-Beweise in zurückgerollten Transaktionen → Suite. ⚠️ Der
+  erste Suite-Lauf direkt danach war 4× rot (groups-playoffs, nachmeldung#2) — Ursache
+  waren Reste eines parallel-belasteten, abgewürgten Laufs, NICHT der Lockdown; auf idler
+  Maschine 35/35 grün. Merksatz: Suite-Läufe nie parallel zu Mail-/API-/Browser-Arbeit.
+- Nebenbei zwei verwaiste Agent-Worktrees unter `.claude/worktrees/` gefunden
+  (hungry-thompson: sauber, Stand 10.08.; competent-lamarr: unregistriert, enthielt NUR
+  drei 0-Byte-Müll-Dateien vom 11.08. 19:06 mit denselben Namen wie der Root-Müll vom
+  12.08. 09:15 — §7.15-Datenpunkt: der Erzeuger schreibt identische Textfragmente an
+  verschiedene Orte). Aufräumen (worktree remove + rm) liegt bei Rene, Kommandos im Chat.
+
 ### Neu am 2026-08-12 (Abend, 2. Runde): §7.36 + §7.37 behoben
 
 Kleinpaket, beide Funde aus der heutigen e2e-Offensive. Builder-Agent → unabhängiger Review
@@ -744,7 +767,7 @@ Hydration-Meldung.
 - **PII-Modell:** `anon` hat nur Spalten-GRANT auf `participants(id, tournament_id, display_name)`. Öffentliche Seiten lesen über **`createPublicClient()`**.
 - ⚠️ **`createPublicClient()` ist `async` und ruft `await connection()`.** Jede öffentliche Seite MUSS `await createPublicClient()` schreiben. Ohne das friert Next die Seite beim Build ein und Produktion zeigt den Datenstand vom letzten Deploy (genau dieser Bug war live).
 - ⚠️ **Datum/Zeit immer über `@/lib/format-date`**, nie roh `toLocaleString`. Ohne fixe Zeitzone rendert der Server in UTC (Vercel) → Zeiten 2 h falsch, und in Client-Komponenten bricht React die Hydration ab (#418), wodurch die Komponente **keine Klick-Handler** mehr anhängt. Genau so war „Handy verbinden" auf Prod tot, während es lokal lief.
-- **Auth-Flows:** `/auth/confirm` behandelt **beides** — `?code=` (PKCE, Standard bei `@supabase/ssr`, Tokens tragen Präfix `pkce_`) und `?token_hash=` (admin-generiert, für Geräte-Kopplung). PKCE ist an den anfordernden Browser gebunden → normale Magic Links funktionieren **nicht cross-device**. Für cross-device müsste das Supabase-Mail-Template auf `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink` umgestellt werden; der Code kann beides.
+- **Auth-Flows:** `/auth/confirm` behandelt **beides** — `?code=` (PKCE, Standard bei `@supabase/ssr`) und `?token_hash=` (Geräte-Kopplung UND seit dem 2026-08-12 die Magic-Link-Mail). Das Magic-Link-Template steht auf `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink` → **Magic Links öffnen cross-device** (§7.2, end-to-end bewiesen). ⚠️ Frühere Fassungen dieser Zeile begründeten das Nicht-cross-device mit „PKCE ist an den Browser gebunden" — halbrichtig: das Präfix band nur den `?code=`-Pfad, `verifyOtp` mit `token_hash` braucht keinen Verifier. Der Grund war allein die Linkform.
 - **Magic Link legt keine Konten an** (`shouldCreateUser: false`) — sonst entstehen Waisen-Accounts ohne Profil, die sich einloggen und kommentarlos aus `/organizer` fliegen.
 - **Geräte-Kopplung:** Tabelle `device_pairings` hat **RLS an und absichtlich KEINE Policies** → nur per Service-Role erreichbar. Token: 32 Byte, 2 Min, nur sha256 gespeichert, Einlösung per **einem** bedingten UPDATE (select-dann-update ließe zwei Scans durch). Braucht `SUPABASE_SERVICE_ROLE_KEY` (siehe §3).
 - ⚠️ **`auth.sessions.user_agent` ist bei serverseitigem Auth immer `"node"`**, die IP die des Servers. Als Gerätename unbrauchbar — der echte User-Agent wird bei der Kopplung selbst mitgeschrieben und über `session_id` (aus dem JWT-Claim) an die Session gehängt.
@@ -780,13 +803,21 @@ Hydration-Meldung.
    (`e2e/fixtures.ts`), statt sich fremde Produktionsdaten zu greifen — solange sie das nicht tun,
    ist die Suite bei jedem echten Turnierende rot **und** sie schreibt Testteilnehmer in ein
    laufendes Event.
-2. **Cross-Device: für Reset erledigt, für Magic Link weiter offen.** Am 2026-08-10 wurde **nur** das
-   *Reset-Password*-Template auf die `token_hash`-Form umgestellt (bewusst, das Magic-Link-Template ist
-   eine eigene Entscheidung). ⚠️ **Und dabei fiel eine Annahme in §6 um:** der Token in der Mail trägt
-   weiterhin das Präfix `pkce_`, **öffnet aber trotzdem in jedem Browser**. Empirisch geprüft, nicht
-   hergeleitet. Das Präfix bindet nur den `?code=`-Pfad über `exchangeCodeForSession`; `verifyOtp` mit
-   `token_hash` braucht den Verifier nicht. Wer den Magic Link umstellt, sollte also nicht mit
-   „PKCE geht sowieso nicht cross-device" argumentieren — der Grund ist allein die Linkform.
+2. ✅ **Erledigt (2026-08-12): Magic Link ist cross-device.** Kernbefund der Erkundung: **null
+   Code-Änderung nötig** — `/auth/confirm` war schon typ-agnostisch, und die Form
+   `token_hash + type=magiclink` fuhr die Geräte-Kopplung täglich in Produktion. Die gesamte
+   Umstellung war das Mail-Template. ⚠️ **Lehrstück dabei:** Renes Dashboard-Edit landete
+   zuerst im *Confirm-signup*-Template (per Management-API-GET aufgedeckt:
+   `confirmation_content` trug das Magic-Link-HTML, `magic_link_content` war noch Default).
+   Beides per Management-API repariert — seit Rene den vorhandenen `sbp_`-Token (aus
+   `.mcp.json`, wird nie ausgegeben) freigegeben hat, kann der Agent Auth-Config selbst
+   setzen: Magic-Link-Template auf `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink`
+   (deutscher Text, Betreff „Dein Anmelde-Link — Turnier-App"), Signup-Template zurück auf
+   Supabase-Default. **End-to-end bewiesen, komplett agentisch:** Testmail ausgelöst →
+   Resend-Log `sent`, Linkform `token_hash=…&type=magiclink` direkt auf die App-Domain →
+   Link im sessionlosen Browser-Pane geöffnet → „EINGELOGGT ALS ORGANIZER" auf `/organizer`.
+   Historie (bleibt wichtig): das `pkce_`-Präfix band nur den `?code=`-Pfad; `verifyOtp`
+   mit `token_hash` braucht keinen Verifier — der Cross-Device-Blocker war allein die Linkform.
 3. ✅ **Erledigt (2026-08-12): 45 verwaiste Unterschriften gelöscht, Leck gestopft.** Aus den 39
    waren inzwischen 45 geworden — die Quelle war die e2e-Suite selbst: `register-minor` malt pro
    Lauf eine echte Unterschrift, das Turnier-Delete des Fixtures cascadet nur DB-Zeilen, nie
@@ -1039,10 +1070,24 @@ Hydration-Meldung.
     chirurgisch entfernt — **kein** Generator-Vollersatz, der hätte die handgepflegten
     Nullability-Fixes an RPC-Returns überschrieben (bekannte Generator-Schwäche, §7.32).
     Danach 580 Unit-Tests + Build grün.
-28. 🟡 **Geburtsdatum ist vor dem Schiedsrichter nur in der Oberfläche versteckt**, nicht in der
-    Datenbank. Spaltenrechte gelten pro Postgres-Rolle, und alle drei App-Rollen **sind** dieselbe
-    Rolle `authenticated`. Eine echte Trennung braucht eine View oder eine DEFINER-Funktion mit fester
-    Spaltenauswahl. Steht so auch im Code und in `20260811110000`.
+28. ✅ **Erledigt (2026-08-12): Geburtsdatum ist jetzt AUCH in der Datenbank gesperrt**
+    (Migration `20260812200000_birthdate_referee_lockdown.sql`, angewandt + bewiesen).
+    Mechanik: Tabellen-SELECT für `authenticated` widerrufen + explizite Spaltenliste ohne
+    `birthdate` zurückgeben (das `anon`-Muster aus `20260621093000`); einziger Leseweg zurück
+    ist die DEFINER-Funktion `get_participant_birthdate(uuid)` — NULL für alle außer
+    Organizern der eigenen Org. Die Detailseite (`participants/[pid]/page.tsx`) holt das
+    Datum jetzt per RPC. Drei Lehrstücke, alle beim Bauen/Beweisen gefunden:
+    (a) ein bloßes `revoke select (birthdate)` wäre ein **stiller No-op** gewesen — Spalten-
+    REVOKE nimmt nur Spalten-GRANTs, das Tabellenrecht deckte weiter alles (Builder-Fang);
+    (b) eine `security_invoker`-View scheidet aus — sie dürfte die Spalte nach dem Revoke
+    selbst nicht lesen (Invoker-Paradox); (c) ⚠️ **Supabase-Default-Privileges granten
+    EXECUTE bei CREATE FUNCTION direkt an anon** — das `revoke from public` traf den Grant
+    nicht (`proacl` zeigte `anon=X`), erst ein explizites `revoke from anon` schloss die Tür.
+    Beweise in zurückgerollten Transaktionen: Referee Direkt-Select → 42501, erlaubte
+    Spalten ok, RPC → NULL; Admin RPC → Datum, Direkt-Select → ebenfalls 42501 (EIN
+    Leseweg für alle); anon RPC → 42501, Board-Select unverändert; unbekannte Id → NULL.
+    Gewollte Nebenwirkung: neue participants-Spalten sind für `authenticated` erst nach
+    explizitem Grant lesbar.
 29. ✅ **Erledigt (2026-08-12).** Gültiges Konto `test@test.de` / `12345678` (Rolle admin,
     verifiziert), damit lief die komplette Suite inkl. `register-team.spec.ts` grün. Rene hat
     `E2E_ORG_EMAIL`/`E2E_ORG_PASSWORD` in `web/.env.local` selbst nachgezogen (für Agents

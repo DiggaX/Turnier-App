@@ -51,12 +51,20 @@ export default async function ParticipantDetailPage({
   const { data: participant } = await supabase
     .from("participants")
     .select(
-      "id, display_name, gamertag, birthdate, type, qr_token, checked_in_at, consents(id)",
+      "id, display_name, gamertag, type, qr_token, checked_in_at, consents(id)",
     )
     .eq("id", pid)
     .eq("tournament_id", id)
     .maybeSingle();
   if (!participant) notFound();
+
+  // Das Geburtsdatum kommt seit Migration 20260812200000 nicht mehr aus der
+  // Spalte (authenticated hat dort kein SELECT mehr), sondern nur noch aus
+  // dieser DEFINER-Funktion. Immer aufrufen, keine Rollen-Verzweigung: fuer
+  // alle ausser Organizern der eigenen Org liefert sie NULL.
+  const { data: birthdate } = await supabase.rpc("get_participant_birthdate", {
+    p_participant_id: pid,
+  });
 
   const hasConsent = (participant.consents ?? []).length > 0;
 
@@ -129,18 +137,18 @@ export default async function ParticipantDetailPage({
                 {/*
                   Fuer den Schiedsrichter ausgeblendet. Er braucht es nicht: ob
                   eine Fotoerlaubnis vorliegt, steht als eigene Zeile darunter,
-                  und mehr entscheidet am Tresen nichts. Ehrlich dazu gesagt —
-                  auf Datenbank-Ebene kann er die Spalte weiterhin lesen:
-                  Spalten-Rechte gelten pro Postgres-Rolle, und alle drei
-                  App-Rollen sind dieselbe Rolle 'authenticated'. Eine echte
-                  Trennung braeuchte eine View oder eine DEFINER-Funktion mit
-                  fester Spaltenauswahl.
+                  und mehr entscheidet am Tresen nichts. Seit Migration
+                  20260812200000 trennt auch die Datenbank wirklich:
+                  authenticated hat kein SELECT mehr auf participants.birthdate,
+                  der einzige Leseweg ist die DEFINER-Funktion
+                  get_participant_birthdate — und die gibt nur Organizern der
+                  eigenen Organisation etwas heraus, allen anderen NULL.
                 */}
                 <dd className="text-fg-muted">
                   {profile.role === "referee"
                     ? "— (nur für die Turnierleitung)"
-                    : participant.birthdate
-                      ? formatBirthdate(participant.birthdate)
+                    : birthdate
+                      ? formatBirthdate(birthdate)
                       : "—"}
                 </dd>
 

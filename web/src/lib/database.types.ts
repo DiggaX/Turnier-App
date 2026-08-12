@@ -466,6 +466,16 @@ export interface Database {
           team_id: string | null;
         }[];
       };
+      /**
+       * Einziger Leseweg fuer participants.birthdate seit dem Spalten-Lockdown
+       * (Migration 20260812200000). NULL fuer alle ausser Organizern der
+       * eigenen Organisation — bewusst kein Fehler, der Referee-Aufruf ist der
+       * Normalfall der ausgeblendeten Zeile.
+       */
+      get_participant_birthdate: {
+        Args: { p_participant_id: string };
+        Returns: string | null;
+      };
       check_in_via_token: {
         Args: { p_qr_token: string };
         Returns: undefined;
