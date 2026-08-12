@@ -263,13 +263,8 @@ describe("generateBracket tournament status", () => {
         if (table === "matches") {
           return {
             delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
-            insert: () => ({
-              select: () =>
-                Promise.resolve({
-                  data: [{ id: "m1", bracket: "winner", round: 1, slot: 0 }],
-                  error: null,
-                }),
-            }),
+            // Ein INSERT ohne .select(): die ids vergibt der Client selbst.
+            insert: () => Promise.resolve({ error: null }),
           };
         }
         return {};

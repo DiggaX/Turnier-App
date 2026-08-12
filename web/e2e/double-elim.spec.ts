@@ -74,9 +74,9 @@ test("organizer generates and views a double-elim bracket (WB / LB / GF)", async
   await page.getByRole("button", { name: /^generieren$/i }).click();
 
   // (2) The double-elim view renders all three section headings. Generieren
-  // macht fuer Double-Elim ~20 sequenzielle Roundtrips gegen die Live-DB
-  // (Insert + je ein UPDATE pro Winner-/Loser-Link) und braucht damit laenger
-  // als die 5s Default-Erwartung — Swiss (2 Matches, keine Links) taeuscht.
+  // ist seit dem Ein-INSERT-Umbau (Links im Payload, keine Einzel-UPDATEs
+  // mehr) nur noch ein Roundtrip; die 20s bleiben als Sicherheitsmarge fuer
+  // die Live-DB stehen, nicht weil der Pfad sie braeuchte.
   const deView = page.getByTestId("double-elim-view");
   await expect(deView).toBeVisible({ timeout: 20_000 });
   await expect(

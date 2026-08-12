@@ -153,8 +153,9 @@ function generatorFor(
  *  2. Ensure every checked-in participant has a 1..N seed (assign by created_at
  *     for any missing) so the generator receives a clean sequence.
  *  3. Run the format's generator.
- *  4. DELETE existing matches, INSERT the generated rows, then for single-elim
- *     wire `next_match_id`/`next_slot` and immediately advance byes.
+ *  4. DELETE existing matches, then INSERT the generated rows in ONE statement
+ *     — for elimination formats with advancement links (and single-elim bye
+ *     advances) already wired via client-generated ids.
  *  5. Flip the tournament to `running`.
  *
  * `discardResults` exists because regenerating is now a mid-tournament action:
@@ -320,9 +321,12 @@ export async function generateBracket(
     return { error: friendlyDbError(delErr, "Vorhandene Matches konnten nicht entfernt werden.") };
   }
 
-  // 2. Insert the generated matches. Advancement-link columns stay null for
-  // now; the `bracket` column is persisted so resolution can key on it.
-  const rows: MatchInsert[] = generated.map((m) => ({
+  // 2. Build the rows with client-generated ids (globalThis.crypto, Node ≥19)
+  // so advancement links can be wired in memory BEFORE anything is inserted.
+  // id/bracket sind im Insert-Typ optional; hier setzen wir beide immer, und
+  // buildIdMap unten verlangt sie als Pflichtfelder.
+  const rows: (MatchInsert & { id: string; bracket: string })[] = generated.map((m) => ({
+    id: crypto.randomUUID(),
     tournament_id: tournamentId,
     bracket: m.bracket,
     round: m.round,
@@ -334,74 +338,58 @@ export async function generateBracket(
     group_no: m.groupNo ?? null,
   }));
 
-  const { data: inserted, error: insErr } = await supabase
-    .from("matches")
-    .insert(rows)
-    .select("id, bracket, round, slot");
-
-  if (insErr || !inserted) {
-    return { error: friendlyDbError(insErr, "Matches konnten nicht angelegt werden.") };
-  }
-
-  // 3. Elimination formats: resolve advancement links. Single-elim also
-  // auto-advances byes; double-elim additionally wires each match's loser drop.
+  // 3. Elimination formats: resolve advancement links on the rows themselves.
+  // Single-elim also auto-advances byes; double-elim additionally wires each
+  // match's loser drop. Other formats insert without links, as before.
   if (
     tournament.format === "single_elim" ||
     tournament.format === "double_elim"
   ) {
     let idMap;
     try {
-      idMap = buildIdMap(generated, inserted);
+      idMap = buildIdMap(generated, rows);
     } catch {
       return { error: "Bracket konnte nicht verknüpft werden." };
     }
+    const byId = new Map(rows.map((r) => [r.id, r]));
 
     // 3a. Winner advancement links (both formats).
-    const linkUpdates = resolveLinkUpdates(generated, idMap);
-    for (const u of linkUpdates) {
-      const { error: linkErr } = await supabase
-        .from("matches")
-        .update({ next_match_id: u.nextMatchId, next_slot: u.nextSlot })
-        .eq("id", u.id);
-      if (linkErr) {
-        return { error: friendlyDbError(linkErr, "Bracket-Verknüpfung fehlgeschlagen.") };
-      }
+    for (const u of resolveLinkUpdates(generated, idMap)) {
+      const row = byId.get(u.id);
+      if (!row) return { error: "Bracket konnte nicht verknüpft werden." };
+      row.next_match_id = u.nextMatchId;
+      row.next_slot = u.nextSlot;
     }
 
     if (tournament.format === "double_elim") {
       // 3b. Loser drop links (double-elim only): each WB loser falls to the LB.
-      const loserUpdates = resolveLoserLinkUpdates(generated, idMap);
-      for (const u of loserUpdates) {
-        const { error: loserErr } = await supabase
-          .from("matches")
-          .update({
-            loser_next_match_id: u.loserNextMatchId,
-            loser_next_slot: u.loserNextSlot,
-          })
-          .eq("id", u.id);
-        if (loserErr) {
-          return { error: friendlyDbError(loserErr, "Bracket-Verknüpfung fehlgeschlagen.") };
-        }
+      for (const u of resolveLoserLinkUpdates(generated, idMap)) {
+        const row = byId.get(u.id);
+        if (!row) return { error: "Bracket konnte nicht verknüpft werden." };
+        row.loser_next_match_id = u.loserNextMatchId;
+        row.loser_next_slot = u.loserNextSlot;
       }
       // No bye propagation: a power-of-two double-elim bracket has no byes.
     } else {
-      // 4. Single-elim bye propagation: a bye winner already advances into its
-      // next match.
-      const advances = resolveByeAdvances(generated, idMap);
-      for (const a of advances) {
-        const patch =
-          a.nextSlot === "a"
-            ? { participant_a_id: a.winnerId }
-            : { participant_b_id: a.winnerId };
-        const { error: advErr } = await supabase
-          .from("matches")
-          .update(patch)
-          .eq("id", a.nextMatchId);
-        if (advErr) {
-          return { error: friendlyDbError(advErr, "Freilos konnte nicht weitergeleitet werden.") };
-        }
+      // 3c. Single-elim bye propagation: a bye winner already occupies its
+      // slot in the TARGET match.
+      for (const a of resolveByeAdvances(generated, idMap)) {
+        const target = byId.get(a.nextMatchId);
+        if (!target) return { error: "Freilos konnte nicht weitergeleitet werden." };
+        if (a.nextSlot === "a") target.participant_a_id = a.winnerId;
+        else target.participant_b_id = a.winnerId;
       }
     }
+  }
+
+  // 4. ONE insert for the whole bracket, links included. Postgres prüft die
+  // Self-FKs (next_match_id → matches.id) am STATEMENT-Ende, Intra-Batch-
+  // Referenzen in einem Multi-Row-INSERT sind also sauber. Wer den alten
+  // Zwei-Phasen-Tanz (INSERT + .select() + Einzel-UPDATEs) zurückbaut, holt
+  // sich ~20 sequenzielle Roundtrips pro Generieren zurück.
+  const { error: insErr } = await supabase.from("matches").insert(rows);
+  if (insErr) {
+    return { error: friendlyDbError(insErr, "Matches konnten nicht angelegt werden.") };
   }
 
   // 5. Turnier auf "laeuft" setzen — aber nur, wenn es dort noch nicht steht.

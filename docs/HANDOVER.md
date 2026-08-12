@@ -712,6 +712,15 @@ Zwei Builder-Agents parallel, ein unabhängiger Reviewer, Läufe seriell. Suite 
   verworfen (Playwright erlaubt das auf Dateiebene; serial überspringt Folgetests nach Rot).
 - Wieder eine Müll-Datei während der Builder-Läufe (`p.is_captain)`, 17:07) — §7.15(d)-Muster.
 
+### Neu am 2026-08-12 (Abend, 2. Runde): §7.36 + §7.37 behoben
+
+Kleinpaket, beide Funde aus der heutigen e2e-Offensive. Builder-Agent → unabhängiger Review
+(null Befunde) → Gates. Details an den Punkten selbst (§7.36: `useSyncExternalStore`-Gate
+gegen den Hydration-Mismatch; §7.37: Bracket in EINEM INSERT via vorab erzeugter Ids).
+580 Unit-Tests (578 + 2 neue), Build grün, alle Bracket-konsumierenden e2e grün
+(double-elim, regenerate, live-board, results-flow), Gesamt-Suite 35/35, Dev-Log ohne
+Hydration-Meldung.
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - ⚠️ **Wer antritt, entscheidet `participants.type` — NIEMALS `team_id`.** Wettkämpfer =
   `type in ('solo','team')`, Mensch = `type in ('solo','player')`. Ein `player` ohne Team trägt
@@ -1094,16 +1103,28 @@ Zwei Builder-Agents parallel, ein unabhängiger Reviewer, Läufe seriell. Suite 
 
 ### Neu offen aus dem 2026-08-12 (e2e-Reparatur)
 
-36. 🟢 **React-Hydration-Mismatch in `PushOptIn`** (`t/[tournamentId]/me/push-opt-in.tsx:38`),
-    beim e2e-Lauf in den Dev-Server-Logs aufgefallen: Server rendert das
-    „Match-Benachrichtigungen"-Panel, Client ersetzt es durch den „✅ Eingecheckt"-Status —
-    klassischer Fall von Client-only-State (vermutlich Push-Subscription/Permission wird beim
-    ersten Render gelesen). Kein Testausfall, aber React verwirft dabei den Server-Baum.
-    Üblicher Fix: den Zustand erst nach `useEffect`-Mount auswerten.
-37. 🟢 **`generateBracket` schickt Winner-/Loser-Link-UPDATEs einzeln** (~20 sequenzielle
-    Roundtrips bei Double-Elim) — deshalb braucht die `double-elim`-Spec einen 20s-Timeout.
-    Ein Batch-Update würde die Aktion um Sekunden beschleunigen und den Sonder-Timeout
-    überflüssig machen. Reine Performance, kein Korrektheitsproblem.
+36. ✅ **Behoben (2026-08-12): Hydration-Mismatch in `PushOptIn`.** Wurzel war Zeile 14:
+    `if (!pushSupported()) return null` — `pushSupported()` liest `window`, der Server rendert
+    also `null`, der Client das Panel, React verwirft den Server-Baum. Fix:
+    `useSyncExternalStore(emptySubscribe, pushSupported, () => false)` — Server-Snapshot
+    `false` heißt: SSR und erster Client-Render sind beide `null`, danach entscheidet der
+    echte Browser-Support. ⚠️ Das naheliegende mounted-Gate (`useEffect` + `setState`)
+    verbietet die Repo-Lint-Regel `react-hooks/set-state-in-effect` — wer hier nachbessert,
+    bleibt bei `useSyncExternalStore`. Bewiesen: kompletter Suite-Lauf, null
+    Hydration-Meldungen im Dev-Server-Log (vorher bei jedem /me-Aufruf).
+37. ✅ **Behoben (2026-08-12): `generateBracket` schreibt das Bracket in EINEM INSERT.**
+    Die ~20 sequenziellen Einzel-UPDATEs (Winner-/Loser-Links, Freilos-Weiterleitung)
+    existierten nur, weil die Match-Ids erst die DB vergab. Jetzt: `crypto.randomUUID()` pro
+    Zeile vorab, `buildIdMap` läuft gegen die eigenen Rows (Signatur passte unverändert),
+    die drei `resolve*`-Ergebnisse werden in-memory auf die Rows geschrieben, dann ein
+    einziger `.insert(rows)` ohne `.select()`. ⚠️ **Postgres prüft Self-FKs
+    (`next_match_id → matches.id`) am Statement-Ende** — Intra-Batch-Referenzen in einem
+    Multi-Row-INSERT sind sauber; steht auch als Kommentar im Code, damit niemand den
+    Zwei-Phasen-Tanz „vorsichtshalber" zurückbaut. Neu gepinnt in
+    `actions.generateBracket.links.test.ts`: Double-Elim-Payload enthält alle 5 Winner- und
+    3 Loser-Links intra-batch, und es gibt keinen `update()` auf matches im Generate-Pfad.
+    Der 20s-Timeout in `double-elim.spec.ts` bleibt als Sicherheitsmarge (Kommentar
+    aktualisiert).
 38. ✅ **Behoben (2026-08-12, noch am selben Tag): „Alt-QR wird Vollpass".** Ursprünglicher Fund
     beim §7.19-Beweis: zweiter Scan eines schon übernommenen QR bot die Übernahme ERNEUT an
     (alter QR zeigt auf die alte Zeile, `qr_token` wird nie kopiert, `row.created` wurde nie

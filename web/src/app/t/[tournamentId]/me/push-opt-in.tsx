@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import { enablePush, pushSupported } from "@/lib/push/client";
 import { subscribeParticipant } from "./push-actions";
+
+// Nichts zu abonnieren — Browser-Push-Support aendert sich nach dem Mount nicht.
+const emptySubscribe = () => () => {};
+const serverSnapshot = () => false;
 
 export function PushOptIn({ tournamentId }: { tournamentId: string }) {
   const [state, setState] = useState<"idle" | "working" | "on" | "error">(
@@ -11,7 +15,17 @@ export function PushOptIn({ tournamentId }: { tournamentId: string }) {
   );
   const [msg, setMsg] = useState<string | null>(null);
 
-  if (!pushSupported()) return null;
+  // Server kennt window nicht — der erste Client-Render (Hydration) muss dem
+  // Server-Render (null) gleichen, sonst Hydration-Mismatch. Der Server-
+  // Snapshot (false) stellt genau das sicher; erst danach zaehlt der echte
+  // Browser-Support.
+  const supported = useSyncExternalStore(
+    emptySubscribe,
+    pushSupported,
+    serverSnapshot,
+  );
+
+  if (!supported) return null;
   const configured = !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
   async function onClick() {
