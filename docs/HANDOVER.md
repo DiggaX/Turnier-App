@@ -950,6 +950,26 @@ Hydration-Meldung.
     „anderer Prozess" schließt die eigenen Subagents ein. Muster bestätigt: es sind Bruchstücke von
     *berichtetem/gelesenem* Text, der irgendwo durch eine Shell läuft. Gegenmaßnahme unverändert
     (find-Kommando aus (a) + explizite `git add`-Pfade); Ursache im Tooling weiter offen.
+
+    **(e) Fünfter Nachtrag, 2026-08-12 abends — die heiße Spur: der cmd/c-gewrappte Bash-Hook.**
+    Bei §7.2/§7.28 kamen weitere 0-Byte-Dateien mit Namen wie `setMounted(true)`,
+    `k.includes('mailer')`, `(supabase`, `p.is_captain)` — **allesamt wörtliche Fragmente von
+    Bash-Command-Strings dieser Session** (JS aus `node --input-type=module -e`, Kommentare,
+    Grep-Muster), entstanden im Moment der Bash-Ausführung. `.claude/settings.json` verdrahtet
+    auf **jeden Bash-Aufruf** einen `PreToolUse`- und `PostToolUse`-Hook, gewrappt in
+    `cmd /c "IF EXIST … (node … pre-bash) ELSE (node … pre-bash)"`. Der Node-Handler
+    (`.claude/helpers/hook-handler.cjs`, `pre-bash`/`post-bash`) liest nur `stdin`/`hookInput`
+    und schreibt **nichts** — geprüft. Verdacht liegt also auf der **`cmd /c`-Schicht** unter
+    Windows: läuft der Command-Text dort durch eine Ebene, die `(`, `)`, Backtick, `>` als
+    cmd-Syntax (Gruppierung/Redirect) deutet, erzeugen genau solche Fragmente leere Dateien im
+    CWD. ⚠️ **Nicht bewiesen, welche Ebene genau** — der Node-Handler ist es nachweislich nicht,
+    aber die Kette cmd/c → IF/ELSE-Klammern ist der plausibelste verbleibende Ort. **Nicht als
+    geklärt weitertragen** (§10). Belastbar neu: die Namen sind Fragmente **eigener
+    Bash-Commands**, nicht von gelesenem Doku-Text — das verschiebt die Ursache von „Subagent
+    liest Prosa" zu „Bash-Command-Verarbeitung unter cmd/c". Wer es lösen will: die Hooks sind
+    Tooling (`.claude/`, untracked, Ruflo) — testweise den `cmd /c`-Wrapper durch direkten
+    `node`-Aufruf ersetzen und prüfen, ob der Müll aufhört; ODER den PreToolUse-Bash-Hook
+    temporär entfernen und dasselbe messen.
 16. ✅ **Erledigt (2026-08-12): das Aufstellungs-Formular ist im Browser gelaufen** — e2e
     `web/e2e/nachmeldung.spec.ts` auf einem 3v3-Fixture: Formular zeigt `Aufstellung · 3v3` mit
     genau den drei Zeilen (Captain, Spieler 2, Spieler 3 — und keiner vierten), Team mit 2 von 3
