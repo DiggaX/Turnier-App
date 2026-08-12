@@ -392,6 +392,20 @@ export interface Database {
           member_is_me: boolean;
         }[];
       };
+      /**
+       * Aufstellung ALLER Teams eines Turniers — bewusst auch fuer anon
+       * freigegeben. Die Anon-Policy (`type <> 'player'`) bleibt unangetastet;
+       * diese DEFINER-Funktion gibt genau diese drei Spalten heraus und sonst
+       * nichts. Siehe supabase/migrations/20260812110000_team_rosters_public.sql.
+       */
+      get_team_rosters: {
+        Args: { p_tournament_id: string };
+        Returns: {
+          team_id: string;
+          display_name: string;
+          is_captain: boolean;
+        }[];
+      };
       confirm_match: {
         Args: { p_match_id: string; p_score_a: number; p_score_b: number };
         Returns: undefined;

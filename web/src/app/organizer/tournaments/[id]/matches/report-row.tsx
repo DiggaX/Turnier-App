@@ -25,6 +25,9 @@ export type MatchRowView = {
   status: "pending" | "live" | "done" | "bye";
   aName: string | null;
   bName: string | null;
+  /** Aufstellung der jeweiligen Seite, fertige Zeile — null beim Einzelstarter. */
+  aRoster: string | null;
+  bRoster: string | null;
   winnerId: string | null;
   participantAId: string | null;
   participantBId: string | null;
@@ -106,8 +109,29 @@ export function ReportRow({ match }: { match: MatchRowView }) {
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-line bg-surface p-5">
       <div className="flex items-start justify-between gap-3">
-        <div className="font-display text-base font-semibold text-ink">
-          {aLabel} <span className="text-fg-dim">vs</span> {bLabel}
+        <div className="min-w-0">
+          <div className="font-display text-base font-semibold text-ink">
+            {aLabel} <span className="text-fg-dim">vs</span> {bLabel}
+          </div>
+          {/* Aufstellungen: im Spielplan steht nur der Teamname. Beide Zeilen
+              tragen ihren Teamnamen davor — zwei nackte Namenslisten verraten
+              nicht, wer zu wem gehoert. Beim Einzelturnier ist beides null. */}
+          {(match.aRoster || match.bRoster) && (
+            <div className="mt-1 flex flex-col gap-0.5 text-xs leading-relaxed text-fg-dim">
+              {match.aRoster && (
+                <div>
+                  <span className="text-fg-muted">{aLabel}:</span>{" "}
+                  {match.aRoster}
+                </div>
+              )}
+              {match.bRoster && (
+                <div>
+                  <span className="text-fg-muted">{bLabel}:</span>{" "}
+                  {match.bRoster}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         {badge}
       </div>

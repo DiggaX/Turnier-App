@@ -9,6 +9,7 @@ import { formatLabel, modeLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { TournamentStatus } from "@/lib/database.types";
 import { teamLabel, gameTag } from "@/lib/tournament/lifecycle";
+import { teamRosterLines } from "@/lib/tournament/team-roster";
 
 /** Lifecycle phases in order, as shown in the design's "Status der Phasen". */
 const PHASES: TournamentStatus[] = [
@@ -38,7 +39,7 @@ export default async function TournamentDetailPage(props: {
   const { data: tournament } = await supabase
     .from("tournaments")
     .select(
-      "id, name, format, mode, status, starts_at, team_size, games(name), participants(id)",
+      "id, name, format, mode, status, starts_at, team_size, games(name), participants(id, display_name)",
     )
     .eq("id", tournamentId)
     .maybeSingle();
@@ -53,6 +54,21 @@ export default async function TournamentDetailPage(props: {
   const gameLine = isTeam ? `${gameName} · ${teamLabel(teamSize)}` : gameName;
   const participantCount = tournament.participants?.length ?? 0;
   const currentPhase = PHASES.indexOf(tournament.status);
+
+  // Mannschaften mit ihrer Aufstellung. Die Team-Zeilen stecken schon in der
+  // Abfrage oben (anon sieht Wettkaempfer), die Namen der Kinder liefert die
+  // schmale RPC get_team_rosters — die Anon-Policy bleibt unangetastet, siehe
+  // supabase/migrations/20260812110000_team_rosters_public.sql.
+  // Beim Einzelturnier faellt beides weg: kein Roundtrip, kein Abschnitt.
+  const teams = isTeam
+    ? [...(tournament.participants ?? [])].sort((a, b) =>
+        a.display_name.localeCompare(b.display_name, "de"),
+      )
+    : [];
+  const { data: rosterRows } = isTeam
+    ? await supabase.rpc("get_team_rosters", { p_tournament_id: tournamentId })
+    : { data: [] };
+  const rosterByTeam = teamRosterLines(rosterRows ?? []);
 
   return (
     <>
@@ -188,6 +204,30 @@ export default async function TournamentDetailPage(props: {
               </ol>
             </section>
           </div>
+
+          {/* Mannschaften mit Aufstellung — nur beim Teamturnier, beim
+              Einzelturnier bleibt die Seite unveraendert. */}
+          {isTeam && teams.length > 0 && (
+            <section className="mt-4 rounded-2xl border border-line bg-surface p-6">
+              <h2 className="mb-3.5 font-display text-base font-semibold text-ink">
+                Mannschaften
+              </h2>
+              <ul className="flex flex-col gap-3.5">
+                {teams.map((team) => (
+                  <li key={team.id}>
+                    <div className="font-display text-sm font-semibold text-ink">
+                      {team.display_name}
+                    </div>
+                    {rosterByTeam.get(team.id) && (
+                      <div className="mt-0.5 text-xs leading-relaxed text-fg-dim">
+                        {rosterByTeam.get(team.id)}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       </main>
     </>

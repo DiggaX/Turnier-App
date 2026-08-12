@@ -9,6 +9,7 @@ import { computeStandings, type DoneMatch } from "@/lib/standings";
 import { requireOrgTournament } from "@/lib/auth/org-tournament";
 import { type TournamentFormat, type TournamentStatus } from "@/lib/database.types";
 import { createClient } from "@/lib/supabase/server";
+import { teamRosterLines } from "@/lib/tournament/team-roster";
 
 import { bulkConfirmable } from "@/lib/station/station";
 
@@ -80,11 +81,12 @@ export default async function MatchesPage({
     format: TournamentFormat;
     status: TournamentStatus;
     org_id: string;
+    team_size: number;
   }>(
     supabase,
     id,
     profile.org_id as string | null,
-    "id, name, format, status, org_id",
+    "id, name, format, status, org_id, team_size",
   );
 
   // Matches with embedded side names + scores, ordered for stable rendering.
@@ -101,6 +103,22 @@ export default async function MatchesPage({
 
   const matchRows = rawMatches ?? [];
   const matchIds = matchRows.map((m) => m.id);
+
+  // Aufstellungen fuer die Match-Zeilen: im Spielplan steht bei Teamturnieren
+  // nur der Teamname, am Tresen braucht die Orga aber die Kinder dazu. Eine
+  // Abfrage fuers ganze Turnier, gruppiert wird in TS. Als Staff darf hier
+  // direkt gelesen werden — die RPC get_team_rosters ist nur fuer anon noetig.
+  const { data: rosterRows } =
+    tournament.team_size > 1
+      ? await supabase
+          .from("participants")
+          .select("team_id, display_name, is_captain")
+          .eq("tournament_id", id)
+          .eq("type", "player")
+          .not("team_id", "is", null)
+          .order("created_at", { ascending: true })
+      : { data: [] };
+  const rosterByTeam = teamRosterLines(rosterRows ?? []);
 
   // All player reports for those matches (one round-trip).
   let rawReports: RawReport[] = [];
@@ -165,6 +183,8 @@ export default async function MatchesPage({
     status: m.status,
     aName: m.a?.display_name ?? null,
     bName: m.b?.display_name ?? null,
+    aRoster: rosterByTeam.get(m.participant_a_id ?? "") ?? null,
+    bRoster: rosterByTeam.get(m.participant_b_id ?? "") ?? null,
     winnerId: m.winner_id,
     participantAId: m.participant_a_id,
     liveScoreA: m.live_score_a,

@@ -577,6 +577,39 @@ Signatur an den Mock, kein ts-ignore).
   Seeding samt „Zufällig setzen" nach dem Generieren erreichbar, Warnzeile auf der
   Turnier-Übersicht. Damit hängt an dieser Runde kein ungeprüfter Klickweg mehr.
 
+### Neu am 2026-08-12: §7.32-Fix + Mannschaftsaufstellungen sichtbar
+
+**§7.32 behoben** (`519a57c`) — Details am Punkt selbst in §7.
+
+**Aufstellungen sichtbar** (Rene-Beobachtung vom Team-Turnier: „man trägt Spielernamen ein, aber
+die haben keine Verwendung"). Entscheidung Rene nach ausdrücklicher PII-Abwägung: **beides** —
+Orga-Matchliste UND öffentlich.
+
+- **Migration `20260812110000_team_rosters_public.sql` (angewandt, in zweiter Fassung):**
+  `get_team_rosters(uuid)`, SECURITY DEFINER, liefert **genau** `(team_id, display_name,
+  is_captain)` für `type='player'` mit Team — **und nur bei Turnieren mit `team_size > 1`**.
+  ⚠️ **Die anon-Policy `participants_select_public_board` ist unangetastet** — bewusst eine
+  schmale Funktion statt einer breiteren Policy: eine Policy entscheidet über Zeilen, nicht
+  Spalten; die Funktion kann konstruktionsbedingt nie mehr als ihre drei Spalten liefern. Spieler
+  **ohne** Team erscheinen nie (`team_id is not null`) — genau die Zeilen, die die Policy zum
+  Schutz Minderjähriger zurückhält.
+  ⚠️ **Der `team_size > 1`-Riegel kam erst durch den unabhängigen Prüfer** (Dreifach-Prinzip
+  zahlt sich aus): die erste Fassung nahm jede Turnier-UUID und gab bei einem **Einzelturnier**
+  mit verwaisten `player`-Zeilen (das Rocket-League-Vorfallsturnier!) eine Zeile heraus, die die
+  Policy versteckt — der Schutz hing allein am `isTeam`-Check der Seite, ein direkter RPC-Aufruf
+  umging ihn. Der Riegel sitzt jetzt IN der Funktion (Join auf `tournaments`); eine Funktion muss
+  ihren eigenen Vertrag halten. Bewiesen als `anon` in zurückgerollten Transaktionen:
+  Teamturnier exakt die Gegenzählung (19), Turnier mit 10 teamlosen `player` → vor dem Riegel 1,
+  **nach dem Riegel 0**, unbekanntes Turnier leer.
+- **Öffentliche Turnierseite** (`t/[tournamentId]/page.tsx`): neuer Abschnitt „Mannschaften"
+  (nur Teamturniere) — Teamname + Zeile `Niki (C) · Anna · Tom`. Browser-verifiziert als anon
+  am Duo-Turnier: alle 10 Teams mit Aufstellung.
+- **Orga-Matchliste** (`matches/page.tsx` + `report-row.tsx`): unter „A vs B" je Seite
+  `Team Alpha: Niki (C) · Anna` — eine Staff-Abfrage pro Turnier, entfällt bei `team_size <= 1`.
+- Gemeinsamer purer Helper `lib/tournament/team-roster.ts` (`teamRosterLines`) + 5 Tests.
+- Kette: Implementierer → Controller (Migration + anon-Beweise) → unabhängiger Prüfer →
+  Browser-Beweis. Build grün, **578** Tests grün.
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - ⚠️ **Wer antritt, entscheidet `participants.type` — NIEMALS `team_id`.** Wettkämpfer =
   `type in ('solo','team')`, Mensch = `type in ('solo','player')`. Ein `player` ohne Team trägt
