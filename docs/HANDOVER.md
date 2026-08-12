@@ -713,6 +713,25 @@ Zwei Builder-Agents parallel, ein unabhängiger Reviewer, Läufe seriell. Suite 
   verworfen (Playwright erlaubt das auf Dateiebene; serial überspringt Folgetests nach Rot).
 - Wieder eine Müll-Datei während der Builder-Läufe (`p.is_captain)`, 17:07) — §7.15(d)-Muster.
 
+### Neu am 2026-08-12 (Nacht): Gerätetest-Runde — §7.4, §7.21, §7.25, §7.26 alle zu
+
+Die vier Punkte, die echte Hardware brauchten, in einer Sitzung erledigt: Ich habe zwei
+Test-Turniere plus ein echtes Referee-Konto vorbereitet und die Orga-Seite selbst gefahren
+(Browser-Pane), Rene hat Handy und Tablet bedient. Ergebnisse an den Punkten selbst; hier
+die vier Erkenntnisse, die man nicht im Code sieht:
+
+- **iOS-Push braucht die installierte Web-App** — im Safari-Tab existiert die Opt-in-Karte
+  gar nicht, und im Privatmodus überlebt das Abo nicht (§7.4a/b).
+- **Push zielt auf Match-Teilnehmer, nicht auf Abonnenten** — wer in keinem spielbaren Match
+  steht, bekommt nichts, egal wie gut das Abo ist (§7.4c). Kostete hier drei Fehlversuche.
+- **Der Teams-Screen ist ein Entwurf mit Speichern-Knopf** — Ziehen ohne Speichern sieht aus
+  wie ein Bug, ist aber Absicht (§7.25).
+- **Ein direkt angelegter Referee braucht `profiles.org_id`**, sonst blockt jede org-gescopte
+  Prüfung (§7.21).
+
+Test-Turniere „Gerätetest 3v3" (`13955a82`) und „Gerätetest Solo" (`e48da12c`) stehen noch —
+löschbar, sobald Rene sie nicht mehr braucht. Das Referee-Konto bleibt.
+
 ### Neu am 2026-08-12 (Abend, 3. Runde): §7.2 + §7.28 zu — Magic-Link cross-device, Geburtsdatum-Lockdown
 
 Details an den Punkten selbst; hier die Kette und die Lehrstücke:
@@ -832,7 +851,22 @@ Hydration-Meldung.
    Hook-Reihenfolgen nicht auf LIFO-Annahmen bauen, sondern einsammeln, solange die Daten
    sicher leben. `SUPABASE_SERVICE_ROLE_KEY` steht jetzt auch in `web/.env.example`.
    Alte Prüfquery bleibt gültig: `select count(*) from storage.objects o where bucket_id='consent-signatures' and not exists (select 1 from consents c where c.signature_path = o.name);`
-4. **Push** nie auf echtem Gerät getestet (VAPID-Keys sind gesetzt).
+4. ✅ **Erledigt (2026-08-12): Push kam auf Renes iPhone 13 Pro an**, aus der App heraus
+   („Dein Match ist bereit", zwei Geräte-Abos gleichzeitig bedient, Meldung „2
+   Benachrichtigung(en) gesendet"). ⚠️ **Drei Dinge, die den Test fast als „kaputt"
+   abgestempelt hätten, alle keine Bugs:**
+   (a) **iOS zeigt die Opt-in-Karte nur in der installierten Web-App.** Im normalen
+   Safari-Tab kennt der Browser kein `PushManager`, `pushSupported()` ist false, die Karte
+   rendert gar nicht. Teilen → „Zum Home-Bildschirm" → **von dort** öffnen ist Pflicht.
+   (b) **Privater Modus killt das Abo** — es stand zwar in `push_subscriptions`, Zustellung
+   kam nie an. Nach Neuinstallation aus einem normalen Tab lief es sofort.
+   (c) **Der Versand geht nur an Teilnehmer, die in einem spielbaren Match stehen**
+   (`participantsToNotify`, beide Slots gefüllt, pending/live). Ein Abo allein reicht nicht —
+   die ersten Klicks liefen ins Leere, weil das Testgerät noch keinem Match zugeordnet war.
+   Der Versand ist außerdem **manuell**: Orga-Knopf „Spielbare Matches benachrichtigen".
+   Diagnose-Werkzeug für den nächsten Zweifelsfall: ein Node-Skript mit `web-push` und dem
+   Endpoint aus der DB direkt an Apple senden — Antwort `201` beweist, dass Keys und Abo
+   stimmen und der Fehler woanders liegt (genau so wurde hier eingekreist).
 5. ✅ **Erledigt (2026-08-12): Migrations-Timestamp-Kollision behoben.** ⚠️ Die alte Fassung
    dieser Zeile nannte `20260628090000` als Duplikat — **stimmte nicht mehr**, nachgemessen:
    dieser Stamp existiert nur einmal (`fix_participant_read_leak.sql`). Die echte Kollision
@@ -1039,10 +1073,15 @@ Hydration-Meldung.
     `withFixtureTournament`, Quelle über direktes `createFixtureTournament` mit eigenem
     `afterAll`-Delete; `registerAndCheckIn` liefert seit heute auch `qrToken` mit (RETURNING
     unter der Owner-Policy, kein zweiter Roundtrip).
-21. 🟢 **Der Referee-Pfad ist nur simuliert bewiesen.** Es existiert kein einziges Profil mit Rolle
-    `referee` (drei Admins, ein Organizer). Für den Beweis wurde in einer zurückgerollten Transaktion
-    ein Organizer herabgestuft. Sobald ein echter Schiedsrichter angelegt ist, einmal wirklich scannen
-    lassen.
+21. ✅ **Erledigt (2026-08-12): der Referee-Pfad ist mit einem ECHTEN Konto durchgespielt.**
+    Angelegt: `referee@test.de` / `12345678` (auth-Admin-API + `profiles`-Zeile mit
+    `role='referee'` und — Pflicht! — gesetztem `org_id`, sonst scheitert jeder
+    `current_org_id()`-Check). Rene hat als dieser Referee live: **Ergebnisse freigegeben**
+    (Sammel-Freigabe „Alle 2 freigeben", beide Matches `done` mit korrektem Sieger) und
+    **eingecheckt** (drei Team-Spieler). Gegenprobe der Grenze im Browser bestätigt: die
+    Bracket-Seite wirft den Referee auf die Übersicht zurück
+    (`bracket/page.tsx:84`, nur `admin|organizer`) — er kommt gar nicht erst an
+    „Neu generieren". Das Konto bleibt für künftige Turniere bestehen.
 22. 🟢 **Übernahme ohne Konto ist nicht möglich** und das ist eine bewusste Grenze, kein Bug (§5.1).
     Wer sie aufheben will, muss zuerst beantworten, was der alte QR danach tun soll — der Token ist
     unique, kopieren geht nicht.
@@ -1066,21 +1105,22 @@ Hydration-Meldung.
     **Seit dem 2026-08-11 abends zusätzlich in der Datenbank verankert:**
     `20260812090000_team_size_guard.sql` — der TypeScript-Riegel deckte PostgREST-Direktzugriffe
     nicht (Details im Abend-Changelog in §5).
-25. 🟢 **Weitgehend erledigt (2026-08-12).** Rene hat die Organizer-Seiten der August-Runde selbst
-    durchgeklickt und bestätigt: Nachmeldung mit Umschalter, Zuordnung in der Teilnehmerliste,
-    Generieren-Warnung, Seeding nach dem Generieren, Übersichts-Warnung (Details im §5-Changelog
-    „Die vier Feature-Workstreams"). **Rest offen:** die **Sammel-Freigabe** und ob das **Ziehen per
-    Pointer-Events auf einem echten Tablet** trägt — beides war nicht Teil dieser Runde. Der
-    Auswahlfeld-Fallback deckt den Ziehweg ab und ist jetzt an zwei Stellen erreichbar. Historie:
-    Alle drei lagen
-    hinter dem Orga-Login, das ein Agent nicht hat. Anmeldung und Team-Beitritt sind auf Produktion
-    bewiesen (§5), diese drei nicht. **Besonders offen:** ob das Ziehen per Pointer-Events auf einem
-    echten Tablet trägt. Fallback ist eingebaut — neben jedem Spieler ein Auswahlfeld „verschieben
-    nach …", das denselben Weg nimmt.
-26. 🟡 **Wird ein Team bei 3/3 eingecheckten Spielern wirklich von selbst spielbereit?** Der Trigger
-    `sync_team_ready` ist in einer zurückgerollten Transaktion belegt, aber nie mit drei echten
-    Check-ins gelaufen. **Notausgang, falls nicht:** auf der Check-in-Seite gibt es pro Team einen
-    „Spielbereit"-Knopf (setzt `checked_in_at` auf der Team-Zeile, genau das prüft die Bracket-Quelle).
+25. ✅ **Komplett erledigt (2026-08-12).** Die August-Runde deckte schon Nachmeldung,
+    Tresen-Zuordnung, Generieren-Warnung, Seeding und Übersichts-Warnung ab; in der
+    Gerätetest-Runde kamen die letzten zwei dazu: **Sammel-Freigabe** von Rene als Referee
+    geklickt (grüne Karte „2 Partien einig" → „Alle 2 freigeben" → beide `done`), und das
+    **Ziehen per Pointer-Events trägt auf einem echten Tablet** — Karte lässt sich mit dem
+    Finger greifen und ablegen. ⚠️ Wichtig fürs Verständnis (und für künftige Tester): der
+    Teams-Screen ist ein **Entwurfs-Modus** — nach dem Ablegen muss **gespeichert** werden,
+    sonst springt der Spieler beim Neuladen zurück. Beim ersten Durchgang sah die DB deshalb
+    unverändert aus, obwohl das Ziehen funktionierte; kein Bug, aber die Stelle, an der ein
+    Test fälschlich „kaputt" melden würde.
+26. ✅ **Erledigt (2026-08-12): der Trigger feuert wirklich.** Rene hat drei echte Check-ins
+    über die Oberfläche gemacht (Alpha Anna/Ben/Cem); die Team-Zeile bekam
+    `checked_in_at = 18:35:36.660299` — **mikrosekundengleich mit dem dritten Spieler**, also
+    in derselben Transaktion mitgestempelt, nicht durch einen Nachlauf. `sync_team_ready`
+    (`20260811092000:259-324`) ist damit produktiv belegt, der „Spielbereit"-Notknopf bleibt
+    als Reserve.
 27. ✅ **Erledigt (2026-08-12): `team_members` ist gedroppt** (Freigabe Rene, Migration
     `20260812190000_drop_team_members.sql`, per db2 angewandt, DB-Version `20260812160240`).
     Vorher nachgemessen: die Tabelle war **bereits leer** — die Alt-Zeilen sind über den
