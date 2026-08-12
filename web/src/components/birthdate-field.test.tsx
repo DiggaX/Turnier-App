@@ -131,6 +131,21 @@ describe("BirthdateField", () => {
     expect(day()).toHaveValue("07");
   });
 
+  // Eine einzelne "0" ist der Anfang von 01–09, kein Tag. Aufgefüllt ergäbe
+  // sie still "00" — ein ungültiges Datum, ohne dass sichtbar wird, welches
+  // Kästchen gemeint ist (HANDOVER §7.33, Vorfall am Einlass).
+  it("lässt eine einzelne '0' beim Verlassen unvollständig stehen", () => {
+    renderField();
+
+    fireEvent.change(day(), { target: { value: "0" } });
+    fireEvent.blur(day());
+    expect(day()).toHaveValue("0");
+
+    fireEvent.change(month(), { target: { value: "0" } });
+    fireEvent.blur(month());
+    expect(month()).toHaveValue("0");
+  });
+
   it("verteilt ein ganzes eingefügtes Datum auf die drei Felder", () => {
     render(<Harness />);
 

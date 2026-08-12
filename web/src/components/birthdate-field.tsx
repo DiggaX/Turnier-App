@@ -130,9 +130,16 @@ export function BirthdateField({
    * Der Wert kommt aus dem Feld selbst, nicht aus `parts`. Die zweite Ziffer
    * lässt den Fokus weiterspringen, und das blur feuert noch im selben Ereignis
    * — `parts` steht dann erst bei der ersten Ziffer. Aus „05" wurde so „00".
+   *
+   * Eine einzelne „0" bleibt stehen statt zu „00" zu werden: sie ist der
+   * Anfang von 01–09, kein Tag/Monat. Aufgefüllt ergäbe sie still ein
+   * ungültiges Datum, und die Fehlermeldung sagt nicht, welches Kästchen
+   * gemeint ist (HANDOVER §7.33, Vorfall am Einlass).
    */
   function padOnBlur(field: "day" | "month", raw: string) {
-    if (raw.length === 1) commit({ ...parts, [field]: raw.padStart(2, "0") });
+    if (raw.length === 1 && raw !== "0") {
+      commit({ ...parts, [field]: raw.padStart(2, "0") });
+    }
   }
 
   /** Rücktaste im leeren Feld springt zurück, statt ins Leere zu laufen. */

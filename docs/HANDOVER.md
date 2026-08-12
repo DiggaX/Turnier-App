@@ -1073,19 +1073,15 @@ Hydration-Meldung.
 
 ### Neu offen aus dem 2026-08-11 (Geburtsdatum-Fix, Nachmittag)
 
-33. 🟡 **Rene berichtet von einem Vorfall am Einlass: Junge tippt Geburtsjahr „2013 oder so",
-    Formular meldet einen Fehler, zweiter Versuch (erneutes Einloggen/„Lock in") geht durch.**
-    Uhrzeit relativ zum Fix in `1dbfbdb` (Push ca. 10:56, live ca. 10:58) ist **nicht geklärt** —
-    die Frage steht offen, Rene hat stattdessen die Doku-Aufgabe gegeben. Zwei Deutungen:
-    (a) es war der **alte** `padOnBlur`-Bug (Tag/Monat unter 10 wurde zu `00`, Formular zeigte
-    „Bitte ein gültiges Geburtsdatum eingeben.") — dann ist er mit `1dbfbdb` bereits erledigt und
-    der Vorfall ist ein Nachzügler vor dem Deploy. (b) ein zweiter, noch offener Rand: eine
-    **einzelne** getippte `0` in Tag oder Monat wird beim Verlassen des Feldes zu `00` aufgefüllt
-    (`padOnBlur`, `birthdate-field.tsx`) — daraus baut sich weiterhin ein ungültiges Datum, ohne
-    dass sichtbar wird, welches Kästchen gemeint war. Dieser zweite Rand ist **nicht** Teil von
-    `1dbfbdb` und stand am Ende der letzten Session als offener Vorschlag, den Rene noch nicht
-    beauftragt hat. **Nächster Schritt:** Uhrzeit des Vorfalls erfragen; wenn nach 10:58, den
-    zweiten Rand angehen (Feld bei einer einzelnen „0" als unvollständig statt als „00" behandeln).
+33. ✅ **Erledigt (2026-08-12): beide Deutungen abgeräumt.** (a) Der alte `padOnBlur`-Bug ist
+    seit `1dbfbdb` gefixt und mehrfach abgesichert (unit-gepinnt, die e2e-Suite tippt das Feld
+    täglich durch); Rene hat am Abend selbst einen Test-Teilnehmer über das Formular angelegt —
+    kam sauber an (`2013-02-25`, DB-geprüft). Der Vorfall war demnach ein Nachzügler vor dem
+    Deploy. (b) Der zweite Rand ist jetzt AUCH zu: eine **einzelne** getippte `0` bleibt beim
+    Verlassen des Feldes als `0` stehen statt zu `00` aufgefüllt zu werden (`padOnBlur` in
+    `birthdate-field.tsx` überspringt die bloße `0` — sie ist der Anfang von 01–09, kein Tag).
+    Unit-Test dazu in `birthdate-field.test.tsx` („lässt eine einzelne '0' beim Verlassen
+    unvollständig stehen"). 581 Tests grün, Build grün.
 
 ### Neu offen aus dem 2026-08-11 (Rene, Nachmittag)
 
