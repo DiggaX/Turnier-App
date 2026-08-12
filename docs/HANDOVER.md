@@ -32,7 +32,14 @@ Ein **Multi-Tenant-Esports-Turnier-SaaS**. Firmen (Organisationen) registrieren 
 ## 4. Arbeitsweise (etabliert, beibehalten)
 Plan-für-Plan: **brainstorming → writing-plans → Ausführung**. Ausführung via **Workflow-Tool** nur unter Ultracode/explizitem Opt-in; sonst subagent-driven-development. TDD für pure Logik. Kritische/Security-Migrationen wende ICH (Controller) per db2 an + beweise die Guards.
 - **Commits:** **NIE** `Co-Authored-By`-Trailer (CLAUDE.md). `git add <konkrete Dateien>`, nie `git add -A`.
-- **Nie committen:** `.claude/`, `.mcp.json`, `CLAUDE.md`, `skills-lock.json` (Tooling, absichtlich untracked).
+- **Nie committen:** `.claude/`, `.mcp.json`, `skills-lock.json` (Tooling, absichtlich untracked).
+  ⚠️ **`CLAUDE.md` stand hier bis zum 2026-08-12 mit in der Liste — falsch.** Die Datei ist
+  getrackt (zuletzt in `b35d523`) und enthält die verbindlichen Projektregeln; sie gehört
+  gepflegt und mitcommittet. Wer der alten Zeile folgte, ließ Regeländerungen im Working Tree liegen.
+- **Doku-Pflicht (Rene, 2026-08-11):** Jeder abgeschlossene Fix / jedes Feature aktualisiert diese
+  Datei **im selben Commit** — Changelog-Abschnitt plus die betroffenen offenen Punkte in §7. Steht
+  auch in `CLAUDE.md`. Ebenso dort: Bug-Fixes laufen nach dem **Dreifach-Prinzip** — wer einen Fehler
+  findet, behebt ihn nicht selbst; ein zweiter Agent fixt, ein dritter kontrolliert.
 - ⚠️ **Workflow-Agents erzeugen manchmal Müll-Dateien im Root**. Nach jedem Workflow `git status` prüfen.
 - ⚠️ **Mehrzeiligen Text (SQL, Prosa, Commit-Messages) nie roh in eine Shell-Zeile geben.** Genau daraus
   entstanden am 2026-08-10 elf 0-Byte-Dateien mit Namen wie `m.status`, `(,`, `{,` — Bruchstücke des
@@ -558,6 +565,18 @@ Alle vier Ketten mit FREIGABE der Endkontrolle; Polier-Runde für die letzten Mi
 Typfehler in `generate-button.test.tsx`: `vi.fn` ohne Signatur leitet parameterlos ab —
 Signatur an den Mock, kein ts-ignore).
 
+**Beweislage** (Commits `7c500ef` + `8c9b6cf`, beide live):
+- Build grün, **573 Tests** grün (+39 neu gegenüber 534).
+- **Kinder-Flow im echten Browser durchgespielt** (Agent, lokaler Dev-Server, Wegwerf-Turnier
+  3v3): anmelden → Team gründen → QR wird gerendert (`aria-label="Beitritts-QR für Code …"`) →
+  zweite Session ohne Cookies über `?join=GMRPWU` → Beitritts-Karte steht oben, Code
+  vorbefüllt → Beitritt „2 von 3" → Austritt, und der Vorfüll-Hinweis ist danach **weg**.
+- **Organizer-Screens am 2026-08-12 von Rene selbst durchgeklickt und bestätigt**: Nachmeldung
+  mit Umschalter Team/Einzelspieler (inkl. Direkt-Zuordnung), „ohne Team"-Markierung plus
+  Zuordnungsfeld in der Teilnehmerliste, namentliche Generieren-Warnung mit Pflicht-Häkchen,
+  Seeding samt „Zufällig setzen" nach dem Generieren erreichbar, Warnzeile auf der
+  Turnier-Übersicht. Damit hängt an dieser Runde kein ungeprüfter Klickweg mehr.
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - ⚠️ **Wer antritt, entscheidet `participants.type` — NIEMALS `team_id`.** Wettkämpfer =
   `type in ('solo','team')`, Mensch = `type in ('solo','player')`. Ein `player` ohne Team trägt
@@ -794,7 +813,13 @@ Signatur an den Mock, kein ts-ignore).
     **Seit dem 2026-08-11 abends zusätzlich in der Datenbank verankert:**
     `20260812090000_team_size_guard.sql` — der TypeScript-Riegel deckte PostgREST-Direktzugriffe
     nicht (Details im Abend-Changelog in §5).
-25. 🟡 **Nicht durchgeklickt: Teams-Screen, Restspieler-Panel, Sammel-Freigabe.** Alle drei liegen
+25. 🟢 **Weitgehend erledigt (2026-08-12).** Rene hat die Organizer-Seiten der August-Runde selbst
+    durchgeklickt und bestätigt: Nachmeldung mit Umschalter, Zuordnung in der Teilnehmerliste,
+    Generieren-Warnung, Seeding nach dem Generieren, Übersichts-Warnung (Details im §5-Changelog
+    „Die vier Feature-Workstreams"). **Rest offen:** die **Sammel-Freigabe** und ob das **Ziehen per
+    Pointer-Events auf einem echten Tablet** trägt — beides war nicht Teil dieser Runde. Der
+    Auswahlfeld-Fallback deckt den Ziehweg ab und ist jetzt an zwei Stellen erreichbar. Historie:
+    Alle drei lagen
     hinter dem Orga-Login, das ein Agent nicht hat. Anmeldung und Team-Beitritt sind auf Produktion
     bewiesen (§5), diese drei nicht. **Besonders offen:** ob das Ziehen per Pointer-Events auf einem
     echten Tablet trägt. Fallback ist eingebaut — neben jedem Spieler ein Auswahlfeld „verschieben

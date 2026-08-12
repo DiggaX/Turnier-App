@@ -1,5 +1,13 @@
 # Ruflo — Claude Code Configuration
 
+## Doku-Pflicht (Rene, 2026-08-11)
+
+- **Jeder abgeschlossene Fix / jedes Feature aktualisiert `docs/HANDOVER.md` im SELBEN Commit**:
+  Changelog-Abschnitt („Neu am …") + betroffene offene Punkte in §7 abhaken oder fortschreiben.
+  Kein separater Doku-Auftrag nötig — die Doku ist Teil der Arbeit, nicht Nacharbeit.
+- Bug-Fixes laufen nach dem **Dreifach-Prinzip**: wer den Bug findet, fixt ihn nicht selbst —
+  ein anderer Agent fixt, ein dritter kontrolliert den Fix. Gilt auch für Funde aus Reviews.
+
 ## Rules
 
 - Do what has been asked; nothing more, nothing less
