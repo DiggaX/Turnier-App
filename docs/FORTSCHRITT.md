@@ -1,7 +1,36 @@
 # Turnier-App — Fortschritt
 
-**Letzter Stand:** 2026-08-12 · Branch `main` @ `73e71a7` · gepusht und deployt
+**Letzter Stand:** 2026-08-12 (Nacht) · Branch `main` @ `1a6d011` · gepusht und deployt
 (`turnier-app-opal.vercel.app`; Push auf `main` deployt automatisch, siehe HANDOVER §3)
+
+**2026-08-12, zweite Tageshälfte — Aufräumtag.** Die e2e-Suite ging von **6 auf 35 grün**, und
+zwanzig §7-Punkte sind geschlossen worden. In Runden:
+
+1. **Suite repariert** (`04b81a5`): 14 der 17 roten Specs starben an einer Zeile — die Fixtures
+   suchten ein Spiel, das der DB-Wipe vom 07.08. entfernt hatte. Dazu drei Specs, die sich fremde
+   Produktionsdaten griffen, auf eigene Wegwerf-Turniere umgebaut (§7.1, §7.29).
+2. **Übernahme-Klickweg** (`abb784d`): `carry-over.spec.ts` fährt „denselben alten QR zweimal
+   scannen" — exakt eine Zeile entsteht (§7.19, §7.20, §7.23).
+3. **Vollpass + Riegel-Spec + Storage-Putz** (`0d87863`): alter QR verhält sich am Einlass wie ein
+   neuer (§7.38), `regenerate.spec.ts` deckt Stale-Race UND Warn-Dialog (§7.17), 45 verwaiste
+   Unterschriften gelöscht und das Leck in der Suite gestopft (§7.3).
+4. **Nachmeldung + Live-Steuerung** (`ac84a8c`): zwei Specs, dabei §7.16 miterledigt und ein
+   kaputtes aria-label (`hinzuf?gen`) gefixt.
+5. **Zwei kleine Fixes** (`19c4fc5`): Hydration-Mismatch in `PushOptIn` weg; `generateBracket`
+   schreibt das Bracket in EINEM INSERT statt ~21 Roundtrips (§7.36, §7.37).
+6. **Magic-Link + Geburtsdatum-Lockdown** (`f40df45`): Magic Links öffnen jetzt cross-device
+   (reine Template-Umstellung, null Code — §7.2); `participants.birthdate` ist vor dem Referee
+   auch DB-seitig gesperrt, Leseweg nur noch über eine DEFINER-Funktion (§7.28).
+7. **Gerätetest-Runde** (`1a6d011`): Push kam auf echtem iPhone an, ein echtes Referee-Konto hat
+   freigegeben und eingecheckt, Tablet-Drag trägt, Team-Ready feuert automatisch
+   (§7.4, §7.21, §7.25, §7.26).
+
+Dazwischen Kleinkram: Migrations-Timestamp-Kollision aufgelöst (§7.5), `team_members` gedroppt
+(§7.27), Geburtsdatum-Feld-Rand geschlossen (§7.33). **Neue Arbeitsweise:** seit Rene den
+Supabase-PAT freigegeben hat, setzt der Agent Auth-Konfiguration (Mail-Templates) selbst per
+Management-API — der Magic-Link-Beweis lief komplett agentisch. **Entschieden und gestrichen:**
+der Fotoerlaubnis-Widerruf wird NICHT als App-Funktion gebaut (Begründung in HANDOVER §7.16).
+581 Unit-Tests grün, 35/35 e2e. Details: HANDOVER.md §5, Abschnitte „Neu am 2026-08-12 …".
 
 **2026-08-12:** Fünf Commits, alle live (`7c500ef`…`73e71a7`). Auslöser: der team_size-Vorfall beim
 Rocket-League-Turnier (§7.34/§7.35 alt) per 13-Agenten-Forensik aufgeklärt. Danach Härtung

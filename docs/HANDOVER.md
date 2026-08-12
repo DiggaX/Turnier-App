@@ -1,8 +1,14 @@
 # Turnier-App — Übergabe an den nächsten Agent
 
-**Stand:** 2026-08-11 · Branch `main`, letzter Code-Commit `1dbfbdb` (§17) · **gepusht und live** unter https://turnier-app-opal.vercel.app (Push auf `main` deployt automatisch, siehe §3)
+**Stand:** 2026-08-12 (Nacht) · Branch `main` · **gepusht und live** unter https://turnier-app-opal.vercel.app (Push auf `main` deployt automatisch, siehe §3)
 
 Session-Protokolle der letzten Arbeit stehen in **§11–§16** (was gemacht, wie entschieden, was gut/schlecht lief).
+
+**Der 2026-08-12 war ein Aufräumtag:** die e2e-Suite ging von **6 auf 35 grün**, und aus §7
+sind an einem Tag geschlossen worden: 7.1, 7.2, 7.3, 7.4, 7.5, 7.16, 7.17, 7.19, 7.20, 7.21,
+7.23, 7.25, 7.26, 7.27, 7.28, 7.29, 7.33, 7.36, 7.37, 7.38. Chronologie in den
+§5-Changelog-Abschnitten „Neu am 2026-08-12 …" (vier Runden plus Gerätetest). Was noch offen
+ist, steht in §7 — es ist bewusst wenig und nichts davon dringend.
 
 ⚠️ **Am 2026-08-11 liefen zwei Sitzungen parallel auf demselben Repo.** Vor dem Weiterarbeiten
 `git fetch` + `git log origin/main` — es kann Arbeit auf `main` liegen, die diese Datei noch nicht kennt.
@@ -1050,11 +1056,28 @@ Hydration-Meldung.
     einem CHECK ist zulässig **und hier unbedenklich, weil die Schranke nur nach vorne wandert** —
     Begründung und die beiden offen gelassenen Restränder stehen im Kopf der Migration.
 
-16. **Fotoerlaubnis — was bewusst fehlt** (siehe §5): **kein Widerruf** (eine erteilte Erlaubnis lässt
-    sich in der App nicht zurückziehen oder löschen — DSGVO-seitig der nächste ehrliche Handgriff),
-    **kein Nachtragen** (weder auf `/me` noch am Check-in-Tresen, wenn jemand vor Ort das Papier
-    unterschreibt) und **kein Sammel-Export** außer dem Ausdruck. Alles drei war beim Bau explizit
-    abgewählt, nicht vergessen.
+16. **Fotoerlaubnis — was bewusst fehlt** (siehe §5): **kein Widerruf in der App**, **kein
+    Nachtragen** (weder auf `/me` noch am Check-in-Tresen, wenn jemand vor Ort das Papier
+    unterschreibt) und **kein Sammel-Export** außer dem Ausdruck. Alles drei war beim Bau
+    explizit abgewählt, nicht vergessen.
+
+    ⚠️ **Entscheidung Rene, 2026-08-12: der Widerruf-Knopf wird NICHT gebaut — Punkt
+    gestrichen, nicht vertagt.** Frühere Fassungen nannten ihn „den nächsten ehrlichen
+    Handgriff"; das ist zurückgenommen. Begründung: ein Selbstbedienungs-Knopf verspricht
+    etwas, das die Realität nicht einlöst. Sind Flyer, Plakate oder Social-Posts einmal
+    produziert, holt sie kein Datenbank-Flag zurück; ein Klick, der so aussieht, als
+    verschwänden die Fotos, wäre irreführender als gar kein Klick. Der Widerruf läuft
+    stattdessen **schriftlich beim Veranstalter** und wird dort von Hand abgearbeitet.
+
+    Zur sauberen Einordnung, damit das später niemand falsch weiterträgt (keine
+    Rechtsberatung): Das Widerrufsrecht selbst *besteht* natürlich weiter — es muss nur
+    keine App-Funktion sein, ein formloser Weg zum Veranstalter genügt. Und ein Widerruf
+    wirkt **ab jetzt**, nicht rückwirkend: bereits gedrucktes Material muss nicht
+    eingesammelt werden, künftige Verwendung unterbleibt. Genau deshalb passt der
+    schriftliche Weg besser als ein Knopf. Was die App weiterhin leistet: sie zeigt an, ob
+    eine Erlaubnis vorliegt (blauer Chip), und druckt den Nachweis mit dem damals
+    zugestimmten Wortlaut aus — das ist die Grundlage, auf der ein schriftlicher Widerruf
+    überhaupt bearbeitet werden kann.
 17. **Vier alte `consents`-Zeilen ohne Anschrift und Wortlaut** (erteilt vor dem 2026-08-10, im
     EA-Sports-Turnier: Linus Augsten, Maxi, Nico, Supermats1). Der Ausdruck zeigt für sie „wohnhaft —"
     und den Alt-Satz. Nicht nachträglich auffüllen — was nicht erhoben wurde, wurde nicht erhoben.
