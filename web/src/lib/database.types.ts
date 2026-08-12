@@ -135,23 +135,6 @@ export interface Database {
           { foreignKeyName: "participants_team_id_fkey"; columns: ["team_id"]; referencedRelation: "participants"; referencedColumns: ["id"] }
         ];
       };
-      team_members: {
-        Row: {
-          id: string; participant_id: string; name: string; gamertag: string | null;
-          is_captain: boolean; created_at: string;
-        };
-        Insert: {
-          id?: string; participant_id: string; name: string; gamertag?: string | null;
-          is_captain?: boolean; created_at?: string;
-        };
-        Update: {
-          id?: string; participant_id?: string; name?: string; gamertag?: string | null;
-          is_captain?: boolean; created_at?: string;
-        };
-        Relationships: [
-          { foreignKeyName: "team_members_participant_id_fkey"; columns: ["participant_id"]; referencedRelation: "participants"; referencedColumns: ["id"] }
-        ];
-      };
       consents: {
         Row: {
           id: string; participant_id: string; grantor: ConsentGrantor;

@@ -1030,10 +1030,15 @@ Hydration-Meldung.
     `sync_team_ready` ist in einer zurückgerollten Transaktion belegt, aber nie mit drei echten
     Check-ins gelaufen. **Notausgang, falls nicht:** auf der Check-in-Seite gibt es pro Team einen
     „Spielbereit"-Knopf (setzt `checked_in_at` auf der Team-Zeile, genau das prüft die Bracket-Quelle).
-27. 🟡 **`team_members` steht noch.** Der Umzug (`20260811094000`) hat kopiert, nicht gelöscht — die
-    Tabelle ist der Rückweg. Nichts liest oder schreibt sie noch. **Droppen, sobald eine Turnierrunde
-    sauber gelaufen ist**, in einer eigenen Mini-Migration. Rückweg bis dahin:
-    `delete from participants where type = 'player' and user_id is null;`
+27. ✅ **Erledigt (2026-08-12): `team_members` ist gedroppt** (Freigabe Rene, Migration
+    `20260812190000_drop_team_members.sql`, per db2 angewandt, DB-Version `20260812160240`).
+    Vorher nachgemessen: die Tabelle war **bereits leer** — die Alt-Zeilen sind über den
+    `participant_id`-FK-Cascade mit den gelöschten Alt-Teams verschwunden, der „Rückweg"
+    existierte also faktisch nicht mehr. Kein Code, keine Funktion, kein Trigger, kein
+    eingehender FK referenzierte sie. `database.types.ts`: nur der `team_members`-Block
+    chirurgisch entfernt — **kein** Generator-Vollersatz, der hätte die handgepflegten
+    Nullability-Fixes an RPC-Returns überschrieben (bekannte Generator-Schwäche, §7.32).
+    Danach 580 Unit-Tests + Build grün.
 28. 🟡 **Geburtsdatum ist vor dem Schiedsrichter nur in der Oberfläche versteckt**, nicht in der
     Datenbank. Spaltenrechte gelten pro Postgres-Rolle, und alle drei App-Rollen **sind** dieselbe
     Rolle `authenticated`. Eine echte Trennung braucht eine View oder eine DEFINER-Funktion mit fester

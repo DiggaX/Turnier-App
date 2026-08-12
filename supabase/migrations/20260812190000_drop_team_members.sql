@@ -1,0 +1,14 @@
+-- §7.27: team_members entfernen — der Rückweg des Person/Team-Umzugs ist Geschichte.
+--
+-- Der Umzug (20260811094000) kopierte die Mitspieler-Zeichenketten in echte
+-- participants-Zeilen (type='player'); team_members blieb als Rückweg stehen.
+-- Stand 2026-08-12 vor diesem Drop, alles nachgemessen:
+--   * 0 Zeilen — die Alt-Zeilen sind über den participant_id-FK-Cascade mit den
+--     gelöschten Alt-Teams verschwunden; der "Rückweg" existierte faktisch nicht mehr.
+--   * Kein Code liest oder schreibt die Tabelle (nur noch database.types.ts + Kommentare).
+--   * Keine eingehenden FKs, keine Funktion/Trigger referenziert sie.
+--   * Mehrere Turnierrunden sind seit dem Umzug sauber gelaufen (Duo-Turnier live,
+--     e2e-Suite fährt täglich komplette Runden) — die Bedingung aus HANDOVER §7.27.
+--
+-- DROP TABLE räumt Policies und Trigger der Tabelle automatisch mit ab.
+drop table if exists public.team_members;
