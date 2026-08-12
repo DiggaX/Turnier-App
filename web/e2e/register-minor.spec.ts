@@ -1,6 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { createClient } from "@supabase/supabase-js";
 import {
+  SUPABASE_URL,
   hasOrgCreds,
+  staffClient,
   withFixtureTournament,
   fillRegistrationForm,
 } from "./fixtures";
@@ -11,6 +14,47 @@ test.skip(!hasOrgCreds, "organizer creds not configured");
 const tournamentId = withFixtureTournament({
   namePrefix: "E2E Minor",
   teamSize: 1,
+});
+
+// Der erste Test malt eine ECHTE Unterschrift in den privaten Bucket. Das
+// Turnier-Delete des Fixtures cascadet nur DB-Zeilen — Storage-Objekte bleiben
+// als Waisen liegen (genau die Quelle der Altlast aus HANDOVER §7.3), und der
+// Bucket hat keine DELETE-Policy: nur die Service-Role kann loeschen.
+//
+// Pfade werden pro Test in afterEach eingesammelt (da existieren die
+// consents-Zeilen garantiert noch — auf die Reihenfolge der afterAll-Hooks
+// gegenueber dem Turnier-Delete des Fixtures verlaesst sich hier nichts) und
+// erst am Ende geloescht. Ohne Service-Key wird uebersprungen; Rueckstaende
+// holt `npm run cleanup:signatures` nach.
+const signaturePaths: string[] = [];
+
+test.afterEach(async () => {
+  const staff = await staffClient();
+  const { data, error } = await staff
+    .from("consents")
+    .select("signature_path, participants!inner(tournament_id)")
+    .eq("participants.tournament_id", tournamentId())
+    .not("signature_path", "is", null);
+  if (error) {
+    console.warn(`signature collect failed: ${error.message}`);
+    return;
+  }
+  for (const row of data ?? []) {
+    const p = row.signature_path as string | null;
+    if (p && !signaturePaths.includes(p)) signaturePaths.push(p);
+  }
+});
+
+test.afterAll(async () => {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  if (!serviceKey || signaturePaths.length === 0) return;
+  const admin = createClient(SUPABASE_URL, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { error } = await admin.storage
+    .from("consent-signatures")
+    .remove(signaturePaths);
+  if (error) console.warn(`signature cleanup failed: ${error.message}`);
 });
 
 test("minor registration + drawn signature photo consent", async ({ page }) => {

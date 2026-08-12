@@ -6,10 +6,11 @@
 // field (no camera needed) and pins the one run that counts: the SAME old QR
 // scanned twice must not create a second participants row.
 //
-// Documented behavior, not a bug (HANDOVER §7.38): the second scan shows the
-// carry-over OFFER again — the old QR still points at the old row, and the
-// client never reads `created=false`. Idempotency lives in the DB
-// (`on conflict do nothing`), so the proof is a row count, not a UI text.
+// Fixed 2026-08-12 (HANDOVER §7.38): the second scan of the old QR no longer
+// re-offers the carry-over. The scanner now looks the person up in the TARGET
+// tournament first and shows the "Schon anwesend" card instead. Idempotency of
+// the write path still lives in the DB (`on conflict do nothing`), so the row
+// count at the end remains the real proof.
 import { test, expect } from "@playwright/test";
 import {
   createFixtureTournament,
@@ -90,12 +91,15 @@ test("old QR scanned twice carries over exactly once", async ({ page }) => {
   await page.getByRole("button", { name: "Übernehmen & einchecken" }).click();
   await expect(page.getByText("Übernommen und eingecheckt")).toBeVisible();
 
-  // Scan 2, same token: the offer appears AGAIN (documented, §7.38) — confirm
-  // again to prove the write path is idempotent end-to-end.
+  // Scan 2, same token: the person now stands in the target tournament, so
+  // the old QR must NOT re-offer the carry-over (§7.38) — it reads as already
+  // present, no second confirm. The name is scoped to the result card
+  // (role=status): after the refresh the attendance list carries it too, and
+  // an unscoped getByText would trip Playwright's strict mode.
   await scan(page, qrToken);
-  await expect(page.getByText("In dieses Turnier übernehmen?")).toBeVisible();
-  await page.getByRole("button", { name: "Übernehmen & einchecken" }).click();
-  await expect(page.getByText("Übernommen und eingecheckt")).toBeVisible();
+  const card = page.getByRole("status");
+  await expect(card.getByText(/Schon anwesend/)).toBeVisible();
+  await expect(card.getByText(personName)).toBeVisible();
 
   // THE proof (§7.19): exactly one row in the target tournament, checked in.
   const staff = await staffClient();

@@ -668,6 +668,29 @@ Geplant per grill-me-Interview (drei Entscheidungen von Rene: e2e-Spec statt Ein
   still die neueste Registry-Version herunter (1.62.x) — die behandelt Top-Level-`test.skip`
   strenger und meldet dann „No tests found". Immer aus `web/` laufen lassen; lokal ist ^1.61.
 
+### Neu am 2026-08-12 (Nachmittag): Vollpass-Fix + Riegel-Spec + Storage-Putz
+
+Dreierpaket, per grill-me geplant (Entscheidungen Rene: Fix beim Scan als „Vollpass"; Riegel-Spec
+deckt beide Pfade; Skript committen UND Leck stopfen). Drei Commits, Details an den Punkten:
+
+- **§7.38 behoben — „Alt-QR wird Vollpass"** (`scanner-client.tsx` + `carry-over.spec.ts`).
+  Kette: Fixer-Agent → unabhängiger Review → Spec grün. Details §7.38.
+- **§7.17 teilerledigt — `regenerate.spec.ts`**, zwei Tests. Der wichtige Erkundungsbefund
+  vorweg: auf einer frisch geladenen Seite ist der Server-Riegel unerreichbar (der Knopf
+  schickt `discardResults: true` aus den Server-Render-Zählungen mit) — er feuert nur im
+  **Stale-Seiten-Race**, und genau das fährt Test 1 nach: Meldung landet per RPC, während die
+  Seite offen ist → Server lehnt ab, nichts gelöscht. Test 2: Warntext → Abbrechen bewahrt →
+  Bestätigen löscht (neue Match-Id, Reports cascade-weg). Zweimal grün. Details §7.17.
+- **§7.3 erledigt — 45 Waisen gelöscht, Quelle gestopft.** Skript
+  `web/scripts/cleanup-orphan-signatures.mjs` (`npm run cleanup:signatures`, `--dry`);
+  Doppel-Beweis Skript ↔ SQL-Query (beide 45 → beide 0). Leck war die Suite selbst
+  (`register-minor` malt echte Unterschriften, Cascade löscht nie Storage) — jetzt sammelt
+  die Spec ihre Pfade in `afterEach` und löscht sie per Service-Role in `afterAll`;
+  Folgelauf hinterlässt 0 neue Waisen. ⚠️ Lehrstück: die erste Fassung las erst im
+  `afterAll` und verlor gegen das Turnier-Delete des Fixtures. Details §7.3.
+- Nebenbei: vier neue 0-Byte-Müll-Dateien während der Subagent-Läufe entstanden und
+  gelöscht (`(await`, `{,` um 12:45; `` `MIN_SCAN_LENGTH` ``-Muster) — stützt §7.15(d).
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - ⚠️ **Wer antritt, entscheidet `participants.type` — NIEMALS `team_id`.** Wettkämpfer =
   `type in ('solo','team')`, Mensch = `type in ('solo','player')`. Ein `player` ohne Team trägt
@@ -733,7 +756,20 @@ Geplant per grill-me-Interview (drei Entscheidungen von Rene: e2e-Spec statt Ein
    hergeleitet. Das Präfix bindet nur den `?code=`-Pfad über `exchangeCodeForSession`; `verifyOtp` mit
    `token_hash` braucht den Verifier nicht. Wer den Magic Link umstellt, sollte also nicht mit
    „PKCE geht sowieso nicht cross-device" argumentieren — der Grund ist allein die Linkform.
-3. **39 verwaiste Storage-Objekte** im Bucket `consent-signatures` (Stand 2026-08-10: 54 Objekte, davon 39 ohne zugehörige `consents`-Zeile — Reste gelöschter Test-Teilnehmer). Per SQL nicht löschbar (Supabase blockt mit „Use Storage API"), nur über Dashboard/Service-Role. ⚠️ Das sind **Unterschriften von Erziehungsberechtigten** — Datenminimierung spricht dafür, sie wegzuräumen, nicht liegen zu lassen. Prüfquery: `select count(*) from storage.objects o where bucket_id='consent-signatures' and not exists (select 1 from consents c where c.signature_path = o.name);`
+3. ✅ **Erledigt (2026-08-12): 45 verwaiste Unterschriften gelöscht, Leck gestopft.** Aus den 39
+   waren inzwischen 45 geworden — die Quelle war die e2e-Suite selbst: `register-minor` malt pro
+   Lauf eine echte Unterschrift, das Turnier-Delete des Fixtures cascadet nur DB-Zeilen, nie
+   Storage-Objekte, und der Bucket hat **keine** DELETE-Policy (nur Service-Role kann löschen).
+   Zwei Maßnahmen: (a) `web/scripts/cleanup-orphan-signatures.mjs` (`npm run cleanup:signatures`,
+   `--dry` zum Zählen) löscht Objekte ohne `consents.signature_path`-Zeile per Service-Role —
+   ausgeführt, Skript-Zählung und die alte Prüfquery sagten unabhängig voneinander 45, danach
+   beide 0; (b) `register-minor.spec` sammelt seine Signatur-Pfade **pro Test in `afterEach`**
+   (da existieren die consents-Zeilen garantiert noch) und löscht sie in `afterAll` per
+   Service-Role — bewiesen: Lauf danach hinterlässt 0 neue Waisen. ⚠️ Erste Fassung las die
+   Pfade erst im `afterAll` und verlor gegen das Turnier-Delete des Fixtures — bei
+   Hook-Reihenfolgen nicht auf LIFO-Annahmen bauen, sondern einsammeln, solange die Daten
+   sicher leben. `SUPABASE_SERVICE_ROLE_KEY` steht jetzt auch in `web/.env.example`.
+   Alte Prüfquery bleibt gültig: `select count(*) from storage.objects o where bucket_id='consent-signatures' and not exists (select 1 from consents c where c.signature_path = o.name);`
 4. **Push** nie auf echtem Gerät getestet (VAPID-Keys sind gesetzt).
 5. **Datei-Hygiene:** zwei Migrationen teilen den Timestamp `20260628090000`. Live-DB korrekt, nur Datei-Kollision; bei Gelegenheit umbenennen (NICHT neu anwenden).
 6. ✅ **Geleakter `sb_secret_…`-Key ist rotiert** (laut `docs/FORTSCHRITT.md` am 2026-06-18). Diese Zeile stand bis 2026-08-09 fälschlich als offen und hat zu falschen Empfehlungen geführt. Am 2026-08-09 geprüft: in der gesamten Historie taucht nur die geschwärzte Form `sb_secret_…` auf, nie ein Key-Wert; `.gitignore` deckt `.env*` ab, getrackt ist allein `web/.env.example`.
@@ -850,10 +886,17 @@ Geplant per grill-me-Interview (drei Entscheidungen von Rene: e2e-Spec statt Ein
     Organizer-Seiten verlangen einen Login — den kann ein Agent nicht führen. Erster Handgriff für
     den nächsten Menschen: 3v3-Turnier → *Teilnehmer → Team nachmelden* → drei Zeilen müssen
     erscheinen (Captain, Spieler 2, Spieler 3).
-17. **Kein e2e deckt die neuen Funktionen ab** — Nachmeldung, Live-Steuerung in der Matchliste und
-    der Regenerate-Riegel haben keine Spec. Der Riegel wäre der lohnendste: er ist die einzige Stelle,
-    an der ein Fehlklick unwiederbringlich Daten kostet, und ein Test dafür braucht nur ein Fixture
-    mit einem freigegebenen Ergebnis. ⚠️ Vorher §7.1 lesen — die Suite hat gerade eigene Probleme.
+17. 🟡 **Teilweise erledigt (2026-08-12): der Regenerate-Riegel hat jetzt seine Spec** —
+    `web/e2e/regenerate.spec.ts`, zwei Tests: (1) das **Stale-Seiten-Race**, der einzige Weg, auf
+    dem der Server-Riegel im Browser überhaupt feuert (eine frisch geladene Seite schickt bei
+    vorhandener Arbeit `discardResults: true` gleich mit — der Knopf rechnet aus dem
+    Server-Render): Seite offen bei leerem Bracket, Spielermeldung landet nebenher per RPC,
+    Bestätigen → Server lehnt ab („bitte ausdrücklich bestätigen"), nichts gelöscht; (2) der
+    Warn-Dialog-Weg: Reload → `lostWork()`-Wortlaut inline sichtbar → Abbrechen bewahrt →
+    Bestätigen löscht wirklich (neue Match-Id, `match_reports` der alten per Cascade weg).
+    Billigste Verlust-Sorte fürs Fixture: pending-Match + **eine** Spielermeldung
+    (`report_match` fasst `matches.status` nie an). **Weiter offen:** Nachmeldung und
+    Live-Steuerung in der Matchliste haben keine Spec.
 18. ✅ **Geburtsdatum-Prüfung vereinheitlicht** (2026-08-10). Die öffentliche Anmeldung ruft jetzt
     `validBirthdate()` (`lib/consent.ts`) auf — dieselbe Funktion wie der Nachmelde-Pfad, mit
     demselben Satz bei Fehlschlag — und `participants.birthdate` trägt einen CHECK
@@ -890,8 +933,9 @@ Geplant per grill-me-Interview (drei Entscheidungen von Rene: e2e-Spec statt Ein
     Handscanner-Kanal, `[data-scan-capture]` + Enter — die alte Blockade „Agent kann sich nicht
     anmelden" fiel mit den gültigen e2e-Creds aus §7.29), beide Male bestätigen, danach zählt der
     Staff-Client: **exakt eine Zeile** im Zielturnier, `checked_in_at` gesetzt. Details im
-    §5-Changelog. ⚠️ Dabei dokumentierter UI-Rand: der zweite Scan zeigt WIEDER das Angebot,
-    kein „schon übernommen" — §7.38.
+    §5-Changelog. Der dabei gefundene UI-Rand (zweiter Scan bot die Übernahme erneut an) ist
+    noch am selben Tag behoben — §7.38, „Alt-QR wird Vollpass"; die Spec pinnt seither das
+    neue Verhalten („Schon anwesend" beim Zweit-Scan).
 20. ✅ **Erledigt (2026-08-12), derselbe Spec.** Zwei Turniere + Quelle mit Konto: Ziel über
     `withFixtureTournament`, Quelle über direktes `createFixtureTournament` mit eigenem
     `afterAll`-Delete; `registerAndCheckIn` liefert seit heute auch `qrToken` mit (RETURNING
@@ -1029,14 +1073,19 @@ Geplant per grill-me-Interview (drei Entscheidungen von Rene: e2e-Spec statt Ein
     Roundtrips bei Double-Elim) — deshalb braucht die `double-elim`-Spec einen 20s-Timeout.
     Ein Batch-Update würde die Aktion um Sekunden beschleunigen und den Sonder-Timeout
     überflüssig machen. Reine Performance, kein Korrektheitsproblem.
-38. 🟢 **Zweiter Scan eines schon übernommenen QR bietet die Übernahme ERNEUT an** statt „schon
-    übernommen" zu sagen (beim §7.19-Beweis gefunden). Ursache: der alte QR zeigt weiter auf die
-    alte Zeile (`qr_token` wird nie kopiert), der Lookup joint nicht über `user_id`, und der
-    Client liest `row.created` nie aus (`scanner-client.tsx:459` — `carry_over_participant`
-    liefert `created=false` beim `on conflict do nothing`). Harmlos: idempotent, keine zweite
-    Zeile (e2e-bewiesen); pro Wiederholung entsteht nur ein zusätzlicher `check_ins`-Audit-
-    Eintrag. Fix wäre `created=false` auswerten → eigene „Schon übernommen"-Karte. Bewusst
-    nicht mitgefixt (wäre App-Code, eigener Auftrag).
+38. ✅ **Behoben (2026-08-12, noch am selben Tag): „Alt-QR wird Vollpass".** Ursprünglicher Fund
+    beim §7.19-Beweis: zweiter Scan eines schon übernommenen QR bot die Übernahme ERNEUT an
+    (alter QR zeigt auf die alte Zeile, `qr_token` wird nie kopiert, `row.created` wurde nie
+    gelesen). Fix nach Rene-Entscheidung **beim Scan, nicht beim Bestätigen**: der
+    Fremd-Turnier-Zweig in `handleToken` (`scanner-client.tsx`) fragt bei `user_id`-Tokens
+    zusätzlich nach, ob die Person schon im ZIEL-Turnier steht — Treffer ersetzt `participant`
+    durch die Ziel-Zeile und fällt in den normalen Same-Tournament-Pfad durch: eingecheckt →
+    bestehende „Schon anwesend"-Karte; nicht eingecheckt (Reparaturfall: Übernahme lief,
+    Check-in scheiterte damals) → regulärer `check_in` + Erfolgs-Karte. **Kein neuer
+    Kartentyp, keine Duplikation** — der alte QR verhält sich exakt wie der neue.
+    Zweitabfrage kostet nur im seltenen Fremd-Token-Fall; Fehler dort = fail-open Richtung
+    Angebot (Übernahme bleibt idempotent). e2e angepasst und grün (`carry-over.spec.ts`,
+    Zweit-Scan erwartet „Schon anwesend", Zeilen-Zählung bleibt der Beweis).
 
 ## 8. Datei-Landkarte
 - `web/src/app/` — Routen. Öffentlich: `page.tsx`, `o/[slug]/`, `t/[tournamentId]/{,register,me,board,checkin-station}`. Auth: `(auth)/login`, `(auth)/signup`, `auth/confirm/route.ts`, `link/[token]/route.ts` (Geräte-Kopplung). Organizer: `organizer/`, `games`, `members` (Org-Name + Geräte + Mitglieder), `tournaments/[id]/{,bracket,matches,participants,checkin,station}`. Scorekeeper: `score/[token]/`.

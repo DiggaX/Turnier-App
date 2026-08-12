@@ -328,7 +328,7 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
       try {
         // consents(id) kommt mit, damit die Karte sagen kann, ob eine
         // Fotoerlaubnis vorliegt — genau danach wird am Einlass gefragt.
-        const { data: participant, error: lookupErr } = await supabase
+        const { data: scanned, error: lookupErr } = await supabase
           .from("participants")
           .select(
             "id, display_name, checked_in_at, tournament_id, user_id, type, consents(id), tournaments(name)",
@@ -336,48 +336,83 @@ export function ScannerClient({ tournamentId }: ScannerClientProps) {
           .eq("qr_token", token)
           .maybeSingle();
 
-        if (lookupErr || !participant) {
+        if (lookupErr || !scanned) {
           showStatus({ kind: "unknown" });
           playScanSound("reject");
           return;
         }
 
+        // Die Zeile, auf die der Pfad unten wirkt (Anwesenheits-Check,
+        // check_in). Normalerweise die gescannte selbst — beim Alt-QR einer
+        // längst übernommenen Person die Ziel-Zeile aus DIESEM Turnier (§7.38).
+        let participant: Pick<
+          NonNullable<typeof scanned>,
+          "id" | "display_name" | "checked_in_at" | "consents"
+        > = scanned;
+
         // Bewusst weiterhin ohne Turnier-Filter gesucht: nur so lässt sich der
         // häufigste Fall — jemand kommt mit dem Code vom letzten Turnier — beim
         // Namen nennen, statt ihn als „nicht erkannt" auszugeben und die Orga
         // nach einem Anmeldeproblem suchen zu lassen, das es nicht gibt.
-        if (participant.tournament_id !== tournamentId) {
+        if (scanned.tournament_id !== tournamentId) {
           const tournament =
-            participant.tournaments?.name ?? "einem anderen Turnier";
+            scanned.tournaments?.name ?? "einem anderen Turnier";
 
-          // Die Vorprüfung deckt nur ab, was hier ohnehin schon vorliegt, damit
-          // kein Knopf erscheint, der bloß scheitern kann. Alle übrigen Regeln
-          // (Status, Archiv, Organisation, Geburtsdatum, Rennen zweier Türen)
-          // bleiben im RPC und melden sich als carryOverFailed.
-          const offerbar =
-            participant.user_id !== null &&
-            participant.type !== "team" &&
-            (await carryOverAllowed());
+          // Alt-QR nach Übernahme (§7.38): die übernommene Zeile trägt einen
+          // eigenen qr_token, der alte zeigt für immer auf die Quelle. Ohne
+          // diese Nachfrage erschiene das Angebot ein zweites Mal — an der Tür
+          // liest sich das wie ein fehlgeschlagenes erstes Mal. Kostet nur im
+          // seltenen Fremd-Token-Fall eine zweite Abfrage.
+          const target =
+            scanned.user_id === null
+              ? null
+              : await supabase
+                  .from("participants")
+                  .select("id, display_name, checked_in_at, consents(id)")
+                  .eq("tournament_id", tournamentId)
+                  .eq("user_id", scanned.user_id)
+                  .maybeSingle();
 
-          if (offerbar) {
-            pendingRef.current = true;
-            pendingMethodRef.current = method;
-            showStatus({
-              kind: "carryOverOffer",
-              name: participant.display_name,
-              tournament,
-              token,
-            });
-            playScanSound("already"); // eine Frage, keine Ablehnung
+          if (target?.data) {
+            // Die Person steht schon in diesem Turnier: Ziel-Zeile übernehmen
+            // und in den normalen Pfad unten durchfallen — eingecheckt heißt
+            // „Schon anwesend", sonst regulärer Check-in (der Reparaturfall,
+            // wenn damals nur der Check-in nach der Übernahme scheiterte).
+            participant = target.data;
           } else {
-            showStatus({
-              kind: "otherTournament",
-              name: participant.display_name,
-              tournament,
-            });
-            playScanSound("reject");
+            // target?.error landet bewusst hier: fail-open Richtung Angebot.
+            // Die Übernahme ist idempotent — ein überflüssiges Bestätigen
+            // richtet nichts an, eine fälschlich unterdrückte Karte schon.
+            //
+            // Die Vorprüfung deckt nur ab, was hier ohnehin schon vorliegt,
+            // damit kein Knopf erscheint, der bloß scheitern kann. Alle übrigen
+            // Regeln (Status, Archiv, Organisation, Geburtsdatum, Rennen
+            // zweier Türen) bleiben im RPC und melden sich als carryOverFailed.
+            const offerbar =
+              scanned.user_id !== null &&
+              scanned.type !== "team" &&
+              (await carryOverAllowed());
+
+            if (offerbar) {
+              pendingRef.current = true;
+              pendingMethodRef.current = method;
+              showStatus({
+                kind: "carryOverOffer",
+                name: scanned.display_name,
+                tournament,
+                token,
+              });
+              playScanSound("already"); // eine Frage, keine Ablehnung
+            } else {
+              showStatus({
+                kind: "otherTournament",
+                name: scanned.display_name,
+                tournament,
+              });
+              playScanSound("reject");
+            }
+            return;
           }
-          return;
         }
 
         const photoConsent = (participant.consents ?? []).length > 0;
