@@ -643,6 +643,31 @@ Prüfer), alle Änderungen **nur in `web/e2e/`**, kein App-Code, keine Migration
   die Winner-/Loser-Link-UPDATEs einzeln — ein Batch würde Sekunden sparen; und in den
   Dev-Server-Logs steht ein React-Hydration-Mismatch in `PushOptIn` (§7.36).
 
+### Neu am 2026-08-12: Übernahme-Klickweg e2e-bewiesen (§7.19 + §7.20 + §7.23 zu)
+
+Geplant per grill-me-Interview (drei Entscheidungen von Rene: e2e-Spec statt Einmal-Klick;
+`allow_carry_over` bleibt dauerhaft AN, Spec erzwingt AN; Kernfall pur). Neu:
+`web/e2e/carry-over.spec.ts` — ein Test, der „den einen Durchlauf, der zählt" fährt.
+
+- **Scan ohne Kamera:** Token per `[data-scan-capture]`-Feld tippen + Enter (der dokumentierte
+  Handscanner-Kanal, `use-hardware-scan.ts`). Vorher `localStorage["turnierapp.checkin.scanMode"]
+  = "hardware"` per `addInitScript` — Hardware-Modus mountet die Kamera gar nicht, headless
+  bleibt sauber.
+- **Aufbau:** Ziel-Turnier via `withFixtureTournament`, Quell-Turnier via direktem
+  `createFixtureTournament` + eigenem `afterAll` (das Helper-Paar kann nur ein Turnier je Datei);
+  Quell-Teilnehmer mit Konto über `registerAndCheckIn`, das jetzt `qrToken` mitliefert
+  (`.select("id, qr_token")` — Owner-RLS deckt das RETURNING).
+- **Ablauf:** Scan → Karte „In dieses Turnier übernehmen?" → „Übernehmen & einchecken" →
+  „Übernommen und eingecheckt" → **denselben Token nochmal** → Angebot erscheint WIEDER (kein
+  „schon da", §7.38) → nochmal bestätigen → Staff-Client zählt: **exakt 1 Zeile** im Ziel,
+  `checked_in_at` gesetzt.
+- **Verifiziert:** Spec zweimal hintereinander grün (9,2 s / 6,3 s — zweiter Lauf beweist das
+  Cleanup), DB-Gegenprobe 0 Reste (`E2E CarryOver%`-Turniere und -Teilnehmer), Gesamt-Suite
+  30/30 grün.
+- ⚠️ **Falle für Nachahmer:** `npx playwright` vom Repo-**Root** lädt mangels `node_modules`
+  still die neueste Registry-Version herunter (1.62.x) — die behandelt Top-Level-`test.skip`
+  strenger und meldet dann „No tests found". Immer aus `web/` laufen lassen; lokal ist ^1.61.
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - ⚠️ **Wer antritt, entscheidet `participants.type` — NIEMALS `team_id`.** Wettkämpfer =
   `type in ('solo','team')`, Mensch = `type in ('solo','player')`. Ein `player` ohne Team trägt
@@ -811,6 +836,15 @@ Prüfer), alle Änderungen **nur in `web/e2e/`**, kein App-Code, keine Migration
     `git status`, und zwar in **beiden** Sitzungen. ⚠️ **Und die praktische Konsequenz, die wichtiger ist
     als die Ursache:** wer hier committet, muss `git add` mit expliziten Pfaden benutzen und vorher
     `git status` lesen — sonst reißt man die halbfertige Arbeit der anderen Sitzung mit hinein.
+
+    **(d) Vierter Nachtrag, 2026-08-12 — der Kreis wird enger: SUBAGENTS derselben Sitzung.**
+    Morgens 19 Stück gelöscht (drei frisch von 09:00–09:15). Mittags entstand `` `MIN_SCAN_LENGTH` ``
+    (0 Byte, 12:22:49, Backticks IM Dateinamen) — die Zeichenfolge steht wörtlich, in Backticks,
+    im Bericht des Explore-Subagents, der **in genau diesem Moment in dieser Sitzung** lief. Keine
+    zweite Sitzung nötig: der Erzeuger sitzt (auch) in den eigenen Hintergrund-Agents — passt zu (c),
+    „anderer Prozess" schließt die eigenen Subagents ein. Muster bestätigt: es sind Bruchstücke von
+    *berichtetem/gelesenem* Text, der irgendwo durch eine Shell läuft. Gegenmaßnahme unverändert
+    (find-Kommando aus (a) + explizite `git add`-Pfade); Ursache im Tooling weiter offen.
 16. **Das Aufstellungs-Formular ist nie in einem Browser geöffnet worden.** Unit- und Komponententests
     sind grün (`add-participant-form.test.tsx`), die RLS ist gegen die Live-DB bewiesen, aber die
     Organizer-Seiten verlangen einen Login — den kann ein Agent nicht führen. Erster Handgriff für
@@ -851,13 +885,17 @@ Prüfer), alle Änderungen **nur in `web/e2e/`**, kein App-Code, keine Migration
 
 ### Neu offen aus dem 2026-08-11
 
-19. 🟡 **Die Übernahme ist nie im Browser durchgeklickt worden.** Datenbankseite ist vollständig
-    bewiesen (§5.1), Wortlaute und Countdown-Pause sind getestet — der Klickweg an der Tür nicht: der
-    Scanner liegt hinter dem Login, und ein Agent kann sich nicht anmelden. **Der eine Durchlauf, der
-    zählt:** denselben alten QR zweimal hintereinander scannen. Es darf **keine** zweite Zeile
-    entstehen. Genau dafür wird die Konto-Id mitkopiert, und genau das kann still falsch sein.
-20. 🟡 **Kein e2e für die Übernahme.** Es bräuchte zwei Turniere und eine Quelle mit Konto —
-    aufwendiger als die bisherigen Fixtures, aber es ist der Pfad, der eine fremde Konto-Id schreibt.
+19. ✅ **Erledigt (2026-08-12): der Klickweg ist e2e-bewiesen.** `web/e2e/carry-over.spec.ts`
+    fährt genau „den einen Durchlauf, der zählt": denselben alten QR zweimal scannen (per
+    Handscanner-Kanal, `[data-scan-capture]` + Enter — die alte Blockade „Agent kann sich nicht
+    anmelden" fiel mit den gültigen e2e-Creds aus §7.29), beide Male bestätigen, danach zählt der
+    Staff-Client: **exakt eine Zeile** im Zielturnier, `checked_in_at` gesetzt. Details im
+    §5-Changelog. ⚠️ Dabei dokumentierter UI-Rand: der zweite Scan zeigt WIEDER das Angebot,
+    kein „schon übernommen" — §7.38.
+20. ✅ **Erledigt (2026-08-12), derselbe Spec.** Zwei Turniere + Quelle mit Konto: Ziel über
+    `withFixtureTournament`, Quelle über direktes `createFixtureTournament` mit eigenem
+    `afterAll`-Delete; `registerAndCheckIn` liefert seit heute auch `qrToken` mit (RETURNING
+    unter der Owner-Policy, kein zweiter Roundtrip).
 21. 🟢 **Der Referee-Pfad ist nur simuliert bewiesen.** Es existiert kein einziges Profil mit Rolle
     `referee` (drei Admins, ein Organizer). Für den Beweis wurde in einer zurückgerollten Transaktion
     ein Organizer herabgestuft. Sobald ein echter Schiedsrichter angelegt ist, einmal wirklich scannen
@@ -865,8 +903,10 @@ Prüfer), alle Änderungen **nur in `web/e2e/`**, kein App-Code, keine Migration
 22. 🟢 **Übernahme ohne Konto ist nicht möglich** und das ist eine bewusste Grenze, kein Bug (§5.1).
     Wer sie aufheben will, muss zuerst beantworten, was der alte QR danach tun soll — der Token ist
     unique, kopieren geht nicht.
-23. 🟡 **`allow_carry_over` steht seit dem 2026-08-11 auf `true`** (vom User zum Test gesetzt). Wenn
-    turnierübergreifende Codes nicht dauerhaft gelten sollen: Haken unter *Organisation* wieder raus.
+23. ✅ **Entschieden (Rene, 2026-08-12): `allow_carry_over` bleibt dauerhaft AN.** Die
+    carry-over-Spec setzt den Haken in `beforeAll` zusätzlich explizit auf `true` (Staff-RLS
+    `orgs_write_staff_same_org` erlaubt das direkt) — der Test stirbt also nicht, falls ihn
+    jemand ausknipst, und stellt nichts zurück.
 
 ### Neu offen aus dem Person/Team-Umbau (2026-08-11)
 
@@ -989,6 +1029,14 @@ Prüfer), alle Änderungen **nur in `web/e2e/`**, kein App-Code, keine Migration
     Roundtrips bei Double-Elim) — deshalb braucht die `double-elim`-Spec einen 20s-Timeout.
     Ein Batch-Update würde die Aktion um Sekunden beschleunigen und den Sonder-Timeout
     überflüssig machen. Reine Performance, kein Korrektheitsproblem.
+38. 🟢 **Zweiter Scan eines schon übernommenen QR bietet die Übernahme ERNEUT an** statt „schon
+    übernommen" zu sagen (beim §7.19-Beweis gefunden). Ursache: der alte QR zeigt weiter auf die
+    alte Zeile (`qr_token` wird nie kopiert), der Lookup joint nicht über `user_id`, und der
+    Client liest `row.created` nie aus (`scanner-client.tsx:459` — `carry_over_participant`
+    liefert `created=false` beim `on conflict do nothing`). Harmlos: idempotent, keine zweite
+    Zeile (e2e-bewiesen); pro Wiederholung entsteht nur ein zusätzlicher `check_ins`-Audit-
+    Eintrag. Fix wäre `created=false` auswerten → eigene „Schon übernommen"-Karte. Bewusst
+    nicht mitgefixt (wäre App-Code, eigener Auftrag).
 
 ## 8. Datei-Landkarte
 - `web/src/app/` — Routen. Öffentlich: `page.tsx`, `o/[slug]/`, `t/[tournamentId]/{,register,me,board,checkin-station}`. Auth: `(auth)/login`, `(auth)/signup`, `auth/confirm/route.ts`, `link/[token]/route.ts` (Geräte-Kopplung). Organizer: `organizer/`, `games`, `members` (Org-Name + Geräte + Mitglieder), `tournaments/[id]/{,bracket,matches,participants,checkin,station}`. Scorekeeper: `score/[token]/`.

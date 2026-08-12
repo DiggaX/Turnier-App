@@ -219,6 +219,8 @@ export async function completeTeamStep(
 export interface FixtureParticipant {
   id: string;
   displayName: string;
+  /** The participant's QR token — what the door scans (e.g. carry-over spec). */
+  qrToken: string;
   /** The participant's own anon client — used to report results as them. */
   client: SupabaseClient;
 }
@@ -249,12 +251,13 @@ export async function registerAndCheckIn(
       display_name: displayName,
       birthdate: "2000-01-01",
     })
-    .select("id")
+    .select("id, qr_token")
     .single();
   if (partErr || !part) {
     throw new Error(`participant insert failed: ${partErr?.message ?? "none"}`);
   }
   const participantId = part.id as string;
+  const qrToken = part.qr_token as string;
 
   const { error: consentErr } = await client.from("consents").insert({
     participant_id: participantId,
@@ -274,7 +277,7 @@ export async function registerAndCheckIn(
     throw new Error(`check_in failed for ${displayName}: ${checkInErr.message}`);
   }
 
-  return { id: participantId, displayName, client };
+  return { id: participantId, displayName, qrToken, client };
 }
 
 /** A generated bracket match with both participant slots resolved. */
