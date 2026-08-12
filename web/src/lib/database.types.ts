@@ -466,6 +466,7 @@ export interface Database {
           qr_token: string;
           checked_in_at: string | null;
           has_consent: boolean;
+          team_id: string | null;
         }[];
       };
       check_in_via_token: {

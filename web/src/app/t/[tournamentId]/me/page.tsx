@@ -81,10 +81,10 @@ export default async function MePage(props: {
         display_name: row.display_name,
         qr_token: row.qr_token,
         checked_in_at: row.checked_in_at,
-        // Die RPC liefert kein team_id. Der Wettkaempfer wird deshalb unten
-        // aus dem offenen Match aufgeloest, das get_open_match_by_qr_token
-        // liefert — dort hat die Datenbank coalesce(team_id, id) schon getan.
-        team_id: null,
+        // Seit 20260812100000 liefert die RPC team_id mit. Bei Teams ist das
+        // der Wettkaempfer aus dem Spielplan — ohne ihn bliebe die Partienliste
+        // leer, sobald keine Partie mehr offen ist (HANDOVER §7.32).
+        team_id: row.team_id ?? null,
         consents: row.has_consent ? [{ id: "via-token" }] : [],
       };
       viaToken = true;
@@ -142,28 +142,22 @@ export default async function MePage(props: {
     participantBId: m.participant_b_id,
   }));
 
-  // Mensch -> Wettkaempfer. Mit Sitzung ist das coalesce(team_id, id); über den
-  // Link fehlt team_id, dann liefert die RPC die Seite im offenen Match — und
-  // die Seite IST der Wettkaempfer.
-  let competitorId = participant.team_id ?? participant.id;
+  // Mensch -> Wettkaempfer: coalesce(team_id, id), in beiden Modi gleich. Über
+  // den Link liefert das die RPC jetzt selbst mit.
+  const competitorId = participant.team_id ?? participant.id;
   let tokenReport: MyReport | null = null;
 
   if (viaToken && token) {
-    // Eine RPC statt zweier Abfragen. matches ist zwar öffentlich lesbar,
+    // Bleibt allein wegen tokenReport: matches ist öffentlich lesbar,
     // match_reports aber nicht — dessen Policy will p.user_id = auth.uid(), und
     // im Link-Modus gibt es diese Sitzung nicht. Ohne den Definer-Weg würde ein
-    // bereits gemeldeter Score nie geladen.
+    // bereits gemeldeter Score nie geladen. Den Wettkaempfer muss die RPC nicht
+    // mehr auflösen, den kennt participant.team_id.
     const { data: row } = await supabase
       .rpc("get_open_match_by_qr_token", { p_qr_token: token })
       .maybeSingle();
-    if (row) {
-      const openMatch = matchRows.find((m) => m.id === row.match_id);
-      const side =
-        row.my_side === "a" ? openMatch?.participant_a_id : openMatch?.participant_b_id;
-      if (side) competitorId = side;
-      if (row.report_score_a !== null && row.report_score_b !== null) {
-        tokenReport = { score_a: row.report_score_a, score_b: row.report_score_b };
-      }
+    if (row && row.report_score_a !== null && row.report_score_b !== null) {
+      tokenReport = { score_a: row.report_score_a, score_b: row.report_score_b };
     }
   }
 

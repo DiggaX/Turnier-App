@@ -848,10 +848,20 @@ Signatur an den Mock, kein ts-ignore).
 31. 🟢 **Das Realtime-Abo auf `match_reports` läuft ungefiltert**, weil die Tabelle keine
     `tournament_id` hat. Ein Organizer mit Parallelturnieren bekommt überflüssige Refreshes. Harmlos
     (RLS bleibt), sauber wäre eine denormalisierte `tournament_id`.
-32. 🟡 **Token-Modus + Team + alle Partien gespielt = leere Partienliste.** `get_participant_by_qr_token`
-    liefert kein `team_id`, deshalb leitet `/me` den Wettkämpfer aus dem *offenen* Match ab. Gibt es
-    keins mehr, fällt es auf die Person-Zeile zurück und findet nichts. Einzeiler: `team_id` in den
-    Rückgabewert der Funktion aufnehmen. Einzelstarter sind nicht betroffen.
+32. ✅ **Behoben (2026-08-12): Token-Modus + Team + alle Partien gespielt = leere Partienliste.**
+    `get_participant_by_qr_token` liefert jetzt `team_id` mit (Migration
+    `20260812100000_participant_token_team_id.sql`, DROP+CREATE weil sich der Rückgabetyp ändert,
+    Grants neu ausgesprochen). `/me` rechnet `coalesce(team_id, id)` damit direkt
+    (`me/page.tsx`); die Umweg-Ableitung über das offene Match ist raus — der
+    `get_open_match_by_qr_token`-Block bleibt nur noch für `tokenReport` (gemeldete Scores sind
+    nicht public-lesbar). Dreifach geprüft: DB-Beweise als `anon` in zurückgerollter Transaktion
+    (Team-Spieler → `team_id` gesetzt, Solo → NULL, unbekannter Token → leer), unabhängiger
+    Prüfer FREIGABE (u. a. bewiesen, dass die entfernte Override-Zeile zeichengleich dieselbe
+    `coalesce`-Rechnung machte wie die neue Zeile — verhaltensneutral bei offenem Match, strikt
+    besser ohne), Browser-Beweis mit synthetischem `finished`-2v2 (Wegwerf-Daten, danach
+    gelöscht): Partienliste zeigt „vs Team Beta · Gespielt · 3:1" statt leer, Warteschlange
+    korrekt „keine Partie an". Typen regeneriert und deckungsgleich (der Generator verliert
+    Nullability bei RPC-Returns — Datei-Stil `string | null` beibehalten).
 
 ### Neu offen aus dem 2026-08-11 (Geburtsdatum-Fix, Nachmittag)
 
