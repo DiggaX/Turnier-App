@@ -906,14 +906,12 @@ Prüfer), alle Änderungen **nur in `web/e2e/`**, kein App-Code, keine Migration
     Datenbank. Spaltenrechte gelten pro Postgres-Rolle, und alle drei App-Rollen **sind** dieselbe
     Rolle `authenticated`. Eine echte Trennung braucht eine View oder eine DEFINER-Funktion mit fester
     Spaltenauswahl. Steht so auch im Code und in `20260811110000`.
-29. 🟡 **Fast erledigt (2026-08-12) — ein Handgriff für Rene bleibt.** Gültiges Konto ist
-    `test@test.de` / `12345678` (Rolle admin, verifiziert); damit lief die komplette Suite
-    inkl. `register-team.spec.ts` grün. ⚠️ **Aber:** die Creds liefen als Shell-Env
-    (`E2E_ORG_EMAIL='test@test.de' E2E_ORG_PASSWORD='12345678' npx playwright test`) —
-    `web/.env.local` trägt noch die alten, ungültigen Werte und ist für Agents gesperrt
-    (Permission-Deny, korrekt so). **Rene: die zwei Zeilen dort selbst nachziehen**, dann
-    läuft die Suite auch ohne Env-Präfix. Shell-Env gewinnt gegen `.env.local` (Nexts
-    `loadEnvConfig` überschreibt gesetzte Variablen nicht).
+29. ✅ **Erledigt (2026-08-12).** Gültiges Konto `test@test.de` / `12345678` (Rolle admin,
+    verifiziert), damit lief die komplette Suite inkl. `register-team.spec.ts` grün. Rene hat
+    `E2E_ORG_EMAIL`/`E2E_ORG_PASSWORD` in `web/.env.local` selbst nachgezogen (für Agents
+    gesperrt, Permission-Deny) — `login.spec.ts` läuft jetzt ohne Env-Präfix grün, die Datei
+    greift also wieder. Historie: erst liefen die Creds als Shell-Env (`.env.local` trug noch
+    die alten Werte), Rene hat die Datei danach aktualisiert.
 30. 🟢 **„Partie starten" kann nur starten, nicht zählen oder beenden.** `start_match_as_player`
     (`20260811130000`) setzt `status='live'`. Zählen bleibt beim Scorekeeper (ein zweiter paralleler
     Zähler würde ihn überschreiben), Beenden auch (daraus baut `scorePrefill` den Freigabe-Vorschlag,
