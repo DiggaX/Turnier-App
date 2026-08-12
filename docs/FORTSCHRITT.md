@@ -1,7 +1,19 @@
 # Turnier-App — Fortschritt
 
-**Letzter Stand:** 2026-08-11 · Branch `main` @ `1dbfbdb` · gepusht und deployt
+**Letzter Stand:** 2026-08-12 · Branch `main` @ `73e71a7` · gepusht und deployt
 (`turnier-app-opal.vercel.app`; Push auf `main` deployt automatisch, siehe HANDOVER §3)
+
+**2026-08-12:** Fünf Commits, alle live (`7c500ef`…`73e71a7`). Auslöser: der team_size-Vorfall beim
+Rocket-League-Turnier (§7.34/§7.35 alt) per 13-Agenten-Forensik aufgeklärt. Danach Härtung
+(Seed-Reset, Bracket neu mischen erreichbar, DB-Riegel gegen team_size-Änderung nach Anmeldung),
+vier Feature-Workstreams (Einzelspieler-Nachmeldung, Tresen-Zuordnung, Generieren-Warnung,
+QR-Beitritt für Kinder), §7.32-Fix (Token-Modus zeigt jetzt gespielte Team-Partien) und
+Mannschaftsaufstellungen sichtbar (öffentlich + Orga-Matchliste, schmale DEFINER-RPC statt
+breiterer anon-Policy). Jede Änderung nach Dreifach-Prinzip: Implementierer → unabhängiger Prüfer
+→ bei Fund separater Fixer → Endkontrolle — hat bei den Rosters einen echten PII-Leak gefangen
+(Einzelturnier gab geschützte Spielerzeile heraus, jetzt per `team_size > 1`-Riegel in der Funktion
+selbst geschlossen). 578 Tests grün (waren 522). Details HANDOVER.md §5, Abende „Härtung nach dem
+team_size-Vorfall" und „§7.32-Fix + Mannschaftsaufstellungen sichtbar".
 
 **Nachmittag:** Geburtsdatum-Feld — `padOnBlur` las beim Fokus-Sprung noch den alten React-State
 statt das Eingabe-Ereignis; eine getippte `05` in Tag/Monat wurde dadurch zu `00`. Repariert
@@ -57,6 +69,11 @@ ist ab „Session 2026-08-10" wieder lückenlos. **Bei Widersprüchen gilt HANDO
 | Scanner checkt nicht mehr ins falsche Turnier ein | ✅ live 2026-08-11 |
 | Übernahme am Einlass: QR vom letzten Turnier → übernommen + eingecheckt | ✅ live 2026-08-11 · Schalter unter *Organisation*, **Browser-Klick steht aus** |
 | 522 Unit-Tests grün (waren 226) | ✅ 2026-08-11 |
+| team_size-Härtung: Seed-Reset, Bracket-Mischen erreichbar, DB-Riegel gegen nachträgliche Änderung | ✅ live 2026-08-12 |
+| Einzelspieler-Nachmeldung, Tresen-Zuordnung, Generieren-Warnung, QR-Beitritt für Kinder | ✅ live 2026-08-12 · vom User durchgeklickt |
+| Token-Modus (`/me?token=`) zeigt Team-Partien auch nach der letzten Runde (§7.32) | ✅ live 2026-08-12 |
+| Mannschaftsaufstellungen sichtbar (öffentlich + Orga-Matchliste) | ✅ live 2026-08-12 |
+| 578 Unit-Tests grün (waren 522) | ✅ 2026-08-12 |
 
 ---
 
