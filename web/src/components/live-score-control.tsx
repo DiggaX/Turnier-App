@@ -82,7 +82,7 @@ function ScoreControl({
           size="icon-lg"
           disabled={disabled}
           onClick={() => onChange(1)}
-          aria-label={(name ?? "Team") + ": ein Tor hinzuf?gen"}
+          aria-label={(name ?? "Team") + ": ein Tor hinzufügen"}
         >
           <Plus />
         </Button>

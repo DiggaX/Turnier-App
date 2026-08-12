@@ -691,6 +691,27 @@ deckt beide Pfade; Skript committen UND Leck stopfen). Drei Commits, Details an 
 - Nebenbei: vier neue 0-Byte-Müll-Dateien während der Subagent-Läufe entstanden und
   gelöscht (`(await`, `{,` um 12:45; `` `MIN_SCAN_LENGTH` ``-Muster) — stützt §7.15(d).
 
+### Neu am 2026-08-12 (Abend): §7.17 komplett zu — Nachmeldung + Live-Steuerung e2e
+
+Zwei Builder-Agents parallel, ein unabhängiger Reviewer, Läufe seriell. Suite jetzt **35/35**.
+
+- **`nachmeldung.spec.ts`** (3v3-Fixture, zwei verkettete Tests): Team nachmelden mit 2 von 3
+  (beweist §7.16-Formular UND den Blank-Zeilen-Filter, Liste `2 / 3`), dann Einzelspieler per
+  Umschalter + „Direkt in Team"-Auswahl → `3 / 3`, Detailseite mit Captain-Chip, DB-Gegenprobe.
+  Damit sind **beide August-Features** (Einzelspieler-Nachmeldung, Tresen-Zuordnung) erstmals
+  im echten Browser bewiesen.
+- **`live-control.spec.ts`**: die komplette Orga-Kette ohne Scorekeeper-Handy — Selbst steuern →
+  Spiel starten → 2:1 zählen (Seiten-Mapping vorab per `getSingleFinal`, deterministisch) →
+  Spiel beenden → `page.reload()` (Pflicht: Freigabe-Vorschlag füllt nur beim Mount) →
+  Freigeben → „2:1 · Sieger: …". Erste Abdeckung überhaupt für LiveControl/LiveScoreControl/
+  ConfirmForm als gerenderte Artefakte (Komponententests existieren dort nicht).
+- **Encoding-Bug im Vorbeigehen gefixt:** das Plus-Button-aria-label in
+  `live-score-control.tsx:85` hieß wörtlich `ein Tor hinzuf?gen` (literales `?`, Byte 0x3F,
+  statt `ü`) — Screenreader lasen Müll. Ein Zeichen, im selben Commit; die Spec pinnt das
+  korrekte Label. Reviewer-Befund zum `describe.configure({mode:"serial"})` geprüft und
+  verworfen (Playwright erlaubt das auf Dateiebene; serial überspringt Folgetests nach Rot).
+- Wieder eine Müll-Datei während der Builder-Läufe (`p.is_captain)`, 17:07) — §7.15(d)-Muster.
+
 ## 6. Architektur-Kernpunkte (NICHT übersehen)
 - ⚠️ **Wer antritt, entscheidet `participants.type` — NIEMALS `team_id`.** Wettkämpfer =
   `type in ('solo','team')`, Mensch = `type in ('solo','player')`. Ein `player` ohne Team trägt
@@ -881,11 +902,13 @@ deckt beide Pfade; Skript committen UND Leck stopfen). Drei Commits, Details an 
     „anderer Prozess" schließt die eigenen Subagents ein. Muster bestätigt: es sind Bruchstücke von
     *berichtetem/gelesenem* Text, der irgendwo durch eine Shell läuft. Gegenmaßnahme unverändert
     (find-Kommando aus (a) + explizite `git add`-Pfade); Ursache im Tooling weiter offen.
-16. **Das Aufstellungs-Formular ist nie in einem Browser geöffnet worden.** Unit- und Komponententests
-    sind grün (`add-participant-form.test.tsx`), die RLS ist gegen die Live-DB bewiesen, aber die
-    Organizer-Seiten verlangen einen Login — den kann ein Agent nicht führen. Erster Handgriff für
-    den nächsten Menschen: 3v3-Turnier → *Teilnehmer → Team nachmelden* → drei Zeilen müssen
-    erscheinen (Captain, Spieler 2, Spieler 3).
+16. ✅ **Erledigt (2026-08-12): das Aufstellungs-Formular ist im Browser gelaufen** — e2e
+    `web/e2e/nachmeldung.spec.ts` auf einem 3v3-Fixture: Formular zeigt `Aufstellung · 3v3` mit
+    genau den drei Zeilen (Captain, Spieler 2, Spieler 3 — und keiner vierten), Team mit 2 von 3
+    angelegt (leere Zeile gefiltert, Liste `2 / 3`), dann Einzelspieler per Umschalter + „Direkt
+    in Team" dazu → Liste `3 / 3`, Detailseite: drei Spieler, genau ein Captain-Chip;
+    DB-Gegenprobe 1× team + 3× player mit team_id, genau ein is_captain. Login-Blockade war mit
+    den e2e-Creds (§7.29) gefallen.
 17. 🟡 **Teilweise erledigt (2026-08-12): der Regenerate-Riegel hat jetzt seine Spec** —
     `web/e2e/regenerate.spec.ts`, zwei Tests: (1) das **Stale-Seiten-Race**, der einzige Weg, auf
     dem der Server-Riegel im Browser überhaupt feuert (eine frisch geladene Seite schickt bei
@@ -895,8 +918,16 @@ deckt beide Pfade; Skript committen UND Leck stopfen). Drei Commits, Details an 
     Warn-Dialog-Weg: Reload → `lostWork()`-Wortlaut inline sichtbar → Abbrechen bewahrt →
     Bestätigen löscht wirklich (neue Match-Id, `match_reports` der alten per Cascade weg).
     Billigste Verlust-Sorte fürs Fixture: pending-Match + **eine** Spielermeldung
-    (`report_match` fasst `matches.status` nie an). **Weiter offen:** Nachmeldung und
-    Live-Steuerung in der Matchliste haben keine Spec.
+    (`report_match` fasst `matches.status` nie an).
+    **Komplett zu seit dem 2026-08-12 (Abend):** auch Nachmeldung und Live-Steuerung haben
+    ihre Specs — `nachmeldung.spec.ts` (zwei Tests, 3v3, erledigt §7.16 mit) und
+    `live-control.spec.ts` (eine Kette: Selbst steuern → Spiel starten → zählen → Spiel
+    beenden → Reload → Scorekeeper-Vorschlag vorbefüllt → Freigeben → „2:1 · Sieger: …",
+    Live-Control verschwindet). ⚠️ Zwei Fallen für Nachahmer stehen als Kommentare in der
+    Spec: der Freigabe-Vorschlag füllt die Felder nur beim MOUNT (nach „Spiel beenden" ist
+    ein `page.reload()` Pflicht, sonst „Bitte gib zwei gültige Punktzahlen ein."), und der
+    Text „Scorekeeper" existiert doppelt auf der Seite (QR-Block + SectionLabel) — nie
+    unscoped matchen.
 18. ✅ **Geburtsdatum-Prüfung vereinheitlicht** (2026-08-10). Die öffentliche Anmeldung ruft jetzt
     `validBirthdate()` (`lib/consent.ts`) auf — dieselbe Funktion wie der Nachmelde-Pfad, mit
     demselben Satz bei Fehlschlag — und `participants.birthdate` trägt einen CHECK
